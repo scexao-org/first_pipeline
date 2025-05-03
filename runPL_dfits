@@ -1,0 +1,11 @@
+#
+# Just a super simple shortcut of dfits with most interesting keywords
+# 
+
+if [ $# == 0 ] ; then
+   files=*.fits
+else
+   files=""
+fi 
+
+dfits $files $@ | fitsort DATE OBJECT NAXIS3 GAIN FRATE EXPTIME DATA-TYP DATA-CAT

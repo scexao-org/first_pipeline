@@ -1,2 +1,3 @@
 # first_pipeline
-Pipeline for the FIRST photonic lantern
+
+Pipeline to reduce the FIRST data (using the Visible Photonic Lantern) at SUBARU/SCEXAO 
