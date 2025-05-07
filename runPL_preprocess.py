@@ -170,6 +170,13 @@ def preprocess(filelist_pixelmap,files_by_dir, output_channels_nb=38):
             comp_hdu.header['QC_BACKR'] = (perc_background[2]-perc_background[0])/2*np.sqrt(2)
             comp_hdu.header['QC_FLUX'] = flux_mean
             comp_hdu.header['DATA-CAT'] = "PREPROC"
+
+            # Add the MODULATION extension from the original file to the new FITS file
+            if 'MODULATION' in fits.open(file):
+                modulation_hdu = fits.open(file)['MODULATION']
+                comp_hdu = fits.HDUList([comp_hdu, modulation_hdu])
+
+
             # create a directory named preproc if it does not exist
             preproc_dir_path = os.path.join(dir_path, "preproc")
             if not os.path.exists(preproc_dir_path):

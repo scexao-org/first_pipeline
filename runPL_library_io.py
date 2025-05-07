@@ -136,13 +136,13 @@ def create_output_filename(header):
 
     name_extension = object
     special_extension = ["DARK", "SKY", "WAVE", "PIXELMAP", "WAVEMAP", "COUPLINGMAP"]
-    special_extension2 = ["IMAGE"]
+    special_extension2 = ["IMAGE","PREPROC"]
     if type in special_extension:
         name_extension = type
     if cat in special_extension:
         name_extension = cat
     if cat in special_extension2:
-        name_extension = "I_"+name_extension
+        name_extension = name_extension + "_" + cat[0]
 
     output_filename = 'firstpl_' + date + '_' + name_extension + '.fits'
     return output_filename

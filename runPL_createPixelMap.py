@@ -334,7 +334,7 @@ if __name__ == "__main__":
     # Default values
     pixel_min = 100
     pixel_max = 1600
-    pixel_wide = 3
+    pixel_wide = 2
     output_channels = 38
     folder = "."  # Default to current directory
 
@@ -361,5 +361,5 @@ if __name__ == "__main__":
     filelist=runlib.get_filelist( file_patterns )
 
     raw_Image, header = raw_image_clean(filelist)
-    traces_loc, x_found,y_found = generate_pixelmap(raw_Image, pixel_min, pixel_max, output_channels)
+    traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_Image, pixel_min, pixel_max, output_channels)
     save_fits_and_png(raw_Image, traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder)

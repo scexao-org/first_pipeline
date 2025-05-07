@@ -611,7 +611,7 @@ if __name__ == "__main__":
     # Convert arg_model values into 2D indices of size cmap_size
     chi2_min,chi2_max,arg_model = get_chi2_maps(datacube,postiptilt_2_data,data_2_postiptilt)
 
-    flux_thresold=np.percentile(datacube.mean(axis=(0,1)),80)/5
+    flux_thresold=np.percentile(datacube.mean(axis=(0,1)),80)/5/10000
     flux_goodData=datacube.mean(axis=(0,1)) > flux_thresold
     chi2_delta=chi2_min/chi2_max
     percents=np.nanpercentile(chi2_delta[flux_goodData],[16,50,84])

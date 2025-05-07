@@ -12,6 +12,9 @@ from scipy import linalg
 from tqdm import tqdm
 from astropy.io import fits
 from scipy.ndimage import uniform_filter1d
+from scipy.spatial import Delaunay
+from scipy.interpolate import griddata
+from scipy.optimize import curve_fit
 
 import matplotlib.pyplot as plt
 from matplotlib import animation
@@ -119,12 +122,64 @@ def save_all_as_PDF(output_dir = "/home/jsarrazin/Bureau/test zone/coupling_maps
     print(f"All plots saved to {pdf_filename}")
     return 1
 
-def generate_plots(singular_values, chi2_delta, flux_goodData, chi2_goodData, chi2_threshold, cross_correlated_projected_data, shifted_projected_data, fluxtiptilt_2_data, output_dir):
+def generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, singular_values, Nsingular, chi2_delta, flux_goodData, chi2_goodData, flux_threshold, chi2_threshold, output_dir):
+
+    fluxes = datacube.mean(axis=(0,1,2))
+    popt = fit_gaussian_on_flux(fluxes, xmod, ymod)
+    x_fit=popt[1]
+    y_fit=popt[2]
+
+    xmin, xmax   = np.min(xmod), np.max(xmod)
+    ymin, ymax   = np.min(ymod), np.max(ymod)
+
+    # Define the grid for interpolation
+    grid_x, grid_y = np.mgrid[xmin:xmax:500j, ymin:ymax:500j]  # 500x500 grid
+
+    # Interpolate the fluxes onto the grid
+    flux_map = griddata((xmod, ymod), fluxes, (grid_x, grid_y), method='cubic')
+
+    # Prepare data for fitting
+    z = fluxes
+    x = xmod
+    y = ymod
+    amplitude_0=np.max(fluxes)-np.min(fluxes)
+    x_0= x[fluxes.argmax()]
+    y_0= y[fluxes.argmax()]
+    sigma_0 = (x.max()-x.min())/4
+    offset_0=np.min(fluxes)
+
+    # Initial guess for the parameters
+    initial_guess = (amplitude_0,x_0,y_0,sigma_0,offset_0)
+
+    # Fit the Gaussian
+    popt, _ = curve_fit(gaussian_2d, (x, y), z, p0=initial_guess)
+    x_fit=popt[1]
+    y_fit=popt[2]
+
+    # Generate the fitted Gaussian for plotting
+    fitted_gaussian = gaussian_2d((grid_x, grid_y), *popt).reshape(grid_x.shape)
+
+    # Plot the contours of the fitted Gaussian on top of the image
+    # Plot the interpolated 2D image
+    import matplotlib.pyplot as plt
+    plt.ion()
+
+    plt.figure("Interpolated Flux",clear=True)
+    plt.imshow(flux_map.T, extent=(xmin, xmax, ymin, ymax), origin="lower", aspect='auto')
+    plt.scatter(xmod, ymod, c='red', s=1, label='Data Points')
+    plt.scatter(xmod[masque_positions], ymod[masque_positions], c='w', s=3, label='Data Points')
+    plt.colorbar(label="Flux")
+    plt.xlabel("X")
+    plt.ylabel("Y")
+    plt.title("(Xmod,Ymod) maximum position: (%.3f,%.3f)"%(x_fit,y_fit))
+    plt.contour(grid_x, grid_y, fitted_gaussian, levels=10, colors='red', linewidths=0.8)
+
+
     # Singular values plot
 
-    Nsingular = cross_correlated_projected_data.shape[0]
-    Ncube = cross_correlated_projected_data.shape[1]
-    cmap_size = cross_correlated_projected_data.shape[-1]
+    Ncube = flux_goodData.shape[0]
+    Nmod = flux_goodData.shape[1]
+    # cmap_size = cross_correlated_projected_data.shape[-1]
 
     energy_estimation = (singular_values)**2 / np.sum(singular_values**2)
     reverse_cumulative_energy = np.cumsum(energy_estimation[::-1])[::-1]
@@ -144,94 +199,56 @@ def generate_plots(singular_values, chi2_delta, flux_goodData, chi2_goodData, ch
     plt.grid(True)
 
     # Chi2 maps plots
-    fig, axs = plt.subplots(5, 1, num="reduced chi23", clear=True, figsize=(15, 20))
+    fig, axs = plt.subplots(7, 1, num="reduced chi23", clear=True, figsize=(12, 16))
 
     chi2_delta = chi2_delta.reshape((Ncube, -1))
+    flux = datacube.mean(axis=(0,1))
 
-    axs[0].imshow(chi2_delta, aspect="auto", interpolation='none')
-    axs[0].set_ylabel('Chi2')
-    axs[0].set_title('Chi2 Delta')
-    axs[0].set_rasterized(True)
+    axs[0].imshow(flux, aspect="auto", interpolation='none')
+    axs[0].set_title('Flux')
 
-    axs[1].imshow(flux_goodData.reshape((Ncube, -1)), aspect="auto", interpolation='none')
-    axs[1].set_ylabel('N cube')
-    axs[1].set_title('Masque on flux')
-    axs[1].set_rasterized(True)
+    axs[1].imshow(chi2_delta, aspect="auto", interpolation='none')
+    axs[1].set_title('Normalised Chi2')
 
-    axs[2].imshow(chi2_goodData.reshape((Ncube, -1)), aspect="auto", interpolation='none')
-    axs[2].set_ylabel('N cube')
-    axs[2].set_title('Masque on chi2')
+    axs[2].imshow(flux_goodData.reshape((Ncube, -1)), aspect="auto", interpolation='none')
+    axs[2].set_title('Masque on flux')
     axs[2].set_rasterized(True)
 
-    axs[3].plot(chi2_delta.T)
-    axs[3].plot(np.ones(cmap_size * cmap_size) * chi2_threshold, 'r')
+    axs[3].imshow(chi2_goodData.reshape((Ncube, -1)), aspect="auto", interpolation='none')
     axs[3].set_ylabel('N cube')
-    axs[3].set_title('Chi2 Delta Plot')
-    axs[3].set_xlim((0, cmap_size * cmap_size))
+    axs[3].set_title('Masque on chi2')
 
-    axs[4].set_axis_off()
+    axs[4].plot(flux.T)
+    axs[4].plot(np.ones(Nmod) * flux_threshold, 'r')
+    axs[4].set_title('Flux Plot')
 
-    axs_last = [fig.add_subplot(5, 3, 13), fig.add_subplot(5, 3, 14), fig.add_subplot(5, 3, 15)]
+    axs[5].plot(chi2_delta.T)
+    axs[5].plot(np.ones(Nmod) * chi2_threshold, 'r')
+    axs[5].set_title('Chi2 Delta Plot')
+    axs[5].set_xlim((0, Nmod))
+
+    for i in range(len(axs)-3):
+        axs[i].set_rasterized(True)
+    for i in range(len(axs)-1):
+        axs[i].set_ylabel('N cube')
 
     max_chi2 = np.nanmax(chi2_delta.ravel())
-    axs_last[0].hist(chi2_delta.ravel(), bins=30, range=(0, max_chi2),alpha=0.2, label='All data')
-    axs_last[0].hist(chi2_delta[flux_goodData], bins=30, range=(0, max_chi2), label='flux_goodData')
-    axs_last[0].hist(chi2_delta[chi2_goodData], bins=30, range=(0, max_chi2), label='chi2_goodData')
-    axs_last[0].legend()
-    axs_last[0].set_title('Chi2 Delta Histogram')
+    axs[-1].hist(chi2_delta.ravel(), bins=100, range=(0, max_chi2),alpha=0.8, label='All data')
+    axs[-1].hist(chi2_delta[flux_goodData], bins=100, range=(0, max_chi2), label='flux_goodData')
+    axs[-1].hist(chi2_delta[chi2_goodData], bins=100, range=(0, max_chi2), label='chi2_goodData')
+    axs[-1].legend()
+    axs[-1].set_title('Chi2 Delta Histogram')
 
-    axs_last[1].imshow(np.nansum(chi2_delta.reshape((Ncube, cmap_size, cmap_size)), axis=0), interpolation='none', vmin=0, vmax=max_chi2)
-    axs_last[1].set_title('Chi2 Delta Sum')
-    axs_last[1].set_rasterized(True)
-
-    axs_last[2].imshow(chi2_goodData.reshape((Ncube, cmap_size, cmap_size)).sum(axis=0), interpolation='none')
-    axs_last[2].set_title('Chi2 Good Data Sum')
-    axs_last[2].set_rasterized(True)
 
     plt.tight_layout()
 
-    # Cross-correlation matrix plot
-    fig, axs = plt.subplots(Ncube, Ncube, num='cross_correlation_singular_vector', clear=True, figsize=(5, 5), squeeze=False)
-    plt.subplots_adjust(wspace=0, hspace=0)
-    fig.suptitle('Cross-correlation of singular vectors')
-
-    for j in np.arange(Ncube):
-        for k in range(Ncube):
-            if j == 0:
-                axs[j, k].set_title(f"{k}")
-            if k == 0:
-                axs[j, k].set_ylabel(f"{j}")
-            axs[j, k].imshow(cross_correlated_projected_data[:, j, k].mean(axis=0), interpolation=None)
-            if j != Ncube - 1:
-                axs[j, k].set_xticks([])
-            axs[j, k].set_yticks([])
-
-    # Shifted singular vectors plot
-    per_row = 19
-    n_plots = int(np.ceil(Nsingular / per_row))
-    for p in range(n_plots):
-        fig, axs = plt.subplots(Ncube, per_row, num='Position map of singular vector %i to %i' % (1 + p * per_row, (1 + p) * per_row), figsize=(14 + 1, 1 + 14 * Ncube / per_row), clear=True, squeeze=False)
-        plt.subplots_adjust(wspace=0, hspace=0, top=0.99, bottom=0.01, left=0.01, right=0.99)
-
-        for i in range(p * per_row, (1 + p) * per_row):
-            position_map = shifted_projected_data[i]
-            for j in range(Ncube):
-                vmax = np.nanmax(np.abs(position_map[j]))
-                vmin = -vmax
-                ax = axs[j, i % per_row]
-                im = ax.imshow(position_map[j], origin='lower', cmap='viridis', vmax=vmax, vmin=vmin)
-                ax.set_xticks([])
-                ax.set_yticks([])
-            ax.text(0.5, 0.05, f'#{i + 1}', transform=ax.transAxes, ha='center')
-
     # Covariance and correlation matrix plot
-    Nmodel = fluxtiptilt_2_data.shape[0]
-    Nwave = fluxtiptilt_2_data.shape[1]
-    Noutput = fluxtiptilt_2_data.shape[2]
+    Nwave = flux_2_data.shape[0]
+    Noutput = flux_2_data.shape[1]
+    Nmodel = flux_2_data.shape[2]
 
-    F2PM = fluxtiptilt_2_data[:, :, :, 0]
-    cov_matrix = np.cov(F2PM.reshape((Nmodel,Nwave*Noutput)))
-    cor_matrix = np.corrcoef(F2PM.reshape((Nmodel,Nwave*Noutput)))
+    cov_matrix = np.cov(flux_2_data.reshape((Nwave*Noutput,Nmodel)).T)
+    cor_matrix = np.corrcoef(flux_2_data.reshape((Nwave*Noutput,Nmodel)).T)
 
     fig, ax = plt.subplots(1, 2, num='Covariance and Correlation Matrix', figsize=(12, 6), clear=True)
     cax0 = ax[0].matshow(cov_matrix, cmap='viridis')
@@ -245,7 +262,7 @@ def generate_plots(singular_values, chi2_delta, flux_goodData, chi2_goodData, ch
     # Save all plots to a PDF
     now = datetime.now()
     date_time_str = now.strftime("%Y_%m_%d_%H_%M_%S")
-    pdf_filename = os.path.join(output_dir, f"plots_summary_{date_time_str}_cmap{cmap_size}.pdf")
+    pdf_filename = os.path.join(output_dir, f"plots_summary_{date_time_str}_cmap.pdf")
     with PdfPages(pdf_filename) as pdf:
         for i in plt.get_fignums():
             fig = plt.figure(i)
@@ -268,12 +285,65 @@ class DataCube:
         self.dirname = os.path.dirname(filename)
         self.filename = filename
         self.header = header
-        self.Npos = data.shape[0]
+        self.Ndit = data.shape[0]
         self.Noutput = data.shape[1]
         self.Nwave = data.shape[2]
 
+    def add_modulation(self, xmod, ymod):
+        self.xmod = xmod
+        self.ymod = ymod
+        self.Nmod = len(xmod)
+        self.Ncube = self.Ndit//self.Nmod
+        if (self.Ncube*self.Nmod)!=self.Ndit:
+            print("WARNING, CUBE not multiple of modulation pattern")
+            print("filling with zeros")
+            self.Ncube += 1
 
-def extract_datacube(closest_dark_files,Nsmooth = 1,Nbin = 1):
+        size_new = (self.Ncube,self.Nmod,self.Noutput,self.Nwave)
+        size_old = np.prod((self.Ndit,self.Noutput,self.Nwave))
+
+        data_padded=np.zeros(np.prod(size_new))
+        data_padded[:size_old]=self.data.ravel()[:size_old]
+        self.data=data_padded.reshape(size_new)
+
+        variance_padded=np.zeros(np.prod(size_new))
+        variance_padded[:size_old]=self.variance.ravel()[:size_old]
+        self.variance=variance_padded.reshape(size_new)
+
+    def get_triangle(self):
+    
+        xmod=self.xmod
+        ymod=self.ymod
+
+        # Combine xmod and ymod into a 2D array of points
+        points = np.array([xmod, ymod]).T
+
+        # Perform Delaunay triangulation
+        delaunay_triangles = Delaunay(points)
+
+        # Extract the triangles
+        triangles = delaunay_triangles.simplices
+        # Filter triangles to keep only equatorial ones
+        equatorial_triangles = []
+        for triangle in triangles:
+            # Get the y-coordinates of the vertices
+            x_coords = points[triangle, 0]
+            y_coords = points[triangle, 1]
+            l1=np.sqrt((x_coords[0]-x_coords[1])**2+(y_coords[0]-y_coords[1])**2)
+            l2=np.sqrt((x_coords[1]-x_coords[2])**2+(y_coords[1]-y_coords[2])**2)
+            l3=np.sqrt((x_coords[2]-x_coords[0])**2+(y_coords[2]-y_coords[0])**2)
+            # Check if the triangle is equilateral within a tolerance
+            tolerance = 1e-3  # Adjust tolerance as needed
+            if abs(l1 - l2) < tolerance and abs(l2 - l3) < tolerance and abs(l1 - l3) < tolerance:
+                equatorial_triangles.append(triangle)
+
+        equatorial_triangles = np.array(equatorial_triangles)
+        print(f"Computed {len(triangles)} triangles for the given positions.")
+        print(f"Computed {len(equatorial_triangles)} equatorial triangles.")
+
+        return equatorial_triangles
+
+def extract_datacube(files_with_dark,Nsmooth = 1,Nbin = 1):
     """
     Extracts and processes data cubes from the input files.
     Subtracts dark files, applies wavelength smoothing, and calculates variance.
@@ -284,16 +354,28 @@ def extract_datacube(closest_dark_files,Nsmooth = 1,Nbin = 1):
 
     datalist=[]
 
-    for data_file,dark_file  in closest_dark_files.items():
+    for data_file,dark_file  in files_with_dark.items():
+
+        # reading header data
         header=fits.getheader(data_file)
-        data_dark=fits.getdata(dark_file)
-        if len(data_dark)==1:
-            data_dark=data_dark[0]
-            data_dark_std=data_dark[0]*0+12
-        else:
-            data_dark=data_dark.mean(axis=0)
-            data_dark_std=data_dark.std(axis=0)
+        # important to cast the data in double!
         data=np.double(fits.getdata(data_file))
+        # reading modulation data
+        xmod=np.double(fits.getdata(data_file,'MODULATION').field('xmod'))
+        ymod=np.double(fits.getdata(data_file,'MODULATION').field('ymod'))
+
+        if dark_file is not None:
+            data_dark=fits.getdata(dark_file)
+            if len(data_dark)==1:
+                data_dark=data_dark[0]
+                data_dark_std=data_dark[0]*0+12
+            else:
+                data_dark=data_dark.mean(axis=0)
+                data_dark_std=data_dark.std(axis=0)
+        else:
+            # using default values if we do not know the dark
+            data_dark=header["DETBIAS"]*(1+2*header["PIX_WIDE"])
+            data_dark_std=20
         data-=data_dark
         gain=header['GAIN']
         data_var=data_dark_std**2+gain*np.abs(data)
@@ -315,6 +397,7 @@ def extract_datacube(closest_dark_files,Nsmooth = 1,Nbin = 1):
             data_var=data_var.reshape((Npos,Noutput,Nwave//Nbin,Nbin)).sum(axis=-1)
 
         datalist += [DataCube(data, data_var, data_file, header)]
+        datalist[-1].add_modulation(xmod,ymod)
 
     return datalist
 
@@ -381,3 +464,39 @@ def resize_and_shift(flux, masque, dither_x, dither_y):
         image_2d_bigger[i,x2:x2+cmap_size, y2:y2+cmap_size][masque]  = flux[i]
 
     return image_2d_bigger
+
+# Define a 2D Gaussian function
+def gaussian_2d(xy, amplitude, xo, yo, sigma, offset):
+    x, y = xy
+    xo = float(xo)
+    yo = float(yo)
+    w = 1/(sigma**2)
+    g = offset + amplitude * np.exp(-(w*((x-xo)**2) + w*((y-yo)**2)))
+    return g.ravel()
+    
+
+def fit_gaussian_on_flux(fluxes, xmod, ymod):
+    """
+    Fit a 2D Gaussian to the flux data.
+    """
+    # Interpolate the fluxes onto a grid
+    # Create a grid of points for interpolation
+    # Use the mean fluxes for the grid
+    
+    # Prepare data for fitting
+    z = fluxes
+    x = xmod
+    y = ymod
+    amplitude_0=np.max(fluxes)-np.min(fluxes)
+    x_0= x[fluxes.argmax()]
+    y_0= y[fluxes.argmax()]
+    sigma_0 = (x.max()-x.min())/4
+    offset_0=np.min(fluxes)
+
+    # Initial guess for the parameters
+    initial_guess = (amplitude_0,x_0,y_0,sigma_0,offset_0)
+
+    # Fit the Gaussian
+    popt, _ = curve_fit(gaussian_2d, (x, y), z, p0=initial_guess)
+
+    return popt

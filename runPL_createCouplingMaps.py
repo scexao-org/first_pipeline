@@ -16,7 +16,6 @@ import numpy as np
 from scipy.signal import correlate
 from scipy import linalg
 
-from scipy.interpolate import griddata
 
 import getpass
 import matplotlib
@@ -34,13 +33,13 @@ from scipy import linalg
 from matplotlib import animation
 from itertools import product
 from scipy.linalg import pinv
-from scipy.optimize import curve_fit
 import runPL_library_io as runlib
 import runPL_library_imaging as runlib_i
 from scipy.ndimage import zoom
 from astropy.io import fits
 import shutil
 from scipy.interpolate import interpn
+from astropy.table import Table
 
 plt.ion()
 
@@ -57,13 +56,13 @@ usage = """
     It will read the files which have nothing in the DPR_OPT keyword, and it will subtract from them the files which have the DARK keyword.
     
     Example:
-    runPL_compareCouplingMaps.py --cmap_size=25 *.fits
+    runPL_compareCouplingMaps.py  *.fits
 
     Options:
-    --cmap_size: Width of cmap size, in pixels (default: 25)
+    --cmap_size: Width of cmap size, in pixels (default: 25) (removed)
 """
 
-def filter_filelist(filelist,cmap_size=25):
+def filter_filelist(filelist):
     """
     Filters the input file list to separate coupling map files and dark files based on FITS keywords.
     Raises an error if no valid files are found.
@@ -72,8 +71,7 @@ def filter_filelist(filelist,cmap_size=25):
 
     # Use the function to clean the filelist
     fits_keywords = {'DATA-CAT': ['PREPROC'],
-                    'DATA-TYP': ['OBJECT'],
-                    'NAXIS3': [cmap_size*cmap_size]}
+                    'DATA-TYP': ['OBJECT','TEST']}
     filelist_cmap = runlib.clean_filelist(fits_keywords, filelist)
     print("runPL cmap filelist : ", filelist_cmap)
 
@@ -88,7 +86,7 @@ def filter_filelist(filelist,cmap_size=25):
         raise ValueError("No good file to run cmap")
     # raise an error if filelist_cleaned is empty
     if len(filelist_dark) == 0:
-        raise ValueError("No good dark to substract to cmap files")
+        print("WARNING: No good dark to substract to cmap files")
 
     # Check if all files have the same value for header['PM_CHECK']
     pm_check_values = set()
@@ -116,7 +114,10 @@ def filter_filelist(filelist,cmap_size=25):
         dark_dates = [(dark, fits.getheader(dark)['DATE']) for dark in dark_files]
         dark_dates.sort(key=lambda x: abs(datetime.strptime(x[1], '%Y-%m-%dT%H:%M:%S') - datetime.strptime(cmap_date, '%Y-%m-%dT%H:%M:%S')))
         
-        return dark_dates[0][0]  # Return the closest dark file by date
+        try:
+            return dark_dates[0][0]  # Return the closest dark file by date
+        except:
+            return None
 
     def find_closest_dark(cmap_file, dark_files):
         """
@@ -124,14 +125,15 @@ def filter_filelist(filelist,cmap_size=25):
         """
 
         cmap_dir = os.path.dirname(cmap_file)
+        dark_samegain = [dark for dark in dark_files if fits.getheader(dark)['GAIN'] == fits.getheader(cmap_file)['GAIN']]
         
         # Filter dark files by the same directory
-        same_dir_darks = [dark for dark in dark_files if os.path.dirname(dark) == cmap_dir]
+        same_dir_darks = [dark for dark in dark_samegain if os.path.dirname(dark) == cmap_dir]
         
         if same_dir_darks:
             return find_closest_in_time_dark(cmap_file, same_dir_darks)  # Return the first match in the same directory    
         else:
-            return find_closest_in_time_dark(cmap_file, dark_files) 
+            return find_closest_in_time_dark(cmap_file, dark_samegain) 
 
     files_with_dark = {cmap: find_closest_dark(cmap, filelist_dark) for cmap in filelist_cmap}
 
@@ -151,8 +153,7 @@ def get_shift_between_image(projdata):
 
     Nsingular=projdata.shape[0]
     Ncube=projdata.shape[1]
-    Npos=projdata.shape[2]  
-    cmap_size=int((Npos)**.5)
+    Nmod=projdata.shape[2]  
 
     projdata = projdata.reshape((Nsingular, Ncube, cmap_size, cmap_size))
     # Perform 2D cross-correlation along the last two dimensions
@@ -175,6 +176,39 @@ def get_shift_between_image(projdata):
 
     return dist_2d_x,dist_2d_y,c
 
+def filter_data(datacube,flux_goodData,Nsingular):
+    """
+    Filters the input datacube based on good flux data and applies Singular Value Decomposition (SVD).
+    This function reduces the dimensionality of the datacube while retaining the most significant components.
+
+    Args:
+        datacube (numpy.ndarray): The input datacube with dimensions (Nwave, Noutput, Ncube, Nmod).
+        flux_goodData (numpy.ndarray): A boolean mask indicating which data points have good flux.
+        Nsingular (int): The number of singular values to retain.
+
+    Returns:
+        numpy.ndarray: The filtered datacube with reduced dimensionality.
+    """
+
+    Nwave=datacube.shape[0] #100
+    Noutput=datacube.shape[1] #38
+    Ncube=datacube.shape[2] #10
+    Nmod=datacube.shape[3] #625
+    datacube=datacube.reshape((Nwave*Noutput,Ncube,Nmod)) #reshape to (3800, 10, 625)
+
+    pos_2_data = datacube[:,flux_goodData] #(3800, 3017) datacube is (3800, 10, 625), flux_good is (10, 625)
+
+    U,s,Vh=linalg.svd(pos_2_data,full_matrices=False)
+
+    #pos_2_singular = Vh[:Nsingular]*s[:Nsingular,None]
+    singular_2_data = U[:,:Nsingular] #(3800, 57)
+    pos_2_singular = singular_2_data.T @ datacube.reshape((Nwave*Noutput,Ncube*Nmod)) #(57, 6250)
+    datacube_filtered = singular_2_data @ pos_2_singular
+
+    datacube_filtered = datacube_filtered.reshape((Nwave,Noutput,Ncube,Nmod))
+    datacube = datacube.reshape((Nwave,Noutput,Ncube,Nmod))
+
+    return datacube_filtered
 
 def get_projection_matrice(datacube,flux_goodData,Nsingular):
     """
@@ -190,8 +224,8 @@ def get_projection_matrice(datacube,flux_goodData,Nsingular):
     Nwave=datacube.shape[0] #100
     Noutput=datacube.shape[1] #38
     Ncube=datacube.shape[2] #10
-    Npos=datacube.shape[3] #625
-    datacube=datacube.reshape((Nwave*Noutput,Ncube,Npos)) #reshape to (3800, 10, 625)
+    Nmod=datacube.shape[3] #625
+    datacube=datacube.reshape((Nwave*Noutput,Ncube,Nmod)) #reshape to (3800, 10, 625)
 
     pos_2_data = datacube[:,flux_goodData] #(3800, 3017) datacube is (3800, 10, 625), flux_good is (10, 625)
 
@@ -199,10 +233,10 @@ def get_projection_matrice(datacube,flux_goodData,Nsingular):
 
     #pos_2_singular = Vh[:Nsingular]*s[:Nsingular,None]
     singular_2_data = U[:,:Nsingular] #(3800, 57)
-    pos_2_singular = singular_2_data.T @ datacube.reshape((Nwave*Noutput,Ncube*Npos)) #(57, 6250)
+    pos_2_singular = singular_2_data.T @ datacube.reshape((Nwave*Noutput,Ncube*Nmod)) #(57, 6250)
 
     singular_values = s #(3017,)
-    pos_2_singular = pos_2_singular.reshape((Nsingular,Ncube,Npos)) #reshape to (57, 10, 625)
+    pos_2_singular = pos_2_singular.reshape((Nsingular,Ncube,Nmod)) #reshape to (57, 10, 625)
     singular_2_data = singular_2_data.reshape((Nwave,Noutput,Nsingular))
 
     return pos_2_singular,singular_values,singular_2_data
@@ -216,8 +250,8 @@ def shift_and_add(data, dist_2d_x, dist_2d_y):
     
     Nsingular=data.shape[0]
     Ncube=data.shape[1]
-    Npos=data.shape[2]
-    cmap_size = int(np.sqrt(Npos))
+    Nmod=data.shape[2]
+    cmap_size = int(np.sqrt(Nmod))
     data=data.reshape((Nsingular,Ncube,cmap_size,cmap_size))
 
     shifted_data = np.zeros_like(data)
@@ -241,79 +275,85 @@ def shift_and_add(data, dist_2d_x, dist_2d_y):
 
     return added_data,shifted_data
 
-def get_postiptilt_model(projected_model,projdata_2_data):
+def get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles):
     """
-    Computes the flux and tip-tilt model from the projected data.
-    Returns matrices for converting between projected data and flux/tip-tilt, and a mask.
+    Computes the flux and tip-tilt matrix from the projected data.
+
+    This function calculates matrices for converting between projected data and flux/tip-tilt values.
+
+    Returns:
+        tuple: A tuple containing:
+            - flux_2_data (numpy.ndarray): Matrix to convert flux to data.
+            - data_2_flux (numpy.ndarray): Matrix to convert data to flux.
+            - fluxtiptilt_2_data (numpy.ndarray): Matrix to convert flux and tip-tilt to data.
+            - data_2_fluxtiptilt (numpy.ndarray): Matrix to convert data to flux and tip-tilt.
     """
 
-    Nsingular=projected_model.shape[0]
-    cmap_size=projected_model.shape[1]
-    Nwave=projdata_2_data.shape[0]
-    Noutput=projdata_2_data.shape[1]
+    
+    Nsingular=pos_2_singular_mean.shape[0]
+    Nmod=pos_2_singular_mean.shape[1]
+    Nwave=singular_2_data.shape[0]
+    Noutput=singular_2_data.shape[1]
+    # Ntriangles=len(triangles)
 
-    postiptilt_model_vectors=np.zeros((cmap_size,cmap_size,Nsingular,3))
-    postiptilt_masque=np.zeros((cmap_size,cmap_size),dtype=bool)
-    for i in range(cmap_size-1):
-        for j in range(cmap_size-1):
-            postiptilt_model_vectors[i,j,:,0]=projected_model[:,i,j]
-            postiptilt_model_vectors[i,j,:,1]=projected_model[:,i,j]-projected_model[:,i+1,j]
-            postiptilt_model_vectors[i,j,:,2]=projected_model[:,i,j]-projected_model[:,i,j+1]
-            if np.isnan(postiptilt_model_vectors[i,j]).sum() != 0:
-                postiptilt_model_vectors[i,j]=0.0
-            else:
-                postiptilt_masque[i,j]=True
-
-    postiptilt_model_vectors=postiptilt_model_vectors[postiptilt_masque]
-    postiptilt_2_projdata= postiptilt_model_vectors
-
-    Nmodel=len(postiptilt_model_vectors)
+    masque_positions=~np.isnan(pos_2_singular_mean[0])
+    masque_triangles=(masque_positions[triangles].sum(axis=1) ==3)
+    Npositions=np.sum(masque_positions)
+    Ntriangles=np.sum(masque_triangles)
 
 
-    a=projdata_2_data.reshape((Nwave*Noutput,Nsingular))
-    b=postiptilt_2_projdata.reshape((Nmodel,Nsingular,3))
-    postiptilt_2_data = np.matmul(a,b).reshape((Nmodel,Nwave,Noutput,3))
-    flux_norm_wave = postiptilt_2_data[:,:,:,0].sum(axis=(0,2), keepdims=True)[:,:,:,None]
-    postiptilt_2_data /= flux_norm_wave
+    flux_2_data_tmp = singular_2_data.reshape((Nwave*Noutput,Nsingular)) @ pos_2_singular_mean
+    flux_2_data_tmp = flux_2_data_tmp.reshape((Nwave,Noutput,Nmod))
+    flux_2_data = flux_2_data_tmp[:,:,masque_positions]
+    flux_norm_wave = flux_2_data.sum(axis=(1,2), keepdims=True)
+    flux_2_data /= flux_norm_wave
 
-    data_2_postiptilt=np.zeros((Nmodel,Nwave,3,Noutput))
+    data_2_flux = np.zeros((Nwave,Npositions,Noutput))
+    print("Inverting flux_2_data to data_2_flux for each wavelength:")
     for w in tqdm(range(Nwave)):
-        for i in range(Nmodel):
-            data_2_postiptilt[i,w]=pinv(postiptilt_2_data[i,w])
+        data_2_flux[w]=pinv(flux_2_data[w])
+
+    fluxtiptilt_2_data = flux_2_data_tmp[:,:,triangles[masque_triangles]].transpose((2,0,1,3)).copy()
+    data_2_fluxtiptilt = np.zeros((Ntriangles,Nwave,3,Noutput))
+    print("Inverting fluxtiptilt_2_data to data_2_fluxtiptilt:")
+    for w in tqdm(range(Nwave)):
+        for t in range(Ntriangles):
+            data_2_fluxtiptilt[t,w]=pinv(fluxtiptilt_2_data[t,w])
 
 
-    return postiptilt_2_data,data_2_postiptilt,postiptilt_masque
+    return flux_2_data,data_2_flux,fluxtiptilt_2_data,data_2_fluxtiptilt,masque_positions,masque_triangles
 
-def get_chi2_maps(datacube,postiptilt_2_data,data_2_postiptilt):
+def get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt):
     """
     Calculates chi-squared maps to evaluate the fit of the data to the model.
     Returns the minimum chi-squared, maximum chi-squared, and the chi-squared map.
     """
 
-    print("Computing chi2 of individual observations")
+    print("Computing chi2 of observations for each triangle :")
     Nwave=datacube.shape[0]
     Noutput=datacube.shape[1]
     Ncube=datacube.shape[2]
-    Npos=datacube.shape[3]
-    Nmodel = postiptilt_2_data.shape[0]
+    Nmod=datacube.shape[3]
+    Ntriangles=data_2_fluxtiptilt.shape[0]
+    # Nmodel = postiptilt_2_data.shape[0]
 
-    b=datacube.reshape(Nwave,Noutput,Ncube*Npos)
-    ftt = np.matmul(data_2_postiptilt,b) #long
+    chi2=np.zeros((Ntriangles,Ncube*Nmod))
+    b=datacube.reshape(Nwave,Noutput,Ncube*Nmod)
+    for t in tqdm(range(Ntriangles)):
+        a=data_2_fluxtiptilt[t]
+        c=fluxtiptilt_2_data[t]
+        ftt=np.matmul(a,b)
+        residual = (b-np.matmul(c,ftt))**2
+        chi2[t]= residual.sum(axis=(0,1))
 
-    chi2=np.zeros((Nmodel,Ncube*Npos))
-    for i in tqdm(range(Nmodel)):
-        residual = (b-np.matmul(postiptilt_2_data[i],ftt[i]))**2
-        chi2[i]= residual.sum(axis=(0,1))
+    arg_triangle=chi2.argmin(axis=0)
+    # best_ftt = np.array([ftt[best_model[n],:,:,n] for n in range(Ncube*Nmod)])
 
-    arg_model=chi2.argmin(axis=0)
-    # best_ftt = np.array([ftt[best_model[n],:,:,n] for n in range(Ncube*Npos)])
+    chi2_min=chi2.min(axis=0).reshape((Ncube,Nmod))
+    chi2_max=chi2.max(axis=0).reshape((Ncube,Nmod))
+    arg_triangle=arg_triangle.reshape((Ncube,Nmod))
 
-    chi2_min=chi2.min(axis=0).reshape((Ncube,Npos))
-    chi2_max=chi2.max(axis=0).reshape((Ncube,Npos))
-    # best_ftt=best_ftt.reshape((Ncube,Npos,Nwave,3))
-    arg_model=arg_model.reshape((Ncube,Npos))
-
-    return chi2_min,chi2_max,arg_model
+    return chi2_min,chi2_max,arg_triangle
 
 
 def get_flux_model(postiptilt_2_data):
@@ -366,10 +406,8 @@ def quick_plot(data,title =""):
     print("Done")
 
 def run_create_coupling_maps(files_with_dark, 
-                                cmap_size = 25,
                                 wavelength_smooth = 20,
                                 wavelength_bin = 15,
-                                make_movie = False,
                                 Nsingular=19*3):
     """
     Used in lancementserie.py for global generation
@@ -382,23 +420,21 @@ def run_create_coupling_maps(files_with_dark,
     #clean and sum all data
     datalist=runlib_i.extract_datacube(files_with_dark,wavelength_smooth,Nbin=wavelength_bin)
     #datacube (625, 38, 100)
-    datacube=[d.data for d in datalist]
-    quick_fits(datacube, 'datacube')
+    datacube=np.concatenate([d.data for d in datalist])
+    datacube=datacube.transpose((3,2,0,1))
 
-    datacube=np.array(datacube).transpose((3,2,0,1))
-
-    if make_movie:
-        runlib_i.create_movie_cross(datacube)
-
-        plt.close('all')
+    xmod=datalist[0].xmod
+    ymod=datalist[0].ymod
+    triangles = datalist[0].get_triangle()
 
     # select data only above a threshold based on flux
-    flux_thresold=np.percentile(datacube.mean(axis=(0,1)),80)/5
-    flux_goodData=datacube.mean(axis=(0,1)) > flux_thresold
-    plt.imshow(flux_goodData)
+    flux_threshold=np.percentile(datacube.mean(axis=(0,1)),80)/5
+    flux_goodData=datacube.mean(axis=(0,1)) > flux_threshold
+    # plt.imshow(flux_goodData)
     if np.sum(flux_goodData)<57:
         #too little good data, we need to lower the bar
-        flux_goodData=datacube.mean(axis=(0,1)) > flux_thresold/2
+        flux_goodData=datacube.mean(axis=(0,1)) > flux_threshold/2
+        print("Not enough good data, lowering the threshold to ",flux_threshold/2)
 
     # get the Nsingulat highest singular values and the projection vectors into that space 
     #VSD
@@ -407,20 +443,18 @@ def run_create_coupling_maps(files_with_dark,
     #Nsingular : 57
     pos_2_singular,singular_values,singular_2_data=get_projection_matrice(datacube,flux_goodData,Nsingular)
 
-
-    # cross correlate the dataset to see if there is a significant offset between the different datasets
-    dist_2d_x,dist_2d_y,cross_correlated_projected_data = get_shift_between_image(pos_2_singular)
-
-    # shift and average all the datacubes, do not includes the bad frames
+    # average all the datacubes, do not includes the bad frames
     pos_2_singular[:,~flux_goodData]=np.nan
-    pos_2_singular_mean,shifted_pos_2_singular = shift_and_add(pos_2_singular, dist_2d_x, dist_2d_y)
+    pos_2_singular_mean = np.nanmean(pos_2_singular,axis=1)
+
+    # pos_2_singular_mean,shifted_pos_2_singular = shift_and_add(pos_2_singular, dist_2d_x, dist_2d_y)
 
     # compute the matrices to go from the projected data to the flux and tip tilt (and inverse)
-    postiptilt_2_data,data_2_postiptilt,postiptilt_masque = get_postiptilt_model(pos_2_singular_mean,singular_2_data)
+    flux_2_data,data_2_flux,fluxtiptilt_2_data,data_2_fluxtiptilt,masque_positions,masque_triangles = get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles)
 
-    #use datamodel to check if the observations are point like
+    #use flux tip tilt matrice to check if the observations are point like
     # To do so, fits the vector model and check if the chi2 decrease resonably
-    chi2_min,chi2_max,arg_model=get_chi2_maps(datacube,postiptilt_2_data,data_2_postiptilt)
+    chi2_min,chi2_max,arg_triangle=get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt)
     chi2_delta=chi2_min/chi2_max
     percents=np.nanpercentile(chi2_delta[flux_goodData],[16,50,84])
     chi2_threshold=percents[1]+(percents[2]-percents[0])*3/2
@@ -428,23 +462,49 @@ def run_create_coupling_maps(files_with_dark,
 
     #redo most of the work above but with flagged datasets
     pos_2_singular,singular_values,singular_2_data=get_projection_matrice(datacube,chi2_goodData,Nsingular)
-    dist_2d_x,dist_2d_y,cross_correlated_projected_data = get_shift_between_image(pos_2_singular)
     pos_2_singular[:,~chi2_goodData]=np.nan
-    pos_2_singular_mean,shifted_pos_2_singular = shift_and_add(pos_2_singular, dist_2d_x, dist_2d_y)
-    postiptilt_2_data,data_2_postiptilt,postiptilt_masque = get_postiptilt_model(pos_2_singular_mean,singular_2_data)
-
-    flux_2_data,data_2_flux = get_flux_model(postiptilt_2_data)
+    pos_2_singular_mean = np.nanmean(pos_2_singular,axis=1)
+    flux_2_data,data_2_flux,fluxtiptilt_2_data,data_2_fluxtiptilt,masque_positions,masque_triangles = get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles)
     # Save arrays into a FITS file
 
     # Create a primary HDU with no data, just the header
     hdu_primary = fits.PrimaryHDU()
 
     # Create HDUs for each array
-    hdu_0 = fits.ImageHDU(data=postiptilt_masque.astype(np.uint8), name='MASQUE')  # Save masque as uint8 to save space
     hdu_1 = fits.ImageHDU(data=flux_2_data, name='F2DATA')
     hdu_2 = fits.ImageHDU(data=data_2_flux, name='DATA2F')
-    hdu_3 = fits.ImageHDU(data=postiptilt_2_data, name='FTT2DATA')
-    hdu_4 = fits.ImageHDU(data=data_2_postiptilt, name='DATA2FTT')
+    hdu_3 = fits.ImageHDU(data=fluxtiptilt_2_data, name='FTT2DATA')
+    hdu_4 = fits.ImageHDU(data=data_2_fluxtiptilt, name='DATA2FTT')
+
+    # Create columns for xmod and ymod using fits.Column
+    x_pos = xmod[masque_positions]
+    y_pos = ymod[masque_positions]
+    x_triangles = xmod[triangles[masque_triangles]]
+    y_triangles = ymod[triangles[masque_triangles]]
+
+    # shifting all positions around the maximum of flux found from gaussian fitting
+    fluxes = datacube.mean(axis=(0,1,2))
+    popt = runlib_i.fit_gaussian_on_flux(fluxes, xmod, ymod)
+    x_fit=popt[1]
+    y_fit=popt[2]
+    x_fit = x_pos[((x_fit-x_pos)**2).argmin()] 
+    y_fit = y_pos[((y_fit-y_pos)**2).argmin()] 
+
+    x_triangles -= x_fit
+    y_triangles -= y_fit
+    x_pos -= x_fit
+    y_pos -= y_fit
+
+    col_xmod = fits.Column(name='X_POS', format='E', array=x_pos)
+    col_ymod = fits.Column(name='Y_POS', format='E', array=y_pos)
+
+    col_xtriangles = fits.Column(name='X_TRI', format='3E', array=x_triangles)
+    col_ytriangles = fits.Column(name='Y_TRI', format='3E', array=y_triangles)
+
+    # Create a table HDU for xmod and ymod
+    hdu_table_mod = fits.BinTableHDU.from_columns([col_xmod, col_ymod], name='MODULATION')
+    hdu_table_triangle = fits.BinTableHDU.from_columns([col_xtriangles, col_ytriangles], name='TRIANGLES')
+
 
     header = datalist[-1].header
     # Définir le chemin complet du sous-dossier "output/couplingmaps"
@@ -459,11 +519,10 @@ def run_create_coupling_maps(files_with_dark,
         header['DATE'] = current_time
 
     # Add input parameters to the header
-    header['CMAPSIZE'] = cmap_size  # Add cmap size
     header['WLSMOOTH'] = wavelength_smooth  # Add wavelength smoothing factor
     header['WL_BIN'] = wavelength_bin
     header['NSINGUL'] = Nsingular  # Add number of singular values
-    header['FLUXTHR'] = flux_thresold  # Add flux threshold
+    header['FLUXTHR'] = flux_threshold  # Add flux threshold
     header['CHI2THR'] = chi2_threshold  # Add chi2 threshold
 
     # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
@@ -472,7 +531,7 @@ def run_create_coupling_maps(files_with_dark,
     hdu_primary.header.extend(header, strip=True)
 
     # Combine all HDUs into an HDUList
-    hdul = fits.HDUList([hdu_primary, hdu_0, hdu_1, hdu_2, hdu_3, hdu_4])
+    hdul = fits.HDUList([hdu_primary, hdu_1, hdu_2, hdu_3, hdu_4,hdu_table_mod,hdu_table_triangle])
 
     output_filename = os.path.join(output_dir, runlib.create_output_filename(header))
 
@@ -480,7 +539,9 @@ def run_create_coupling_maps(files_with_dark,
     hdul.writeto(output_filename, overwrite=True)
     print(f"Data saved to {output_filename}")
 
-    runlib_i.generate_plots(singular_values, chi2_delta, flux_goodData, chi2_goodData, chi2_threshold, cross_correlated_projected_data, shifted_pos_2_singular, postiptilt_2_data, output_dir)
+
+    runlib_i.generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, singular_values, Nsingular, chi2_delta, flux_goodData, chi2_goodData, flux_threshold, chi2_threshold, output_dir)
+
 
 
 if __name__ == "__main__":
@@ -488,15 +549,12 @@ if __name__ == "__main__":
 
 
     # Default values
-    cmap_size = 25
     wavelength_smooth = 20
     wavelength_bin = 15
     make_movie = False
     Nsingular=19*3 #for cmap=7, 57 is too high (34, 19 for plots is max for novemeber data in cmap=7)
 
     # Add options for these values
-    parser.add_option("--cmap_size", type="int", default=cmap_size,
-                    help="step numbers of modulation (default: %default)")
     parser.add_option("--Nsingular", type="int", default=Nsingular,
                       help="Number of singular values to use (default: %default)")
     parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,
@@ -509,6 +567,7 @@ if __name__ == "__main__":
     if "VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode':
         if getpass.getuser() == "slacour":
             file_patterns = "/Users/slacour/DATA/LANTERNE/Optim_maps/November2024/preproc"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/Mai/preproc2/firstpl_2025-05-06T09:52:?1_BETUMA.fits"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
@@ -519,7 +578,6 @@ if __name__ == "__main__":
         (options, args) = parser.parse_args()
 
         # Pass the parsed options to the function
-        cmap_size=options.cmap_size
         Nsingular=options.Nsingular
         wavelength_smooth=options.wavelength_smooth
         make_movie=options.make_movie
@@ -529,34 +587,11 @@ if __name__ == "__main__":
     print(file_patterns)
     filelist = runlib.get_filelist(file_patterns)
     print(filelist)
-    files_with_dark = filter_filelist(filelist,cmap_size)
-
-    try:
-        files_with_dark.pop('/Users/slacour/DATA/LANTERNE/Optim_maps/November2024/preproc/firstpl_2025-01-14T15:34:08_NONAME.fits')
-
-        for _ in range(7):
-            files_with_dark.pop(next(iter(files_with_dark)))
-
-        # files_with_dark.pop(next(reversed(files_with_dark)))
-        # files_with_dark.pop(next(reversed(files_with_dark)))
-        # files_with_dark.pop(next(reversed(files_with_dark)))
-    except:
-        pass
-
-    try:
-        files_with_dark.pop('/Users/slacour/DATA/LANTERNE/Optim_maps/May2024/preproc/firstpl_2025-02-19T11:25:12_NONAME.fits')
-        files_with_dark.pop('/Users/slacour/DATA/LANTERNE/Optim_maps/May2024/preproc/firstpl_2025-02-19T11:25:13_NONAME.fits')
-        files_with_dark.pop('/Users/slacour/DATA/LANTERNE/Optim_maps/May2024/preproc/firstpl_2025-02-19T11:25:14_NONAME.fits')
-        files_with_dark.pop('/Users/slacour/DATA/LANTERNE/Optim_maps/May2024/preproc/firstpl_2025-02-19T11:25:15_NONAME.fits')
-    except:
-        pass
-    
+    files_with_dark = filter_filelist(filelist)
 
     run_create_coupling_maps(files_with_dark, 
-                                cmap_size = cmap_size,
                                 wavelength_smooth = wavelength_smooth,
                                 wavelength_bin = wavelength_bin,
-                                make_movie = make_movie,
                                 Nsingular=19*3)
 
 
