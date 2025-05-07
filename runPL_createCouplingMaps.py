@@ -139,43 +139,6 @@ def filter_filelist(filelist):
 
     return files_with_dark
 
-
-def get_shift_between_image(projdata):
-    """
-    Calculates the shift between images in a dataset using 2D cross-correlation.
-    Returns the x and y shifts, and the cross-correlated data.
-    """
-
-    def distance_median(dist):
-        dist_mean = dist.mean(axis=1)
-        dist -= np.round(dist_mean+0.001).astype(int)[:,None]
-        return np.round(np.median(dist,axis=0)).astype(int)
-
-    Nsingular=projdata.shape[0]
-    Ncube=projdata.shape[1]
-    Nmod=projdata.shape[2]  
-
-    projdata = projdata.reshape((Nsingular, Ncube, cmap_size, cmap_size))
-    # Perform 2D cross-correlation along the last two dimensions
-    cross_correlated_projected_data = np.zeros((Nsingular, Ncube, Ncube, cmap_size, cmap_size))
-
-    for i in tqdm(range(Nsingular)):
-        for j in range(Ncube):
-            for k in range(Ncube):
-                cross_correlated_projected_data[i, j, k] = correlate(projdata[i, j], projdata[i, k], mode='same')
-
-
-    c=cross_correlated_projected_data
-    dist=c.sum(axis=0).reshape((Ncube,Ncube,-1)).argmax(axis=2)
-    dist_2d_x,dist_2d_y=np.array(np.unravel_index(dist,(cmap_size,cmap_size)))-cmap_size//2
-    dist_2d_x=distance_median(dist_2d_x)
-    dist_2d_y=distance_median(dist_2d_y)
-
-    print("shift in x --> ",dist_2d_x)
-    print("shift in y --> ",dist_2d_y)
-
-    return dist_2d_x,dist_2d_y,c
-
 def filter_data(datacube,flux_goodData,Nsingular):
     """
     Filters the input datacube based on good flux data and applies Singular Value Decomposition (SVD).
@@ -240,40 +203,6 @@ def get_projection_matrice(datacube,flux_goodData,Nsingular):
     singular_2_data = singular_2_data.reshape((Nwave,Noutput,Nsingular))
 
     return pos_2_singular,singular_values,singular_2_data
-
-def shift_and_add(data, dist_2d_x, dist_2d_y):
-    """
-    Shifts and averages data cubes based on calculated offsets.
-    Applies zero padding for areas with no information.
-    Returns the averaged model and shifted data.
-    """
-    
-    Nsingular=data.shape[0]
-    Ncube=data.shape[1]
-    Nmod=data.shape[2]
-    cmap_size = int(np.sqrt(Nmod))
-    data=data.reshape((Nsingular,Ncube,cmap_size,cmap_size))
-
-    shifted_data = np.zeros_like(data)
-    for i in range(Nsingular):
-        for j in range(Ncube):
-            x_offset = dist_2d_x[j]
-            y_offset = dist_2d_y[j]
-            shifted_data[i, j] = np.roll(data[i, j], shift=(x_offset, y_offset), axis=(0, 1))
-
-            # Zero padding where we have no information
-            if x_offset > 0:
-                shifted_data[i, j, :x_offset, :] = np.nan
-            elif x_offset < 0:
-                shifted_data[i, j, x_offset:, :] = np.nan
-            if y_offset > 0:
-                shifted_data[i, j, :, :y_offset] = np.nan
-            elif y_offset < 0:
-                shifted_data[i, j, :, y_offset:] = np.nan
-
-    added_data=np.nanmean(shifted_data,axis=1)
-
-    return added_data,shifted_data
 
 def get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles):
     """
@@ -356,31 +285,6 @@ def get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt):
     return chi2_min,chi2_max,arg_triangle
 
 
-def get_flux_model(postiptilt_2_data):
-    Nmodel=postiptilt_2_data.shape[0]
-    Nwave=postiptilt_2_data.shape[1]
-    Noutput=postiptilt_2_data.shape[2]
-
-    flux_2_data=postiptilt_2_data[:,:,:,0].transpose((1,2,0))
-    data_2_flux=np.zeros((Nwave,Nmodel,Noutput))
-    for w in tqdm(range(Nwave)):
-        data_2_flux[w]=pinv(flux_2_data[w])
-
-    return flux_2_data,data_2_flux
-
-def get_flux_tip_tilt_model(postiptilt_2_data, dim=0):
-    Nmodel=postiptilt_2_data.shape[0]
-    Nwave=postiptilt_2_data.shape[1]
-    Noutput=postiptilt_2_data.shape[2]
-
-    flux_2_data=postiptilt_2_data[:,:,:,dim].transpose((1,2,0))
-    data_2_flux=np.zeros((Nwave,Nmodel,Noutput))
-    for w in tqdm(range(Nwave)):
-        data_2_flux[w]=pinv(flux_2_data[w])
-
-    return flux_2_data,data_2_flux
-
-
 def quick_fits(data, title=""):
     if DEBUG:
         #For debugging purpose
@@ -446,8 +350,6 @@ def run_create_coupling_maps(files_with_dark,
     # average all the datacubes, do not includes the bad frames
     pos_2_singular[:,~flux_goodData]=np.nan
     pos_2_singular_mean = np.nanmean(pos_2_singular,axis=1)
-
-    # pos_2_singular_mean,shifted_pos_2_singular = shift_and_add(pos_2_singular, dist_2d_x, dist_2d_y)
 
     # compute the matrices to go from the projected data to the flux and tip tilt (and inverse)
     flux_2_data,data_2_flux,fluxtiptilt_2_data,data_2_fluxtiptilt,masque_positions,masque_triangles = get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles)
@@ -541,7 +443,6 @@ def run_create_coupling_maps(files_with_dark,
 
 
     runlib_i.generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, singular_values, Nsingular, chi2_delta, flux_goodData, chi2_goodData, flux_threshold, chi2_threshold, output_dir)
-
 
 
 if __name__ == "__main__":

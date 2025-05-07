@@ -160,6 +160,8 @@ def preprocess(filelist_pixelmap,files_by_dir, output_channels_nb=38):
             comp_hdu = fits.PrimaryHDU(data_cut, header=header)
 
             # Update the header with the values read in the headers above
+            comp_hdu.header['DATA-CAT'] = "PREPROC"
+            comp_hdu.header['ORG_NAME'] = os.path.basename(file)
             comp_hdu.header['PIX_MIN'] = pixel_min
             comp_hdu.header['PIX_MAX'] = pixel_max
             comp_hdu.header['PIX_WIDE'] = pixel_wide
@@ -169,7 +171,6 @@ def preprocess(filelist_pixelmap,files_by_dir, output_channels_nb=38):
             comp_hdu.header['QC_BACK'] = perc_background[1]
             comp_hdu.header['QC_BACKR'] = (perc_background[2]-perc_background[0])/2*np.sqrt(2)
             comp_hdu.header['QC_FLUX'] = flux_mean
-            comp_hdu.header['DATA-CAT'] = "PREPROC"
 
             # Add the MODULATION extension from the original file to the new FITS file
             if 'MODULATION' in fits.open(file):
