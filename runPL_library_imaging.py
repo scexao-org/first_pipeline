@@ -465,6 +465,38 @@ def resize_and_shift(flux, masque, dither_x, dither_y):
 
     return image_2d_bigger
 
+def get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt):
+    """
+    Calculates chi-squared maps to evaluate the fit of the data to the model.
+    Returns the minimum chi-squared, maximum chi-squared, and the chi-squared map.
+    """
+
+    print("Computing chi2 of observations for each triangle :")
+    Nwave=datacube.shape[0]
+    Noutput=datacube.shape[1]
+    Ncube=datacube.shape[2]
+    Nmod=datacube.shape[3]
+    Ntriangles=data_2_fluxtiptilt.shape[0]
+    # Nmodel = postiptilt_2_data.shape[0]
+
+    chi2=np.zeros((Ntriangles,Ncube*Nmod))
+    b=datacube.reshape(Nwave,Noutput,Ncube*Nmod)
+    for t in tqdm(range(Ntriangles)):
+        a=data_2_fluxtiptilt[t]
+        c=fluxtiptilt_2_data[t]
+        ftt=np.matmul(a,b)
+        residual = (b-np.matmul(c,ftt))**2
+        chi2[t]= residual.sum(axis=(0,1))
+
+    arg_triangle=chi2.argmin(axis=0)
+    # best_ftt = np.array([ftt[best_model[n],:,:,n] for n in range(Ncube*Nmod)])
+
+    chi2_min=chi2.min(axis=0).reshape((Ncube,Nmod))
+    chi2_max=chi2.max(axis=0).reshape((Ncube,Nmod))
+    arg_triangle=arg_triangle.reshape((Ncube,Nmod))
+
+    return chi2_min,chi2_max,arg_triangle
+
 # Define a 2D Gaussian function
 def gaussian_2d(xy, amplitude, xo, yo, sigma, offset):
     x, y = xy

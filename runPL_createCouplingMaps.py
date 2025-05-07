@@ -103,39 +103,7 @@ def filter_filelist(filelist):
 
     # for each file in filelist_cmap find the closest dark file in filelist_dark with, by priority, first the directory in which the file is, and then by the date in the "DATE" fits keyword, and second, the directory in which the file is
 
-    def find_closest_in_time_dark(cmap_file, dark_files):
-        """
-        Finds the closest dark file to a given coupling map file based on the 'DATE' FITS keyword.
-        """
-
-        cmap_date = fits.getheader(cmap_file)['DATE']
-        
-        # find the closest by date
-        dark_dates = [(dark, fits.getheader(dark)['DATE']) for dark in dark_files]
-        dark_dates.sort(key=lambda x: abs(datetime.strptime(x[1], '%Y-%m-%dT%H:%M:%S') - datetime.strptime(cmap_date, '%Y-%m-%dT%H:%M:%S')))
-        
-        try:
-            return dark_dates[0][0]  # Return the closest dark file by date
-        except:
-            return None
-
-    def find_closest_dark(cmap_file, dark_files):
-        """
-        Finds the closest dark file to a given coupling map file, prioritizing files in the same directory.
-        """
-
-        cmap_dir = os.path.dirname(cmap_file)
-        dark_samegain = [dark for dark in dark_files if fits.getheader(dark)['GAIN'] == fits.getheader(cmap_file)['GAIN']]
-        
-        # Filter dark files by the same directory
-        same_dir_darks = [dark for dark in dark_samegain if os.path.dirname(dark) == cmap_dir]
-        
-        if same_dir_darks:
-            return find_closest_in_time_dark(cmap_file, same_dir_darks)  # Return the first match in the same directory    
-        else:
-            return find_closest_in_time_dark(cmap_file, dark_samegain) 
-
-    files_with_dark = {cmap: find_closest_dark(cmap, filelist_dark) for cmap in filelist_cmap}
+    files_with_dark = {cmap: runlib.find_closest_dark(cmap, filelist_dark) for cmap in filelist_cmap}
 
     return files_with_dark
 
@@ -252,37 +220,6 @@ def get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles):
 
     return flux_2_data,data_2_flux,fluxtiptilt_2_data,data_2_fluxtiptilt,masque_positions,masque_triangles
 
-def get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt):
-    """
-    Calculates chi-squared maps to evaluate the fit of the data to the model.
-    Returns the minimum chi-squared, maximum chi-squared, and the chi-squared map.
-    """
-
-    print("Computing chi2 of observations for each triangle :")
-    Nwave=datacube.shape[0]
-    Noutput=datacube.shape[1]
-    Ncube=datacube.shape[2]
-    Nmod=datacube.shape[3]
-    Ntriangles=data_2_fluxtiptilt.shape[0]
-    # Nmodel = postiptilt_2_data.shape[0]
-
-    chi2=np.zeros((Ntriangles,Ncube*Nmod))
-    b=datacube.reshape(Nwave,Noutput,Ncube*Nmod)
-    for t in tqdm(range(Ntriangles)):
-        a=data_2_fluxtiptilt[t]
-        c=fluxtiptilt_2_data[t]
-        ftt=np.matmul(a,b)
-        residual = (b-np.matmul(c,ftt))**2
-        chi2[t]= residual.sum(axis=(0,1))
-
-    arg_triangle=chi2.argmin(axis=0)
-    # best_ftt = np.array([ftt[best_model[n],:,:,n] for n in range(Ncube*Nmod)])
-
-    chi2_min=chi2.min(axis=0).reshape((Ncube,Nmod))
-    chi2_max=chi2.max(axis=0).reshape((Ncube,Nmod))
-    arg_triangle=arg_triangle.reshape((Ncube,Nmod))
-
-    return chi2_min,chi2_max,arg_triangle
 
 
 def quick_fits(data, title=""):
@@ -324,6 +261,11 @@ def run_create_coupling_maps(files_with_dark,
     #clean and sum all data
     datalist=runlib_i.extract_datacube(files_with_dark,wavelength_smooth,Nbin=wavelength_bin)
     #datacube (625, 38, 100)
+    #select only the data in datalist which has the same modulation pattern
+    Nmod = datalist[0].Nmod
+    datalist = [d for d in datalist if d.Nmod == Nmod]
+
+
     datacube=np.concatenate([d.data for d in datalist])
     datacube=datacube.transpose((3,2,0,1))
 
@@ -356,7 +298,7 @@ def run_create_coupling_maps(files_with_dark,
 
     #use flux tip tilt matrice to check if the observations are point like
     # To do so, fits the vector model and check if the chi2 decrease resonably
-    chi2_min,chi2_max,arg_triangle=get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt)
+    chi2_min,chi2_max,arg_triangle=runlib_i.get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt)
     chi2_delta=chi2_min/chi2_max
     percents=np.nanpercentile(chi2_delta[flux_goodData],[16,50,84])
     chi2_threshold=percents[1]+(percents[2]-percents[0])*3/2
@@ -397,16 +339,17 @@ def run_create_coupling_maps(files_with_dark,
     x_pos -= x_fit
     y_pos -= y_fit
 
-    col_xmod = fits.Column(name='X_POS', format='E', array=x_pos)
-    col_ymod = fits.Column(name='Y_POS', format='E', array=y_pos)
+    col_xmod = fits.Column(name='X_POS', format='E', array=x_pos, unit='mas')
+    col_ymod = fits.Column(name='Y_POS', format='E', array=y_pos, unit='mas')
 
-    col_xtriangles = fits.Column(name='X_TRI', format='3E', array=x_triangles)
-    col_ytriangles = fits.Column(name='Y_TRI', format='3E', array=y_triangles)
+    col_xtriangles = fits.Column(name='X_TRI', format='3E', array=x_triangles, unit='mas')
+    col_ytriangles = fits.Column(name='Y_TRI', format='3E', array=y_triangles, unit='mas')
 
     # Create a table HDU for xmod and ymod
-    hdu_table_mod = fits.BinTableHDU.from_columns([col_xmod, col_ymod], name='MODULATION')
+    hdu_table_mod = fits.BinTableHDU.from_columns([col_xmod, col_ymod], name='POSITIONS')
     hdu_table_triangle = fits.BinTableHDU.from_columns([col_xtriangles, col_ytriangles], name='TRIANGLES')
 
+    modulation_hdu = fits.open(datalist[-1].filename)['MODULATION']
 
     header = datalist[-1].header
     # Définir le chemin complet du sous-dossier "output/couplingmaps"
@@ -433,13 +376,13 @@ def run_create_coupling_maps(files_with_dark,
     hdu_primary.header.extend(header, strip=True)
 
     # Combine all HDUs into an HDUList
-    hdul = fits.HDUList([hdu_primary, hdu_1, hdu_2, hdu_3, hdu_4,hdu_table_mod,hdu_table_triangle])
+    hdul = fits.HDUList([hdu_primary, hdu_1, hdu_2, hdu_3, hdu_4,hdu_table_mod,hdu_table_triangle,modulation_hdu])
 
     output_filename = os.path.join(output_dir, runlib.create_output_filename(header))
 
     # Write to a FITS file
+    print(f"Saving data to {output_filename}")
     hdul.writeto(output_filename, overwrite=True)
-    print(f"Data saved to {output_filename}")
 
 
     runlib_i.generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, singular_values, Nsingular, chi2_delta, flux_goodData, chi2_goodData, flux_threshold, chi2_threshold, output_dir)

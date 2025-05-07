@@ -83,44 +83,6 @@ def make_figure_of_trace(raw_image,traces_loc,pixel_wide,pixel_min,pixel_max):
     return fig, ax
 
 
-def find_closest_in_time_dark(file, dark_files):
-    try : 
-        cmap_date = fits.getheader(file)['DATE']
-        dark_dates = [(dark, fits.getheader(dark)['DATE']) for dark in dark_files]
-    except:
-        update_header_date([file])
-        update_header_date(dark_files)
-        cmap_date = fits.getheader(file)['DATE']
-        dark_dates = [(dark, fits.getheader(dark)['DATE']) for dark in dark_files]
-    
-    # find the closest by date
-    
-    
-    dark_dates.sort(key=lambda x: abs(datetime.strptime(x[1], '%Y-%m-%dT%H:%M:%S') - datetime.strptime(cmap_date, '%Y-%m-%dT%H:%M:%S')))
-    
-    return dark_dates[0][0]  # Return the closest dark file by date
-
-def find_closest_dark(file, dark_files, filter_by_directory = False):
-
-    cmap_dir = os.path.dirname(file)
-    try :
-        dark_files = [dark for dark in dark_files if fits.getheader(dark)['GAIN'] == fits.getheader(file)['GAIN']]
-    except:
-        dark_files=dark_files
-    if len(dark_files) == 0:
-        raise ValueError("No dark file available with correct gain to reduce file %s"%file)
-
-    # Filter dark files by the same directory
-    same_dir_darks = [dark for dark in dark_files if os.path.dirname(dark) == cmap_dir]
-    
-    if filter_by_directory:
-        if same_dir_darks:
-            return find_closest_in_time_dark(file, same_dir_darks)  # Return the first match in the same directory    
-        else:
-            return find_closest_in_time_dark(file, dark_files) 
-    else:
-        return find_closest_in_time_dark(file, dark_files) 
-
 def update_header_date(filelist):
     for file in filelist:
         date = get_date_from_filename(file)
@@ -289,3 +251,36 @@ def save_fits_file(data, filepath, headerDict=None):
     hdul = fits.HDUList([hdu])
     hdul.writeto(filepath, overwrite=True)
     print("Fit file saved in : ", filepath)
+
+
+def find_closest_in_time_dark(cmap_file, dark_files):
+    """
+    Finds the closest dark file to a given coupling map file based on the 'DATE' FITS keyword.
+    """
+
+    cmap_date = fits.getheader(cmap_file)['DATE']
+    
+    # find the closest by date
+    dark_dates = [(dark, fits.getheader(dark)['DATE']) for dark in dark_files]
+    dark_dates.sort(key=lambda x: abs(datetime.strptime(x[1], '%Y-%m-%dT%H:%M:%S') - datetime.strptime(cmap_date, '%Y-%m-%dT%H:%M:%S')))
+    
+    try:
+        return dark_dates[0][0]  # Return the closest dark file by date
+    except:
+        return None
+
+def find_closest_dark(cmap_file, dark_files):
+    """
+    Finds the closest dark file to a given coupling map file, prioritizing files in the same directory.
+    """
+
+    cmap_dir = os.path.dirname(cmap_file)
+    dark_samegain = [dark for dark in dark_files if fits.getheader(dark)['GAIN'] == fits.getheader(cmap_file)['GAIN']]
+    
+    # Filter dark files by the same directory
+    same_dir_darks = [dark for dark in dark_samegain if os.path.dirname(dark) == cmap_dir]
+    
+    if same_dir_darks:
+        return find_closest_in_time_dark(cmap_file, same_dir_darks)  # Return the first match in the same directory    
+    else:
+        return find_closest_in_time_dark(cmap_file, dark_samegain) 
