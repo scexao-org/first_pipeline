@@ -9,7 +9,6 @@ Created on Sun May 24 22:56:25 2015
 import os
 import numpy as np
 from scipy import linalg
-from tqdm import tqdm
 from astropy.io import fits
 from scipy.ndimage import uniform_filter1d
 from scipy.spatial import Delaunay
@@ -20,6 +19,7 @@ import matplotlib.pyplot as plt
 from matplotlib import animation
 from matplotlib.backends.backend_pdf import PdfPages
 from datetime import datetime
+from tqdm import tqdm
 
 def create_movie_cross(datacube):
 
@@ -497,6 +497,26 @@ def get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt):
 
     return chi2_min,chi2_max,arg_triangle
 
+def chi2_cleaning(datacube,couplingMap):
+
+    fluxtiptilt_2_data = couplingMap.fluxtiptilt_2_data
+    data_2_fluxtiptilt = couplingMap.data_2_fluxtiptilt
+
+    chi2_min,chi2_max,arg_triangle=get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt)
+
+    flux_thresold=np.percentile(datacube.mean(axis=(0,1)),80)/5
+    flux_goodData=datacube.mean(axis=(0,1)) > flux_thresold
+    chi2_delta=chi2_min/chi2_max
+    percents=np.nanpercentile(chi2_delta[flux_goodData],[16,50,84])
+    chi2_threshold=percents[1]+(percents[2]-percents[0])*3/2
+
+    chi2_goodData = (chi2_delta < chi2_threshold)&flux_goodData
+
+    datacube_cleaned = datacube.copy()
+    datacube_cleaned[:,:,~chi2_goodData]=0
+
+    return datacube_cleaned,arg_triangle
+    
 # Define a 2D Gaussian function
 def gaussian_2d(xy, amplitude, xo, yo, sigma, offset):
     x, y = xy

@@ -55,7 +55,7 @@ def clean_filelist(fits_keywords, filelist, verbose=False):
     
     filelist_cleaned = np.array(filelist_cleaned)
     if len(filelist_cleaned) == 0:
-        print("No file found with the correct keywords")
+        print("No file found with the correct keywords",fits_keywords)
     
     # Remove duplicate values
     filelist_cleaned = np.unique(filelist_cleaned)

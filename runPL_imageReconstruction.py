@@ -37,6 +37,7 @@ from scipy.linalg import pinv
 from scipy.optimize import curve_fit
 import runPL_library_io as runlib
 import runPL_library_imaging as runlib_i
+import runPL_library_basic as basic
 from scipy.ndimage import zoom
 from astropy.io import fits
 import shutil
@@ -306,19 +307,8 @@ if __name__ == "__main__":
 
     files_with_dark,filelist_cmap = filter_filelist(filelist,filelist_pixelmap)
 
-    cmap_file=fits.open(filelist_cmap[0])
-    header = cmap_file[0].header
-    flux_2_data=cmap_file['F2DATA'].data
-    data_2_flux=cmap_file['DATA2F'].data
-    fluxtiptilt_2_data=cmap_file['FTT2DATA'].data
-    data_2_fluxtiptilt=cmap_file['DATA2FTT'].data
-    xpos=cmap_file['POSITIONS'].data.field('X_POS')
-    ypos=cmap_file['POSITIONS'].data.field('Y_POS')
-    Npositions=cmap_file['POSITIONS'].header['NAXIS2']
-    Ntriangles=cmap_file['TRIANGLES'].header['NAXIS2']
-    cmap_file.close()
 
-    wavelength_bin = header['WL_BIN']
+    couplingMap = basic.CouplingMap(filelist_cmap[0])
 
     try:
         files_with_dark.pop('/Users/slacour/DATA/LANTERNE/Optim_maps/November2024/preproc/firstpl_2025-01-14T15:34:08_NONAME.fits')
@@ -335,7 +325,7 @@ if __name__ == "__main__":
     #Input preproc
     #clean and sum all data
 
-    datalist=runlib_i.extract_datacube(files_with_dark,wavelength_smooth,Nbin=wavelength_bin)
+    datalist=runlib_i.extract_datacube(files_with_dark,wavelength_smooth,Nbin=couplingMap.wavelength_bin)
     #datacube (625, 38, 100)
     #select only the data in datalist which has the same modulation pattern
     Nmod = datalist[0].Nmod
@@ -354,64 +344,29 @@ if __name__ == "__main__":
     Ncube=len(datalist)
 
     # Convert arg_model values into 2D indices of size cmap_size
-    chi2_min,chi2_max,arg_triangle=runlib_i.get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt)
+    # Utilise pour selectionner les bonnes images 
+    # ===> Pas utile pour le quick look
 
-    flux_thresold=np.percentile(datacube.mean(axis=(0,1)),80)/5
-    flux_goodData=datacube.mean(axis=(0,1)) > flux_thresold
-    chi2_delta=chi2_min/chi2_max
-    percents=np.nanpercentile(chi2_delta[flux_goodData],[16,50,84])
-    chi2_threshold=percents[1]+(percents[2]-percents[0])*3/2
-
-    chi2_goodData = (chi2_delta < chi2_threshold)&flux_goodData
+    datacube_cleaned,arg_triangle = runlib_i.chi2_cleaning(datacube,couplingMap)
 
     # getting the residual after substracting a point source
     # using the flux tip tilt matrices
-    residual = datacube.copy()
-    fft_fit = np.zeros((Nwave,3,Ncube,Nmod))
-    for c in range(Ncube):
-        for m in range(Nmod):
-            i = arg_triangle[c,m]
-            fft = np.matmul(data_2_fluxtiptilt[i],datacube[:,:,c,m,None]) #flux tip tilt
-            fft_fit[:,:,c,m] = fft[:,:,0]
-            residual[:,:,c,m] -= np.matmul(fluxtiptilt_2_data[i],fft)[:,:,0]
+    # Utilise pour soustraire une source ponctuelle 
+    # ===> Pas utile pour le quick look
 
-    datacube_cleaned = datacube.copy()
-    datacube_cleaned[:,:,~chi2_goodData]=0
-    residual[:,:,~chi2_goodData]=0
+    residual, fft_fit = basic.make_image_source_removal(datacube,arg_triangle,couplingMap)
 
-    
-    xmin, xmax   = np.min(xpos)-np.max(xmod), np.max(xpos)-np.min(xmod)
-    ymin, ymax   = np.min(ypos)-np.max(ymod), np.max(ypos)-np.min(ymod)
     # Define the grid for interpolation
-    grid_x, grid_y = np.mgrid[xmin:xmax:100j, ymin:ymax:100j]  # 500x500 grid
+    # calcul de la grille de l'image que l'on souhaite reconstruire
+    # if it is for a quick look of the real time display, use xmod=ymod=0
+    Npixel = 100
+    grid_x, grid_y = basic.make_image_grid(couplingMap, Npixel, xmod, ymod)
 
-    # Interpolate the fluxes onto the grid
-    fluxes = np.matmul(data_2_flux, datacube_cleaned.reshape((Nwave,Noutput,Ncube*Nmod)))
-    fluxes = fluxes.reshape((Nwave,Npositions,Ncube,Nmod))
-    flux_maps = []
-    for c in tqdm(range(Ncube)):
-        for m in range(Nmod):
-            for w in range(Nwave):
-                # Interpolate the fluxes onto the grid
-                flux_map = griddata((xpos-xmod[m], ypos-ymod[m]), fluxes[w,:,c,m], (grid_x, grid_y), method='cubic')
-                flux_maps += [flux_map]
-    flux_maps = np.array(flux_maps).reshape((Ncube,Nmod,Nwave,100,100))
-    flux_maps_sum = np.nansum(flux_maps,axis=1)
+    # create the image maps
+    flux_maps_sum, flux_maps = basic.make_image_maps(datacube_cleaned, couplingMap, grid_x, grid_y, xmod, ymod, wavelength=False)
+    residuals_maps_sum, residuals_maps = basic.make_image_maps(residual, couplingMap, grid_x, grid_y, xmod, ymod, wavelength=False)
 
-    # Interpolate residuals onto the grid
-    fluxes = np.matmul(data_2_flux, residual.reshape((Nwave,Noutput,Ncube*Nmod)))
-    fluxes = fluxes.reshape((Nwave,Npositions,Ncube,Nmod))
-    residuals_maps = []
-    for c in tqdm(range(Ncube)):
-        for m in range(Nmod):
-            for w in range(Nwave):
-                # Interpolate the fluxes onto the grid
-                flux_map = griddata((xpos-xmod[m], ypos-ymod[m]), fluxes[w,:,c,m], (grid_x, grid_y), method='cubic')
-                residuals_maps += [flux_map]
-    residuals_maps = np.array(residuals_maps).reshape((Ncube,Nmod,Nwave,100,100))
-    residuals_maps_sum = np.nansum(residuals_maps,axis=1)
-
-    # Save image_2d and residual_2d to a FITS file
+    # Save image and residual maps to FITS files :
 
     for i,d in enumerate(datalist):
         header = d.header
@@ -457,110 +412,4 @@ if __name__ == "__main__":
 
 
 
-
-
-
-
-
-
-
-
-    #%% now just images and plots to be saved for information
-
-    image_2d_T = image_2d.transpose(3, 2, 0,1)
-    quick_fits(image_2d_T, "transposed")
-    residual_2d_T = residual_2d.transpose(3, 2, 0,1)
-    quick_fits(residual_2d_T, "transposed residual")
-
-
-    # Plot all the images in a single figure
-
-    fig, axes = plt.subplots(2, len(images_broad), figsize=(15, 6), squeeze=False)
-
-    # Normalize color scale across all images
-    vmin = 0
-    vmax = max(images_broad.max(), residual_broad.max())/10
-
-    # Plot images_broad in the first row
-    for i, img in enumerate(images_broad):
-        #i is the image number, img is the image 49x49
-        ax = axes[0, i]
-        im = ax.imshow(img, vmin=vmin, vmax=vmax, cmap='viridis')
-        ax.set_title(f"Image {i+1}")
-        ax.axis('off')
-
-    # Plot residual_broad in the second row
-    for i, res in enumerate(residual_broad):
-        ax = axes[1, i]
-        im = ax.imshow(res, vmin=vmin, vmax=vmax, cmap='viridis')
-        ax.set_title(f"Residual {i+1}")
-        ax.axis('off')
-
-    # Add a colorbar
-    # fig.colorbar(im, ax=axes, orientation='vertical', fraction=0.02, pad=0.04)
-
-
-    #with interpolation 
-    data_2_postiptilt, postiptilt_2_data = interpolate_halpha(data_2_postiptilt, postiptilt_2_data)
-
-
-    residual = datacube.copy()
-    fft_fit = np.zeros((Nwave,3,Ncube,Npos))
-    for c in range(Ncube):
-        for p in range(Npos):
-            i = arg_model[c,p]
-            fft = np.matmul(data_2_postiptilt[i],datacube[:,:,c,p,None]) #flux tip tilt
-            fft_fit[:,:,c,p] = fft[:,:,0]
-            residual[:,:,c,p] -= np.matmul(postiptilt_2_data[i],fft)[:,:,0]
-
-    datacube_cleaned = datacube.copy()
-    datacube_cleaned[:,:,~chi2_goodData]=0
-    residual[:,:,~chi2_goodData]=0
-
-    image = np.matmul(data_2_flux, datacube_cleaned.reshape((Nwave,Noutput,Ncube*Npos)))
-    image = image.reshape((Nwave,Nmodel,Ncube,Npos)).transpose((3,1,2,0))
-    image_2d= runlib_i.resize_and_shift(image,masque, dither_x, dither_y).sum(axis=0)
-    images_broad=image_2d.sum(axis=3).transpose((2,0,1))
-
-    image_residual = np.matmul(data_2_flux, residual.reshape((Nwave,Noutput,Ncube*Npos)))
-    image_residual = image_residual.reshape((Nwave,Nmodel,Ncube,Npos)).transpose((3,1,2,0))
-    residual_2d= runlib_i.resize_and_shift(image_residual,masque, dither_x, dither_y).sum(axis=0)
-    residual_broad=residual_2d.sum(axis=3).transpose((2,0,1))
-
-
-
-    image_2d_T = image_2d.transpose(3, 2, 0,1)
-    quick_fits(image_2d_T, "transposed")
-    residual_2d_T = residual_2d.transpose(3, 2, 0,1)
-    quick_fits(residual_2d_T, "transposed residual")
-
-
-    # Plot all the images in a single figure
-
-    fig, axes = plt.subplots(2, len(images_broad), figsize=(15, 6), squeeze=False)
-
-    # Normalize color scale across all images
-    vmin = 0
-    vmax = max(images_broad.max(), residual_broad.max())/10
-
-    # Plot images_broad in the first row
-    for i, img in enumerate(images_broad):
-        #i is the image number, img is the image 49x49
-        ax = axes[0, i]
-        im = ax.imshow(img, vmin=vmin, vmax=vmax, cmap='viridis')
-        ax.set_title(f"Image {i+1} with interpolated data")
-        ax.axis('off')
-
-    # Plot residual_broad in the second row
-    for i, res in enumerate(residual_broad):
-        ax = axes[1, i]
-        im = ax.imshow(res, vmin=vmin, vmax=vmax, cmap='viridis')
-        ax.set_title(f"Residual {i+1} with interpolated data")
-        ax.axis('off')
-
-
-    plt.tight_layout()
-    plt.show()
-
-    runlib_i.save_all_as_PDF(output_dir = output_dir)
-
+# %%

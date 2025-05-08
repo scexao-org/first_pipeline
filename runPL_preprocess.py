@@ -27,6 +27,7 @@ from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
 from tqdm import tqdm
 import runPL_library_io as runlib
+import runPL_library_basic as basic
 import shutil
 from collections import defaultdict
 
@@ -86,16 +87,25 @@ def filter_filelist(filelist , filelist_pixelmap):
 
     return filelist_pixelmap,files_by_dir
 
-def preprocess(filelist_pixelmap,files_by_dir, output_channels_nb=38):
 
-    header = fits.getheader(filelist_pixelmap[-1])
+def preprocess(filelist_pixelmap,files_by_dir):
+    """
+    Preprocesses the data files using the provided pixel map and organizes them by directory.
+    This function handles the preprocessing of raw data files, applying the pixel map to extract
+    relevant pixel data, and saves the processed data along with diagnostic figures.
+    Args:
+        filelist_pixelmap (list): A list containing the pixel map file(s).
+        files_by_dir (dict): A dictionary where keys are directory paths and values are lists of
+                             raw data files in those directories.
+    """
+    
+    pixelMap=basic.PixelMap(filelist_pixelmap[-1])
+    pixel_min = pixelMap.pixel_min
+    pixel_max = pixelMap.pixel_max
+    pixel_wide = pixelMap.pixel_wide
+    output_channels = pixelMap.output_channels
+    traces_loc = pixelMap.traces_loc
 
-    # Read the pixel map header values if they exist, otherwise use defaults
-    pixel_min = header.get('PIX_MIN', 100)
-    pixel_max = header.get('PIX_MAX', 1600)
-    pixel_wide = header.get('PIX_WIDE', 2)
-    output_channels = header.get('OUT_CHAN', output_channels_nb)
-    traces_loc=fits.getdata(filelist_pixelmap[-1])
 
     # Process each directory separately 
     for dir_path, files in files_by_dir.items():
@@ -124,26 +134,8 @@ def preprocess(filelist_pixelmap,files_by_dir, output_channels_nb=38):
                 raw_image = np.zeros_like(data.sum(axis=0), dtype=np.double)
 
             raw_image += data.sum(axis=0)
-            Nwave = pixel_max - pixel_min
-            window_size = (pixel_wide * 2 + 1)
-
-            Nimages = data.shape[0]
-
-            data_cut_pixels = np.zeros((Nimages, output_channels, Nwave, window_size), dtype='uint16')
-            data_dark_pixels = np.zeros((Nimages, output_channels - 1, Nwave), dtype='uint16')
-            for x in range(Nwave):
-                for i in range(output_channels):
-                    for w in range(pixel_wide*2+1):
-                        t=traces_loc[x + pixel_min, i]+w-pixel_wide
-                        if t<0:
-                            t=0
-                        if t>=data.shape[1]:
-                            t=data.shape[1]-1
-                        data_cut_pixels[:,i,x,w] = data[:, t, x + pixel_min]
-                    if i > 0:
-                        t=(traces_loc[x + pixel_min, i-1]+traces_loc[x + pixel_min, i])//2+w-pixel_wide
-                        data_dark_pixels[:,i-1,x] = data[:, t, x + pixel_min]
             
+            data_cut_pixels, data_dark_pixels = basic.preprocess_cutData(data, pixelMap, True)
 
             perc_background=np.percentile(data_dark_pixels.ravel(),[50-34.1,50,50+34.1],axis=0)
             data_mean= np.percentile(np.mean(data_cut_pixels,axis=(1,2)),90,axis=0)
