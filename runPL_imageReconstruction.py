@@ -293,7 +293,7 @@ if __name__ == "__main__":
     else:
 
         (options, args) = parser.parse_args()
-        file_patterns=args if args else ['*.fits']
+        file_patterns=args if args else ['*.fits','preproc/*.fits','preproc/couplingmaps/*.fits']
 
         wavelength_smooth=options.wavelength_smooth
         # If the user specifies a coupling map, use it, otherwise look into the arguments
@@ -363,8 +363,8 @@ if __name__ == "__main__":
     grid_x, grid_y = basic.make_image_grid(couplingMap, Npixel, xmod, ymod)
 
     # create the image maps
-    flux_maps_sum, flux_maps = basic.make_image_maps(datacube_cleaned, couplingMap, grid_x, grid_y, xmod, ymod, wavelength=False)
-    residuals_maps_sum, residuals_maps = basic.make_image_maps(residual, couplingMap, grid_x, grid_y, xmod, ymod, wavelength=False)
+    flux_maps_sum, fluxes = basic.make_image_maps(datacube_cleaned, couplingMap, grid_x, grid_y, xmod, ymod, wavelength=False)
+    residuals_maps_sum, fluxes_residuals = basic.make_image_maps(residual, couplingMap, grid_x, grid_y, xmod, ymod, wavelength=False)
 
     # Save image and residual maps to FITS files :
 

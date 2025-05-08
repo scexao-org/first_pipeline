@@ -1,6 +1,7 @@
 from astropy.io import fits
 import numpy as np
 from tqdm import tqdm
+from scipy.optimize import curve_fit
 
 from scipy.interpolate import griddata
 
@@ -283,15 +284,58 @@ def make_image_maps(datacube, couplingMap, grid_x, grid_y, xmod= [0], ymod= [0],
         Nwave = 1
 
     flux_maps = []
-    for c in tqdm(range(Ncube)):
-        for m in range(Nmod):
-            for w in range(Nwave):
-                # Interpolate the fluxes onto the grid
-                flux_map = griddata((xpos-xmod[m], ypos-ymod[m]), fluxes[w,:,c,m], (grid_x, grid_y), method='cubic')
-                flux_maps += [flux_map]
+    if wavelength == False:
+        for c in range(Ncube):
+            for m in range(Nmod):
+                for w in range(Nwave):
+                    # Interpolate the fluxes onto the grid
+                    flux_map = griddata((xpos-xmod[m], ypos-ymod[m]), fluxes[w,:,c,m], (grid_x, grid_y), method='cubic')
+                    flux_maps += [flux_map]
+    else:
+        for c in tqdm(range(Ncube)):
+            for m in range(Nmod):
+                for w in range(Nwave):
+                    # Interpolate the fluxes onto the grid
+                    flux_map = griddata((xpos-xmod[m], ypos-ymod[m]), fluxes[w,:,c,m], (grid_x, grid_y), method='cubic')
+                    flux_maps += [flux_map]
     flux_maps = np.array(flux_maps).reshape((Ncube,Nmod,Nwave,len(grid_x),len(grid_y)))
     flux_maps_sum = np.nansum(flux_maps,axis=1)
     if size_cube == 2:
         flux_maps_sum = flux_maps_sum[0]
     
-    return flux_maps_sum, flux_maps
+    return flux_maps_sum, fluxes
+
+# Define a 2D Gaussian function
+def gaussian_2d(xy, amplitude, xo, yo, sigma, offset):
+    x, y = xy
+    xo = float(xo)
+    yo = float(yo)
+    w = 1/(sigma**2)
+    g = offset + amplitude * np.exp(-(w*((x-xo)**2) + w*((y-yo)**2)))
+    return g.ravel()
+    
+def fit_gaussian_on_flux(fluxes, xmod, ymod):
+    """
+    Fit a 2D Gaussian to the flux data.
+    """
+    # Interpolate the fluxes onto a grid
+    # Create a grid of points for interpolation
+    # Use the mean fluxes for the grid
+    
+    # Prepare data for fitting
+    z = fluxes
+    x = xmod
+    y = ymod
+    amplitude_0=np.max(fluxes)-np.min(fluxes)
+    x_0= x[fluxes.argmax()]
+    y_0= y[fluxes.argmax()]
+    sigma_0 = (x.max()-x.min())/4
+    offset_0=np.min(fluxes)
+
+    # Initial guess for the parameters
+    initial_guess = (amplitude_0,x_0,y_0,sigma_0,offset_0)
+
+    # Fit the Gaussian
+    popt, _ = curve_fit(gaussian_2d, (x, y), z, p0=initial_guess)
+
+    return popt

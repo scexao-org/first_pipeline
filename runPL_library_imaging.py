@@ -20,6 +20,7 @@ from matplotlib import animation
 from matplotlib.backends.backend_pdf import PdfPages
 from datetime import datetime
 from tqdm import tqdm
+import runPL_library_basic as basic
 
 def create_movie_cross(datacube):
 
@@ -125,7 +126,7 @@ def save_all_as_PDF(output_dir = "/home/jsarrazin/Bureau/test zone/coupling_maps
 def generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, singular_values, Nsingular, chi2_delta, flux_goodData, chi2_goodData, flux_threshold, chi2_threshold, output_dir):
 
     fluxes = datacube.mean(axis=(0,1,2))
-    popt = fit_gaussian_on_flux(fluxes, xmod, ymod)
+    popt = basic.fit_gaussian_on_flux(fluxes, xmod, ymod)
     x_fit=popt[1]
     y_fit=popt[2]
 
@@ -152,12 +153,12 @@ def generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, singular
     initial_guess = (amplitude_0,x_0,y_0,sigma_0,offset_0)
 
     # Fit the Gaussian
-    popt, _ = curve_fit(gaussian_2d, (x, y), z, p0=initial_guess)
+    popt, _ = curve_fit(basic.gaussian_2d, (x, y), z, p0=initial_guess)
     x_fit=popt[1]
     y_fit=popt[2]
 
     # Generate the fitted Gaussian for plotting
-    fitted_gaussian = gaussian_2d((grid_x, grid_y), *popt).reshape(grid_x.shape)
+    fitted_gaussian = basic.gaussian_2d((grid_x, grid_y), *popt).reshape(grid_x.shape)
 
     # Plot the contours of the fitted Gaussian on top of the image
     # Plot the interpolated 2D image
@@ -517,38 +518,3 @@ def chi2_cleaning(datacube,couplingMap):
 
     return datacube_cleaned,arg_triangle
     
-# Define a 2D Gaussian function
-def gaussian_2d(xy, amplitude, xo, yo, sigma, offset):
-    x, y = xy
-    xo = float(xo)
-    yo = float(yo)
-    w = 1/(sigma**2)
-    g = offset + amplitude * np.exp(-(w*((x-xo)**2) + w*((y-yo)**2)))
-    return g.ravel()
-    
-
-def fit_gaussian_on_flux(fluxes, xmod, ymod):
-    """
-    Fit a 2D Gaussian to the flux data.
-    """
-    # Interpolate the fluxes onto a grid
-    # Create a grid of points for interpolation
-    # Use the mean fluxes for the grid
-    
-    # Prepare data for fitting
-    z = fluxes
-    x = xmod
-    y = ymod
-    amplitude_0=np.max(fluxes)-np.min(fluxes)
-    x_0= x[fluxes.argmax()]
-    y_0= y[fluxes.argmax()]
-    sigma_0 = (x.max()-x.min())/4
-    offset_0=np.min(fluxes)
-
-    # Initial guess for the parameters
-    initial_guess = (amplitude_0,x_0,y_0,sigma_0,offset_0)
-
-    # Fit the Gaussian
-    popt, _ = curve_fit(gaussian_2d, (x, y), z, p0=initial_guess)
-
-    return popt
