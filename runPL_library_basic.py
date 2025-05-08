@@ -336,6 +336,10 @@ def fit_gaussian_on_flux(fluxes, xmod, ymod):
     initial_guess = (amplitude_0,x_0,y_0,sigma_0,offset_0)
 
     # Fit the Gaussian
-    popt, _ = curve_fit(gaussian_2d, (x, y), z, p0=initial_guess)
+    try:
+        popt, _ = curve_fit(gaussian_2d, (x, y), z, p0=initial_guess)
+    except RuntimeError:
+        print("Error: Gaussian fit failed")
+        popt = initial_guess
 
     return popt
