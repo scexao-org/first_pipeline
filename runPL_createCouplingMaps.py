@@ -35,6 +35,7 @@ from itertools import product
 from scipy.linalg import pinv
 import runPL_library_io as runlib
 import runPL_library_imaging as runlib_i
+import runPL_library_basic as basic
 from scipy.ndimage import zoom
 from astropy.io import fits
 import shutil
@@ -328,7 +329,7 @@ def run_create_coupling_maps(files_with_dark,
 
     # shifting all positions around the maximum of flux found from gaussian fitting
     fluxes = datacube.mean(axis=(0,1,2))
-    popt = runlib_i.fit_gaussian_on_flux(fluxes, xmod, ymod)
+    popt = basic.fit_gaussian_on_flux(fluxes, xmod, ymod)
     x_fit=popt[1]
     y_fit=popt[2]
     x_fit = x_pos[((x_fit-x_pos)**2).argmin()] 
