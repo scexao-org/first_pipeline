@@ -426,7 +426,7 @@ if __name__ == "__main__":
         wavelength_smooth=options.wavelength_smooth
         make_movie=options.make_movie
         wavelength_bin=options.wavelength_bin
-        file_patterns=args if args else ['*.fits']
+        file_patterns=args if args else ['./preproc/*.fits']
 
     print(file_patterns)
     filelist = runlib.get_filelist(file_patterns)

@@ -238,7 +238,7 @@ if __name__ == "__main__":
     # If the user specifies a pixel map use it, otherwise look into the arguments
     pixel_map = options.pixel_map
     if pixel_map is None:
-        pixel_map = file_patterns
+        pixel_map = ['./pixelmaps/*.fits']
 
     filelist=runlib.get_filelist( file_patterns )
     filelist_pixelmap=runlib.get_filelist( pixel_map )
