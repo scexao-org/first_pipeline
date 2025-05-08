@@ -64,7 +64,7 @@ def filter_filelist(filelist , filelist_pixelmap):
 
     # raise an error if filelist_cleaned is empty
     if len(filelist_rawdata) == 0:
-        raise ValueError("No good file to pre-process")
+        raise FileNotFoundError("No good file to pre-process")
 
     fits_keywords = {'DATA-CAT': ['PIXELMAP']}
         
@@ -74,7 +74,7 @@ def filter_filelist(filelist , filelist_pixelmap):
 
     # raise an error if filelist_cleaned is empty
     if len(filelist_pixelmap) == 0:
-        raise ValueError("No pixel map to pre-process")
+        raise FileNotFoundError("No pixel map to pre-process")
 
     # raise an error if filelist_cleaned is more than one
     if len(filelist_pixelmap) > 1:
@@ -98,7 +98,7 @@ def preprocess(filelist_pixelmap,files_by_dir):
         files_by_dir (dict): A dictionary where keys are directory paths and values are lists of
                              raw data files in those directories.
     """
-    
+
     pixelMap=basic.PixelMap(filelist_pixelmap[-1])
     pixel_min = pixelMap.pixel_min
     pixel_max = pixelMap.pixel_max

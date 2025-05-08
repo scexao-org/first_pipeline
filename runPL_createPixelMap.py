@@ -91,7 +91,7 @@ def raw_image_clean(filelist):
 
         # raise an error if filelist_cleaned is empty
         if len(filelist_cleaned) == 0:
-            raise ValueError("No good file to process")
+            raise FileNotFoundError("No good file to process")
 
         header = fits.getheader(filelist_cleaned[-1])
 

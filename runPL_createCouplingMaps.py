@@ -83,7 +83,7 @@ def filter_filelist(filelist):
 
     # raise an error if filelist_cleaned is empty
     if len(filelist_cmap) == 0:
-        raise ValueError("No good file to run cmap")
+        raise FileNotFoundError("No good file to run cmap")
     # raise an error if filelist_cleaned is empty
     if len(filelist_dark) == 0:
         print("WARNING: No good dark to substract to cmap files")

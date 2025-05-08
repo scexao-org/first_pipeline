@@ -89,11 +89,11 @@ def filter_filelist(filelist,coupling_map):
 
     # raise an error if filelist_cleaned is empty
     if len(filelist_data) == 0:
-        raise ValueError("No good file to process")
+        raise FileNotFoundError("No good file to process")
 
     # raise an error if filelist_cleaned is empty
     if len(filelist_cmap) == 0:
-        raise ValueError("No coupling map to use.\n Please specify which one to use with the option --coupling_map")
+        raise FileNotFoundError("No coupling map to use.\n Please specify which one to use with the option --coupling_map")
 
     # raise an error if filelist_cleaned is more than one
     if len(filelist_cmap) > 1:
