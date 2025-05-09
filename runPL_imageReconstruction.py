@@ -64,7 +64,7 @@ usage = """
     --cmap_size: Width of cmap size, in pixels (default: 25)
 """
 
-def filter_filelist(filelist,coupling_map):
+def filter_filelist(filelist,coupling_map,modID):
     """
     Filters the input file list to separate coupling map files and dark files based on FITS keywords.
     Raises an error if no valid files are found.
@@ -72,8 +72,13 @@ def filter_filelist(filelist,coupling_map):
     """
 
     # Use the function to clean the filelist
-    fits_keywords = {'DATA-CAT': ['PREPROC'],
-                    'DATA-TYP': ['OBJECT','TEST']}
+    if modID == 0:
+        fits_keywords = {'DATA-CAT': ['PREPROC'],
+                        'DATA-TYP': ['OBJECT','TEST']}
+    else:
+        fits_keywords = {'DATA-CAT': ['PREPROC'],
+                        'DATA-TYP': ['OBJECT','TEST'],
+                        'MOD_ID': [modID]}
     filelist_data = runlib.clean_filelist(fits_keywords, filelist)
     print("runPL object filelist : ", filelist_data)
 
@@ -278,17 +283,29 @@ def interpolate_halpha(data_2_postiptilt, postiptilt_2_data, pix_to_waves=""):
 if __name__ == "__main__":
     parser = OptionParser(usage)
 
+    # default values
     wavelength_smooth = 1
+    modID = 0
+    save_individual_frames = True
+    save_individual_wavelength = True
+
 
     # Add options for these values
+    parser.add_option("--modID", type="int", default=modID,
+                      help="Selection of the modulation pattern by user [0 == first in the list of file] (default: %default)")
     parser.add_option("--coupling_map", type="string", default=None,
                     help="Force to select which coupling map file to use (default: the one in the directory)")
     parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,
                     help="smoothing factor for wavelength (default: %default)")
+    parser.add_option("--save_individual_frames", action="store_true", default=save_individual_frames,
+                    help="Save individual frames (default: %default)")
+    parser.add_option("--save_individual_wavelength", action="store_true", default=save_individual_wavelength,
+                    help="Save individual wavelength (default: %default)")
+    
 
     if "VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode':
         if getpass.getuser() == "slacour":
-            file_patterns = "/Users/slacour/DATA/LANTERNE/Mai/preproc2/firstpl_2025-05-06T09:52:?1_BETUMA.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/Mai3/preproc/firstpl_2025-05-09T03:26:36_BETUMA.fits"
             coupling_map = "/Users/slacour/DATA/LANTERNE/Mai/preproc2/couplingmaps"
     else:
 
@@ -296,6 +313,10 @@ if __name__ == "__main__":
         file_patterns=args if args else ['*.fits','preproc/*.fits','preproc/couplingmaps/*.fits']
 
         wavelength_smooth=options.wavelength_smooth
+        modID=options.modID
+        save_individual_frames=options.save_individual_frames
+        save_individual_wavelength=options.save_individual_wavelength
+
         # If the user specifies a coupling map, use it, otherwise look into the arguments
         coupling_map = options.coupling_map
         if coupling_map is None:
@@ -305,31 +326,24 @@ if __name__ == "__main__":
     filelist=runlib.get_filelist( file_patterns )
     filelist_pixelmap=runlib.get_filelist(coupling_map)
 
-    files_with_dark,filelist_cmap = filter_filelist(filelist,filelist_pixelmap)
+    files_with_dark,filelist_cmap = filter_filelist(filelist,filelist_pixelmap,modID)
 
 
     couplingMap = basic.CouplingMap(filelist_cmap[0])
-
-    try:
-        files_with_dark.pop('/Users/slacour/DATA/LANTERNE/Optim_maps/November2024/preproc/firstpl_2025-01-14T15:34:08_NONAME.fits')
-
-        for _ in range(7):
-            files_with_dark.pop(next(iter(files_with_dark)))
-
-        # closest_dark_files.pop(next(reversed(closest_dark_files)))
-        # closest_dark_files.pop(next(reversed(closest_dark_files)))
-        # closest_dark_files.pop(next(reversed(closest_dark_files)))
-    except:
-        pass
 
     #Input preproc
     #clean and sum all data
 
     datalist=runlib_i.extract_datacube(files_with_dark,wavelength_smooth,Nbin=couplingMap.wavelength_bin)
+
     #datacube (625, 38, 100)
     #select only the data in datalist which has the same modulation pattern
-    Nmod = datalist[0].Nmod
-    datalist = [d for d in datalist if d.Nmod == Nmod]
+    if modID == 0:
+        modID = datalist[0].modID
+        datalist = [d for d in datalist if d.modID == modID]
+        if len(datalist) == 0:
+            print("No data with the selected modulation pattern")
+            exit()
 
     datacube=np.concatenate([d.data for d in datalist])
     datacube=datacube.transpose((3,2,0,1))
@@ -363,20 +377,54 @@ if __name__ == "__main__":
     grid_x, grid_y = basic.make_image_grid(couplingMap, Npixel, xmod, ymod)
 
     # create the image maps
-    flux_maps_sum, fluxes = basic.make_image_maps(datacube_cleaned, couplingMap, grid_x, grid_y, xmod, ymod, wavelength=False)
-    residuals_maps_sum, fluxes_residuals = basic.make_image_maps(residual, couplingMap, grid_x, grid_y, xmod, ymod, wavelength=False)
+    flux_maps, fluxes = basic.make_image_maps(datacube_cleaned, couplingMap, grid_x, grid_y, xmod, ymod, wavelength=False)
+    residuals_maps, fluxes_residuals = basic.make_image_maps(residual, couplingMap, grid_x, grid_y, xmod, ymod, wavelength=False)
 
+    flux_maps_sum = np.nansum(flux_maps,axis=1)
+    residuals_maps_sum = np.nansum(residuals_maps,axis=1)
     # Save image and residual maps to FITS files :
+
+
+    # Coupling maps for inspection
+    couplingmaps = np.mean(datacube, axis=(0,1))
+    # Define the grid for interpolation
+    grid_x, grid_y = np.mgrid[np.min(xmod):np.max(xmod):Npixel*1j, np.min(ymod):np.max(ymod):Npixel*1j]  # 500x500 grid
+    # Interpolate the fluxes onto the grid
+    couplingmaps_interp= np.zeros((len(couplingmaps), Npixel, Npixel))
+    for i,fm in enumerate(couplingmaps):
+        couplingmaps_interp[i] = griddata((xmod, ymod), fm, (grid_x, grid_y), method='cubic').T
+    
 
     for i,d in enumerate(datalist):
         header = d.header
+        header['DATA-CAT'] = 'IMAGE'
 
+        list_of_hdus = []
+        # Create a primary HDU with the data
+        hdu_primary = fits.PrimaryHDU(flux_maps_sum[i,0])
+        hdu_residual = fits.ImageHDU(residuals_maps_sum[i,0], name="RESIDUAL")
+        list_of_hdus += [hdu_primary, hdu_residual]
 
         # Create a primary HDU with no data, just the header
-        hdu_primary = fits.PrimaryHDU(flux_maps_sum[i])
-        hdu_residual = fits.ImageHDU(residuals_maps_sum[i], name="RESIDUAL")
+        if save_individual_frames:
+            hdu_frame = fits.ImageHDU(flux_maps[i,:,0], name="FRAMES")
+            hdu_frame_residual = fits.ImageHDU(residuals_maps[i,:,0], name="FRAMES_RESIDUAL")
+            list_of_hdus += [hdu_frame, hdu_frame_residual]
 
-        header['DATA-CAT'] = 'IMAGE'
+        if save_individual_wavelength:
+            flux_maps_wave, fluxes = basic.make_image_maps(datacube_cleaned[:,:,i,None], couplingMap, grid_x, grid_y, xmod, ymod, wavelength=True)
+            flux_maps_wave = np.nansum(flux_maps_wave[0],axis=0)
+            residuals_maps_wave, fluxes_residuals = basic.make_image_maps(residual[:,:,i,None], couplingMap, grid_x, grid_y, xmod, ymod, wavelength=True)
+            residuals_maps_wave = np.nansum(residuals_maps_wave[0],axis=0)
+
+            hdu_wave = fits.ImageHDU(flux_maps_wave, name="3D_IMAGE")
+            hdu_wave_residual = fits.ImageHDU(residuals_maps_wave, name="3D_IMAGE_RESIDUAL")
+            list_of_hdus += [hdu_wave, hdu_wave_residual]
+            header['DATA-CAT'] = 'WDIMAGE'
+
+        hdu_coupling = fits.ImageHDU(couplingmaps_interp[i], name="COUPLING")
+        list_of_hdus += [hdu_coupling]
+
         # Add date and time to the header
         current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
         header['DATE-PRO'] = current_time
@@ -396,7 +444,7 @@ if __name__ == "__main__":
         hdu_primary.header.extend(header, strip=True)
 
         # Combine all HDUs into an HDUList
-        hdul = fits.HDUList([hdu_primary, hdu_residual])
+        hdul = fits.HDUList(list_of_hdus)
 
         output_filename = os.path.join(output_dir, runlib.create_output_filename(header))
 

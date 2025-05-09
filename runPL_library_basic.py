@@ -292,18 +292,15 @@ def make_image_maps(datacube, couplingMap, grid_x, grid_y, xmod= [0], ymod= [0],
                     flux_map = griddata((xpos-xmod[m], ypos-ymod[m]), fluxes[w,:,c,m], (grid_x, grid_y), method='cubic')
                     flux_maps += [flux_map]
     else:
-        for c in tqdm(range(Ncube)):
-            for m in range(Nmod):
+        for c in range(Ncube):
+            for m in tqdm(range(Nmod), desc="Reconstruction of the 3D image"):
                 for w in range(Nwave):
                     # Interpolate the fluxes onto the grid
                     flux_map = griddata((xpos-xmod[m], ypos-ymod[m]), fluxes[w,:,c,m], (grid_x, grid_y), method='cubic')
                     flux_maps += [flux_map]
     flux_maps = np.array(flux_maps).reshape((Ncube,Nmod,Nwave,len(grid_x),len(grid_y)))
-    flux_maps_sum = np.nansum(flux_maps,axis=1)
-    if size_cube == 2:
-        flux_maps_sum = flux_maps_sum[0]
     
-    return flux_maps_sum, fluxes
+    return flux_maps, fluxes
 
 # Define a 2D Gaussian function
 def gaussian_2d(xy, amplitude, xo, yo, sigma, offset):

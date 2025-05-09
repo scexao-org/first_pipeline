@@ -41,6 +41,7 @@ from astropy.io import fits
 import shutil
 from scipy.interpolate import interpn
 from astropy.table import Table
+from scipy.interpolate import griddata
 
 plt.ion()
 
@@ -264,10 +265,11 @@ def run_create_coupling_maps(files_with_dark,
     datalist=runlib_i.extract_datacube(files_with_dark,wavelength_smooth,Nbin=wavelength_bin)
     #datacube (625, 38, 100)
     #select only the data in datalist which has the same modulation pattern
-    datalist = [d for d in datalist if d.modID == modID]
-    if len(datalist) == 0:
-        print("No data with the selected modulation pattern")
-        return
+    if modID != 0:
+        datalist = [d for d in datalist if d.modID == modID]
+        if len(datalist) == 0:
+            print("No data with the selected modulation pattern")
+            return
 
 
     datacube=np.concatenate([d.data for d in datalist])
@@ -313,6 +315,16 @@ def run_create_coupling_maps(files_with_dark,
     pos_2_singular[:,~chi2_goodData]=np.nan
     pos_2_singular_mean = np.nanmean(pos_2_singular,axis=1)
     flux_2_data,data_2_flux,fluxtiptilt_2_data,data_2_fluxtiptilt,masque_positions,masque_triangles = get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles)
+    
+    # Flux maps for inspection
+    fluxmaps = np.mean(datacube, axis=(0,1))
+    # Define the grid for interpolation
+    grid_x, grid_y = np.mgrid[np.min(xmod):np.max(xmod):500j, np.min(ymod):np.max(ymod):500j]  # 500x500 grid
+    # Interpolate the fluxes onto the grid
+    fluxmap_interp= np.zeros((len(fluxmaps), 500, 500))
+    for i,fm in enumerate(fluxmaps):
+        fluxmap_interp[i] = griddata((xmod, ymod), fm, (grid_x, grid_y), method='cubic').T
+    
     # Save arrays into a FITS file
 
     # Create a primary HDU with no data, just the header
@@ -323,6 +335,7 @@ def run_create_coupling_maps(files_with_dark,
     hdu_2 = fits.ImageHDU(data=data_2_flux, name='DATA2F')
     hdu_3 = fits.ImageHDU(data=fluxtiptilt_2_data, name='FTT2DATA')
     hdu_4 = fits.ImageHDU(data=data_2_fluxtiptilt, name='DATA2FTT')
+    hdu_fluxmap = fits.ImageHDU(data=fluxmap_interp, name='FLUXMAP')
 
     # Create columns for xmod and ymod using fits.Column
     x_pos = xmod[masque_positions]
@@ -380,7 +393,9 @@ def run_create_coupling_maps(files_with_dark,
     hdu_primary.header.extend(header, strip=True)
 
     # Combine all HDUs into an HDUList
-    hdul = fits.HDUList([hdu_primary, hdu_1, hdu_2, hdu_3, hdu_4,hdu_table_mod,hdu_table_triangle,modulation_hdu])
+    hdul = fits.HDUList([hdu_primary, hdu_1, hdu_2, hdu_3, hdu_4,
+                         hdu_table_mod,hdu_table_triangle,modulation_hdu,
+                         hdu_fluxmap])
 
     output_filename = os.path.join(output_dir, runlib.create_output_filename(header))
 
@@ -397,15 +412,15 @@ if __name__ == "__main__":
 
 
     # Default values
-    modID = 3
+    modID = 0
     wavelength_smooth = 20
     wavelength_bin = 15
     make_movie = False
     Nsingular=19*3 #for cmap=7, 57 is too high (34, 19 for plots is max for novemeber data in cmap=7)
 
     # Add options for these values
-    parser.add_option("--modID", type="int", default=Nsingular,
-                      help="Selection of the modulation pattern by user (default: %default)")
+    parser.add_option("--modID", type="int", default=modID,
+                      help="Selection of the modulation pattern by user [0 == Any] (default: %default)")
     parser.add_option("--Nsingular", type="int", default=Nsingular,
                       help="Number of singular values to use (default: %default)")
     parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,

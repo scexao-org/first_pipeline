@@ -98,7 +98,7 @@ def create_output_filename(header):
 
     name_extension = object
     special_extension = ["DARK", "SKY", "WAVE", "PIXELMAP", "WAVEMAP", "COUPLINGMAP"]
-    special_extension2 = ["IMAGE","PREPROC"]
+    special_extension2 = ["IMAGE","PREPROC","WDIMAGE"]
     if type in special_extension:
         name_extension = type
     if cat in special_extension:
