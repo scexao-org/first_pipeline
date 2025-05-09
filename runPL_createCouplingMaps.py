@@ -250,6 +250,7 @@ def quick_plot(data,title =""):
 def run_create_coupling_maps(files_with_dark, 
                                 wavelength_smooth = 20,
                                 wavelength_bin = 15,
+                                modID = 3,
                                 Nsingular=19*3):
     """
     Used in lancementserie.py for global generation
@@ -263,8 +264,10 @@ def run_create_coupling_maps(files_with_dark,
     datalist=runlib_i.extract_datacube(files_with_dark,wavelength_smooth,Nbin=wavelength_bin)
     #datacube (625, 38, 100)
     #select only the data in datalist which has the same modulation pattern
-    modID = datalist[0].modID
     datalist = [d for d in datalist if d.modID == modID]
+    if len(datalist) == 0:
+        print("No data with the selected modulation pattern")
+        return
 
 
     datacube=np.concatenate([d.data for d in datalist])
@@ -394,12 +397,15 @@ if __name__ == "__main__":
 
 
     # Default values
+    modID = 3
     wavelength_smooth = 20
     wavelength_bin = 15
     make_movie = False
     Nsingular=19*3 #for cmap=7, 57 is too high (34, 19 for plots is max for novemeber data in cmap=7)
 
     # Add options for these values
+    parser.add_option("--modID", type="int", default=Nsingular,
+                      help="Selection of the modulation pattern by user (default: %default)")
     parser.add_option("--Nsingular", type="int", default=Nsingular,
                       help="Number of singular values to use (default: %default)")
     parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,
@@ -423,6 +429,7 @@ if __name__ == "__main__":
         (options, args) = parser.parse_args()
 
         # Pass the parsed options to the function
+        modID=options.modID
         Nsingular=options.Nsingular
         wavelength_smooth=options.wavelength_smooth
         make_movie=options.make_movie
@@ -437,7 +444,8 @@ if __name__ == "__main__":
     run_create_coupling_maps(files_with_dark, 
                                 wavelength_smooth = wavelength_smooth,
                                 wavelength_bin = wavelength_bin,
-                                Nsingular=19*3)
+                                modID = modID,
+                                Nsingular= Nsingular)
 
 
 # %%
