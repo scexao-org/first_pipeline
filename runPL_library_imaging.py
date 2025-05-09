@@ -289,6 +289,7 @@ class DataCube:
         self.Ndit = data.shape[0]
         self.Noutput = data.shape[1]
         self.Nwave = data.shape[2]
+        self.modID = int(header.get('1_MOD-ID', 0))
 
     def add_modulation(self, xmod, ymod):
         self.xmod = xmod
@@ -325,7 +326,7 @@ class DataCube:
         # Extract the triangles
         triangles = delaunay_triangles.simplices
         # Filter triangles to keep only equatorial ones
-        equatorial_triangles = []
+        good_triangles = []
         for triangle in triangles:
             # Get the y-coordinates of the vertices
             x_coords = points[triangle, 0]
@@ -334,15 +335,20 @@ class DataCube:
             l2=np.sqrt((x_coords[1]-x_coords[2])**2+(y_coords[1]-y_coords[2])**2)
             l3=np.sqrt((x_coords[2]-x_coords[0])**2+(y_coords[2]-y_coords[0])**2)
             # Check if the triangle is equilateral within a tolerance
-            tolerance = 1e-3  # Adjust tolerance as needed
-            if abs(l1 - l2) < tolerance and abs(l2 - l3) < tolerance and abs(l1 - l3) < tolerance:
-                equatorial_triangles.append(triangle)
+            lenghts_triangle = np.array([l1, l2, l3])
+            l_max = np.max(lenghts_triangle)
+            l_min = np.min(lenghts_triangle)
 
-        equatorial_triangles = np.array(equatorial_triangles)
+            # good only if l_max/l_min < (1+1.5**2)**.5
+            # to avoid edge triangles
+            if l_max/l_min < 1.8:
+                good_triangles.append(triangle)
+
+        good_triangles = np.array(good_triangles)
         print(f"Computed {len(triangles)} triangles for the given positions.")
-        print(f"Computed {len(equatorial_triangles)} equatorial triangles.")
+        print(f"Computed {len(good_triangles)} good triangles.")
 
-        return equatorial_triangles
+        return good_triangles
 
 def extract_datacube(files_with_dark,Nsmooth = 1,Nbin = 1):
     """

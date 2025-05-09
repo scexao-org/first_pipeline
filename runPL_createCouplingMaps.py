@@ -263,8 +263,8 @@ def run_create_coupling_maps(files_with_dark,
     datalist=runlib_i.extract_datacube(files_with_dark,wavelength_smooth,Nbin=wavelength_bin)
     #datacube (625, 38, 100)
     #select only the data in datalist which has the same modulation pattern
-    Nmod = datalist[0].Nmod
-    datalist = [d for d in datalist if d.Nmod == Nmod]
+    modID = datalist[0].modID
+    datalist = [d for d in datalist if d.modID == modID]
 
 
     datacube=np.concatenate([d.data for d in datalist])
@@ -412,7 +412,7 @@ if __name__ == "__main__":
     if "VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode':
         if getpass.getuser() == "slacour":
             file_patterns = "/Users/slacour/DATA/LANTERNE/Optim_maps/November2024/preproc"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/Mai/preproc2/firstpl_2025-05-06T09:52:?1_BETUMA.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/Mai3/preproc/firstpl_2025-05-09T02:4*_BETUMA.fits"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
