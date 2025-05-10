@@ -289,7 +289,8 @@ class DataCube:
         self.Ndit = data.shape[0]
         self.Noutput = data.shape[1]
         self.Nwave = data.shape[2]
-        self.modID = int(header.get('1_MOD-ID', 0))
+        self.modID = int(header.get('X_FIRMID', 0))
+        self.modScale = int(header.get('X_FIRMSC', 1))
 
     def add_modulation(self, xmod, ymod):
         self.xmod = xmod

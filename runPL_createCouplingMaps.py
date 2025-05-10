@@ -65,7 +65,7 @@ usage = """
     --cmap_size: Width of cmap size, in pixels (default: 25) (removed)
 """
 
-def filter_filelist(filelist):
+def filter_filelist(filelist,modID):
     """
     Filters the input file list to separate coupling map files and dark files based on FITS keywords.
     Raises an error if no valid files are found.
@@ -73,8 +73,13 @@ def filter_filelist(filelist):
     """
 
     # Use the function to clean the filelist
-    fits_keywords = {'X_FIRTYP': ['PREPROC'],
-                    'DATA-TYP': ['OBJECT','TEST']}
+    if modID == 0:
+        fits_keywords = {'X_FIRTYP': ['PREPROC'],
+                        'DATA-TYP': ['OBJECT','TEST']}
+    else:
+        fits_keywords = {'X_FIRTYP': ['PREPROC'],
+                        'DATA-TYP': ['OBJECT','TEST'],
+                        'MOD_ID': [modID]}
     filelist_cmap = runlib.clean_filelist(fits_keywords, filelist)
     print("runPL cmap filelist : ", filelist_cmap)
 
@@ -252,7 +257,7 @@ def quick_plot(data,title =""):
 def run_create_coupling_maps(files_with_dark, 
                                 wavelength_smooth = 20,
                                 wavelength_bin = 15,
-                                modID = 3,
+                                modID = 0,
                                 Nsingular=19*3):
     """
     Used in lancementserie.py for global generation
@@ -266,12 +271,16 @@ def run_create_coupling_maps(files_with_dark,
     datalist=runlib_i.extract_datacube(files_with_dark,wavelength_smooth,Nbin=wavelength_bin)
     #datacube (625, 38, 100)
     #select only the data in datalist which has the same modulation pattern
-    if modID != 0:
+    if modID == 0:
+        modID = datalist[0].modID
         datalist = [d for d in datalist if d.modID == modID]
-        if len(datalist) == 0:
-            print("No data with the selected modulation pattern")
-            return
 
+    modScale = datalist[0].modScale
+    datalist = [d for d in datalist if d.modID == modScale]
+
+    if len(datalist) == 0:
+        print("No data with the selected modulation parameters",modID,modScale)
+        return
 
     datacube=np.concatenate([d.data for d in datalist])
     datacube=datacube.transpose((3,2,0,1))
@@ -421,7 +430,7 @@ if __name__ == "__main__":
 
     # Add options for these values
     parser.add_option("--modID", type="int", default=modID,
-                      help="Selection of the modulation pattern by user [0 == Any] (default: %default)")
+                      help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
     parser.add_option("--Nsingular", type="int", default=Nsingular,
                       help="Number of singular values to use (default: %default)")
     parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,
