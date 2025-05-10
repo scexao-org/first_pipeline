@@ -84,7 +84,7 @@ def raw_image_clean(filelist):
         '''
 
         # Keys to keep only the RAW files
-        fits_keywords = {'DATA-CAT': ['RAW']}
+        fits_keywords = {'X_FIRTYP': ['RAW']}
             
         # Use the function to clean the filelist
         filelist_cleaned = runlib.clean_filelist(fits_keywords, filelist)

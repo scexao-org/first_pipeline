@@ -46,8 +46,8 @@ usage = """
 parser = OptionParser(usage)
 parser.add_option("-c","--DATA-CAT", action="store",
                   help="DATA-CAT gives the level of reduction")
-parser.add_option("-t","--DATA-TYP", action="store", 
-                  help="DATA-TYP gives the type of data")
+parser.add_option("-t","--X_FIRTYP", action="store", 
+                  help="X_FIRTYP gives the type of data")
 parser.add_option("-g","--GAIN", action="store", 
                   help="")
 parser.add_option("-d","--DATE", action="store", 
@@ -70,16 +70,16 @@ else :
 filelist.sort() # process the files in alphabetical order
 
     
-if (argoptions.DATA_TYP!=None)|(argoptions.DATA_CAT!=None)|(argoptions.GAIN!=None)|(argoptions.DATE=="DEFAULT"):
+if (argoptions.X_FIRTYP!=None)|(argoptions.DATA_CAT!=None)|(argoptions.GAIN!=None)|(argoptions.DATE=="DEFAULT"):
     for filename in filelist:
         string_print=filename+"   ----->"
         with fits.open(filename, mode='update') as filehandle:
             if argoptions.DATA_CAT:
                 filehandle[0].header['DATA-CAT'] = argoptions.DATA_CAT
                 string_print+='   DATA-CAT='+argoptions.DATA_CAT
-            if argoptions.DATA_TYP:
-                filehandle[0].header['DATA-TYP'] = argoptions.DATA_TYP
-                string_print+='   DATA-TYP='+argoptions.DATA_TYP
+            if argoptions.X_FIRTYP:
+                filehandle[0].header['X_FIRTYP'] = argoptions.X_FIRTYP
+                string_print+='   X_FIRTYP='+argoptions.X_FIRTYP
             if argoptions.GAIN:
                 filehandle[0].header['GAIN'] = argoptions.GAIN
                 string_print+='   GAIN='+argoptions.GAIN
