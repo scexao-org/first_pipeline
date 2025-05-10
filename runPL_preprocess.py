@@ -167,8 +167,8 @@ def preprocess(filelist_pixelmap,files_by_dir):
             # Add the MODULATION extension from the original file to the new FITS file
             if 'MODULATION' in fits.open(file):
                 modulation_hdu = fits.open(file)['MODULATION']
+                comp_hdu.header['MOD_LEN'] = modulation_hdu.header['NAXIS2']
                 comp_hdu = fits.HDUList([comp_hdu, modulation_hdu])
-
 
             # create a directory named preproc if it does not exist
             preproc_dir_path = os.path.join(dir_path, "preproc")

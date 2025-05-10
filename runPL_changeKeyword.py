@@ -20,19 +20,19 @@ usage = """
     Goal: update the FIRST_PL Data keywords
 
     example:
-    runPL_changeKeyword.py --DATA_CAT=RAW --DATA_TYP=FLAT
+    runPL_changeKeyword.py --DATA_CAT=FLAT --X_FIRTYP=RAW
 
     Fits header Keywords:
 
     DATA_CAT = RAW , PREPROC, REDUCED
-    DATA_TYP =  WAVE, FLAT, SCIENCE, PIXELS, SPECTRA
+    X_FIRTYP =  WAVE, FLAT, SCIENCE, PIXELS, SPECTRA
 
-    DATA_CAT gives the level of reduction:
+    X_FIRTYP gives the type of dataproduct:
     RAW means raw data from the camera
     PREPROC means the data has been cut and compressed
     REDUCED means that the data has been reduced
 
-    DATA_TYP gives the type of data
+    DATA_CAT gives the category of data
     WAVE is Neon source data
     FLAT is data from SuperK
     SCIENCE is the night time observation data
@@ -44,10 +44,10 @@ usage = """
 """
 
 parser = OptionParser(usage)
-parser.add_option("-c","--X_FIRTYP", action="store",
-                  help="X_FIRTYP gives the level of reduction")
+parser.add_option("-c","--DATA-CAT", action="store",
+                  help="DATA-CAT gives the category of data")
 parser.add_option("-t","--X_FIRTYP", action="store", 
-                  help="X_FIRTYP gives the type of data")
+                  help="X_FIRTYP gives the type of dataproduct")
 parser.add_option("-g","--GAIN", action="store", 
                   help="")
 parser.add_option("-d","--DATE", action="store", 
@@ -75,8 +75,8 @@ if (argoptions.X_FIRTYP!=None)|(argoptions.DATA_CAT!=None)|(argoptions.GAIN!=Non
         string_print=filename+"   ----->"
         with fits.open(filename, mode='update') as filehandle:
             if argoptions.DATA_CAT:
-                filehandle[0].header['X_FIRTYP'] = argoptions.DATA_CAT
-                string_print+='   X_FIRTYP='+argoptions.DATA_CAT
+                filehandle[0].header['DATA-CAT'] = argoptions.DATA_CAT
+                string_print+='   DATA-CAT='+argoptions.DATA_CAT
             if argoptions.X_FIRTYP:
                 filehandle[0].header['X_FIRTYP'] = argoptions.X_FIRTYP
                 string_print+='   X_FIRTYP='+argoptions.X_FIRTYP
