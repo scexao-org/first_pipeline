@@ -206,7 +206,6 @@ def get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles):
     Npositions=np.sum(masque_positions)
     Ntriangles=np.sum(masque_triangles)
 
-
     flux_2_data_tmp = singular_2_data.reshape((Nwave*Noutput,Nsingular)) @ pos_2_singular_mean
     flux_2_data_tmp = flux_2_data_tmp.reshape((Nwave,Noutput,Nmod))
     flux_2_data = flux_2_data_tmp[:,:,masque_positions]
