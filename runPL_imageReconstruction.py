@@ -310,11 +310,7 @@ if __name__ == "__main__":
     else:
 
         (options, args) = parser.parse_args()
-<<<<<<< HEAD
         file_patterns=args if args else ['*.fits','preproc/*.fits','preproc/couplingmaps/*.fits']
-=======
-        file_patterns=args if args else ['./preproc/*.fits']
->>>>>>> changing pattern
 
         wavelength_smooth=options.wavelength_smooth
         modID=options.modID
