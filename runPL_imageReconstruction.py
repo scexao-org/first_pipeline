@@ -73,21 +73,21 @@ def filter_filelist(filelist,coupling_map,modID):
 
     # Use the function to clean the filelist
     if modID == 0:
-        fits_keywords = {'DATA-CAT': ['PREPROC'],
+        fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['OBJECT','TEST']}
     else:
-        fits_keywords = {'DATA-CAT': ['PREPROC'],
+        fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['OBJECT','TEST'],
                         'MOD_ID': [modID]}
     filelist_data = runlib.clean_filelist(fits_keywords, filelist)
     print("runPL object filelist : ", filelist_data)
 
-    fits_keywords = {'DATA-CAT': ['PREPROC'],
+    fits_keywords = {'X_FIRTYP': ['PREPROC'],
                     'DATA-TYP': ['DARK']}
     filelist_dark = runlib.clean_filelist(fits_keywords, filelist)
     print("runPL dark filelist : ", filelist_dark)
 
-    fits_keywords = {'DATA-CAT': ['COUPLINGMAP']}
+    fits_keywords = {'X_FIRTYP': ['COUPLINGMAP']}
 
     filelist_cmap = runlib.clean_filelist(fits_keywords, coupling_map)
     print("runPL object filelist : ", filelist_cmap)
@@ -401,7 +401,7 @@ if __name__ == "__main__":
 
     for i,d in enumerate(datalist):
         header = d.header
-        header['DATA-CAT'] = 'IMAGE'
+        header['X_FIRTYP'] = 'IMAGE'
 
         list_of_hdus = []
         # Create a primary HDU with the data
@@ -424,7 +424,7 @@ if __name__ == "__main__":
             hdu_wave = fits.ImageHDU(flux_maps_wave, name="3D_IMAGE")
             hdu_wave_residual = fits.ImageHDU(residuals_maps_wave, name="3D_IMAGE_RESIDUAL")
             list_of_hdus += [hdu_wave, hdu_wave_residual]
-            header['DATA-CAT'] = 'WDIMAGE'
+            header['X_FIRTYP'] = 'WDIMAGE'
 
         hdu_coupling = fits.ImageHDU(couplingmaps_interp[i], name="COUPLING")
         list_of_hdus += [hdu_coupling]

@@ -56,7 +56,7 @@ usage = """
 def filter_filelist(filelist , filelist_pixelmap):
 
     # Keys to keep only the RAW files
-    fits_keywords = {'DATA-CAT': ['RAW']}
+    fits_keywords = {'X_FIRTYP': ['RAW']}
         
     # Use the function to clean the filelist
     filelist_rawdata = runlib.clean_filelist(fits_keywords, filelist)
@@ -66,7 +66,7 @@ def filter_filelist(filelist , filelist_pixelmap):
     if len(filelist_rawdata) == 0:
         raise FileNotFoundError("No good file to pre-process")
 
-    fits_keywords = {'DATA-CAT': ['PIXELMAP']}
+    fits_keywords = {'X_FIRTYP': ['PIXELMAP']}
         
     # Use the function to clean the filelist
     filelist_pixelmap = runlib.clean_filelist(fits_keywords, filelist_pixelmap)
@@ -152,7 +152,7 @@ def preprocess(filelist_pixelmap,files_by_dir):
             comp_hdu = fits.PrimaryHDU(data_cut, header=header)
 
             # Update the header with the values read in the headers above
-            comp_hdu.header['DATA-CAT'] = "PREPROC"
+            comp_hdu.header['X_FIRTYP'] = "PREPROC"
             comp_hdu.header['ORG_NAME'] = os.path.basename(file)
             comp_hdu.header['PIX_MIN'] = pixel_min
             comp_hdu.header['PIX_MAX'] = pixel_max

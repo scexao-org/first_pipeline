@@ -43,8 +43,8 @@ usage = """
 
     Goal: Create a wavelength map from the provided FITS files.
 
-    It will get as input a list of files with DATA-CAT=PREPROC and DATA-TYP=WAVE keywords. 
-    It will also find the corresponding dark files with DATA-CAT=PREPROC and DATA-TYP=DARK keywords.
+    It will get as input a list of files with X_FIRTYP=PREPROC and DATA-TYP=WAVE keywords. 
+    It will also find the corresponding dark files with X_FIRTYP=PREPROC and DATA-TYP=DARK keywords.
     It will read the wave files and subtract the median of the dark files from them.
     Then, it will find the highest N peaks in the flux and fit a polynomial to create a wavelength map.
     The value N is the number of wavelength provided in th wave_list
@@ -124,18 +124,18 @@ def widen_array(arr, factor):
 def prep_data(filelist, star=False):
 
     # Keys to keep only the RAW files
-    fits_keywords = {'DATA-CAT': ['PREPROC'], 
+    fits_keywords = {'X_FIRTYP': ['PREPROC'], 
                     'DATA-TYP': ['DARK']}
 
     # Use the function to clean the filelist
     filelist_dark = runlib.clean_filelist(fits_keywords, filelist)
 
     # Keys to keep only the WAVE files
-    fits_keywords = {'DATA-CAT': ['PREPROC'], 
+    fits_keywords = {'X_FIRTYP': ['PREPROC'], 
                     'DATA-TYP': ['WAVE']}
 
     if star:
-        fits_keywords = {'DATA-CAT': ['PREPROC'], 
+        fits_keywords = {'X_FIRTYP': ['PREPROC'], 
                         'DATA-TYP': ['OBJECT']}
 
     # Use the function to clean the filelist
@@ -271,7 +271,7 @@ def figure2(flux, its_a_match_peaks, its_a_match_waves, output_dir, header):
     os.makedirs(output_dir, exist_ok=True)
     # Save fits file with traces_loc inside
     hdu = fits.PrimaryHDU(pix_to_wavelength_map_best)
-    header['DATA-CAT'] = 'WAVEMAP'
+    header['X_FIRTYP'] = 'WAVEMAP'
     # Add date and time to the header
     current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
     header['DATE-PRO'] = current_time

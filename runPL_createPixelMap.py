@@ -240,7 +240,7 @@ def checking_wavelength_aligment_in_modes(x_none, y_none):
 def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder):
     # Save fits file with traces_loc inside
     hdu = fits.PrimaryHDU(traces_loc)
-    header['DATA-CAT'] = 'PIXELMAP'
+    header['X_FIRTYP'] = 'PIXELMAP'
     # Add date and time to the header
     current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
     header['DATE-PRO'] = current_time

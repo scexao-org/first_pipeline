@@ -73,12 +73,12 @@ def filter_filelist(filelist):
     """
 
     # Use the function to clean the filelist
-    fits_keywords = {'DATA-CAT': ['PREPROC'],
+    fits_keywords = {'X_FIRTYP': ['PREPROC'],
                     'DATA-TYP': ['OBJECT','TEST']}
     filelist_cmap = runlib.clean_filelist(fits_keywords, filelist)
     print("runPL cmap filelist : ", filelist_cmap)
 
-    fits_keywords = {'DATA-CAT': ['PREPROC'],
+    fits_keywords = {'X_FIRTYP': ['PREPROC'],
                     'DATA-TYP': ['DARK']}
     filelist_dark = runlib.clean_filelist(fits_keywords, filelist)
     print("runPL dark filelist : ", filelist_dark)
@@ -374,7 +374,7 @@ def run_create_coupling_maps(files_with_dark,
     folder = datalist[-1].dirname
     output_dir = os.path.join(folder,"couplingmaps")
 
-    header['DATA-CAT'] = 'COUPLINGMAP'
+    header['X_FIRTYP'] = 'COUPLINGMAP'
     # Add date and time to the header
     current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
     header['DATE-PRO'] = current_time

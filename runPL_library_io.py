@@ -94,7 +94,7 @@ def create_output_filename(header):
     date = header.get('DATE', 'NODATE')
     object = header.get('OBJECT', "NONAME")
     type = header.get('DATA-TYP',None)
-    cat = header.get('DATA-CAT',None)
+    cat = header.get('X_FIRTYP',None)
 
     name_extension = object
     special_extension = ["DARK", "SKY", "WAVE", "PIXELMAP", "WAVEMAP", "COUPLINGMAP"]
