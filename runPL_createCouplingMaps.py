@@ -20,7 +20,8 @@ from scipy import linalg
 import getpass
 import matplotlib
 if "VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode':
-    matplotlib.use('Qt5Agg')
+    #matplotlib.use('Qt5Agg')
+    1
 else:
     matplotlib.use('Agg')
      
@@ -451,6 +452,7 @@ if __name__ == "__main__":
         wavelength_bin=options.wavelength_bin
         file_patterns=args if args else ['./preproc/*.fits']
 
+    file_patterns = ['./preproc/*.fits']
     print(file_patterns)
     filelist = runlib.get_filelist(file_patterns)
     print(filelist)

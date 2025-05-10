@@ -310,7 +310,11 @@ if __name__ == "__main__":
     else:
 
         (options, args) = parser.parse_args()
+<<<<<<< HEAD
         file_patterns=args if args else ['*.fits','preproc/*.fits','preproc/couplingmaps/*.fits']
+=======
+        file_patterns=args if args else ['./preproc/*.fits']
+>>>>>>> changing pattern
 
         wavelength_smooth=options.wavelength_smooth
         modID=options.modID
@@ -320,7 +324,7 @@ if __name__ == "__main__":
         # If the user specifies a coupling map, use it, otherwise look into the arguments
         coupling_map = options.coupling_map
         if coupling_map is None:
-            coupling_map = file_patterns
+            coupling_map = ['./preproc/couplingmaps/*.fits']#file_patterns
 
 
     filelist=runlib.get_filelist( file_patterns )
