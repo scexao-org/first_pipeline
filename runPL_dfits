@@ -8,4 +8,4 @@ else
    files=""
 fi 
 
-dfits $files $@ | fitsort OBJECT DATE  NAXIS3 GAIN FRATE EXPTIME 1_MOD-ID DATA-TYP DATA-CAT
+dfits $files $@ | fitsort OBJECT DATE NAXIS3 GAIN FRATE EXPTIME X_FIRMID X_FIRMSC DATA-TYP X_FIRTYP
