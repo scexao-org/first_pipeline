@@ -123,7 +123,9 @@ def save_all_as_PDF(output_dir = "/home/jsarrazin/Bureau/test zone/coupling_maps
     print(f"All plots saved to {pdf_filename}")
     return 1
 
-def generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, singular_values, Nsingular, chi2_delta, flux_goodData, chi2_goodData, flux_threshold, chi2_threshold, output_dir):
+def generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, singular_values, 
+                   Nsingular, chi2_delta, flux_goodData, modes_rect, modes_mean, 
+                   chi2_goodData, flux_threshold, chi2_threshold, output_dir):
 
     fluxes = datacube.mean(axis=(0,1,2))
     popt = basic.fit_gaussian_on_flux(fluxes, xmod, ymod)
@@ -198,6 +200,24 @@ def generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, singular
     plt.yscale('log')
     plt.xscale('log')
     plt.grid(True)
+
+    plt.figure(num="modes", figsize=(15,12))
+    plt.clf()
+    Nsingular0 = int(Nsingular/19)
+    gridsize=modes_rect.shape[2]
+    fig, ax = plt.subplots(nrows=(Ncube+1)*Nsingular0, ncols=19, num="modes", sharex=True, sharey=True)
+    for s0 in range(Nsingular0):
+        for s in range(19):
+            ax[s0*(Ncube+1),s].set_title(f"m{s0*19+s}")
+            for i in range(Ncube) :
+                ax[s0*(Ncube+1)+i,s].imshow(modes_rect[s0*19+s,i])
+                ax[s0*(Ncube+1)+i,s].axis('off')
+                if s==0:
+                    ax[s0*(Ncube+1)+i,s].text(-gridsize/2, 2*gridsize/3, f"Cube {s0+i+1}", rotation="vertical")
+            ax[s0*(Ncube+1)+i+1,s].imshow(modes_mean[s0*19+s])
+            ax[s0*(Ncube+1)+i+1,s].axis('off')
+            if s==0:
+                ax[s0*(Ncube+1)+i+1,s].text(-gridsize/2, 2*gridsize/3, f"MEAN", rotation="vertical")
 
     # Chi2 maps plots
     fig, axs = plt.subplots(7, 1, num="reduced chi23", clear=True, figsize=(12, 16))
