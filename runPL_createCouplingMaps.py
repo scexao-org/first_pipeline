@@ -601,7 +601,10 @@ if __name__ == "__main__":
     hdul.writeto(output_filename, overwrite=True)
 
 
-    runlib_i.generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, singular_values, Nsingular, chi2_delta, flux_goodData, chi2_goodData, flux_threshold, chi2_threshold, output_dir)
+    runlib_i.generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, 
+                            singular_values, Nsingular, chi2_delta, flux_goodData, 
+                            modes_rect, modes_mean, 
+                            chi2_goodData, flux_threshold, chi2_threshold, output_dir)
 
 
 # if __name__ == "__main__":
