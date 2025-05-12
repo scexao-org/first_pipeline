@@ -454,7 +454,7 @@ if __name__ == "__main__":
                     help="binning factor for wavelength (default: %default)")
     parser.add_option("--make_movie", action="store_true", default=make_movie,
                     help="Create a nice mp4 with all datacubes -- can be long (default: %default)")
-    parser.add_option("--object_name", type="string", default="",
+    parser.add_option("--object_name", type="string", default="NONE",
                     help="Selection of the data by the Object name (default: %default -- no selection)")
     
     if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or 

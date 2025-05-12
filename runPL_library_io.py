@@ -63,7 +63,7 @@ def clean_filelist(fits_keywords, filelist, verbose=False):
 
     return np.sort(filelist_cleaned)
 
-def filter_filelist(filelist,mod_len=1,modID=0,object_name=""):
+def filter_filelist(filelist,modID=0,object_name="NONE"):
     """
     Filters the input file list to separate coupling map files and dark files based on FITS keywords.
     Raises an error if no valid files are found.
@@ -73,11 +73,9 @@ def filter_filelist(filelist,mod_len=1,modID=0,object_name=""):
     # Use the function to clean the filelist
     fits_keywords = {'X_FIRTYP': ['PREPROC'],
                     'DATA-TYP': ['OBJECT','TEST']}    
-    # if modID != 0:
-    #     fits_keywords['MOD_ID'] = [modID]
-    if mod_len != 1 :
-        fits_keywords['MOD_LEN'] = [mod_len]
-    if object_name != "":
+    if modID != 0:
+        fits_keywords['X_FIRMID'] = [str(modID)]
+    if object_name != "NONE":
         fits_keywords['OBJECT'] = [object_name]
     print(fits_keywords)
     filelist_cmap = clean_filelist(fits_keywords, filelist)
@@ -87,7 +85,6 @@ def filter_filelist(filelist,mod_len=1,modID=0,object_name=""):
                     'DATA-TYP': ['DARK']}
     filelist_dark = clean_filelist(fits_keywords, filelist)
     print("runPL dark filelist : ", filelist_dark)
-
 
     # raise an error if filelist_cleaned is empty
     if len(filelist_cmap) == 0:
