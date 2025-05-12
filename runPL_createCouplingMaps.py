@@ -442,8 +442,8 @@ if __name__ == "__main__":
 
 
     # Add options for these values
-    parser.add_option("--object_name", type="string", default=object_name,
-                      help="Name of the object to filter files, [NONE == first in the list], any (default: %default)")
+    parser.add_option("--modID", type="int", default=modID,
+                      help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
     parser.add_option("--modID", type="int", default=modID,
                       help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
     parser.add_option("--Nsingular", type="int", default=Nsingular,
@@ -454,6 +454,8 @@ if __name__ == "__main__":
                     help="binning factor for wavelength (default: %default)")
     parser.add_option("--make_movie", action="store_true", default=make_movie,
                     help="Create a nice mp4 with all datacubes -- can be long (default: %default)")
+    parser.add_option("--object_name", type="string", default="",
+                    help="Selection of the data by the Object name (default: %default -- no selection)")
     
     if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or 
         (len(os.environ.get('SPYDER_DEBUG_FILE')) > 0)):
