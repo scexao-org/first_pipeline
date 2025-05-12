@@ -19,10 +19,10 @@ from scipy import linalg
 
 import getpass
 import matplotlib
-if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') 
-    or (len(os.environ.get('SPYDER_DEBUG_FILE')) > 0)):
-    #matplotlib.use('Qt5Agg')
-    1
+if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode'):
+    matplotlib.use('Qt5Agg')
+elif os.environ.get('SPYDER_DEBUG_FILE'):
+    print("Running in Spyder")
 else:
     matplotlib.use('Agg')
      
@@ -384,7 +384,7 @@ if __name__ == "__main__":
     parser = OptionParser(usage)
 
     # Default values
-    modID = 3
+    modID = 0
     wavelength_smooth = 20
     wavelength_bin = 15
     make_movie = False
@@ -406,8 +406,8 @@ if __name__ == "__main__":
     parser.add_option("--object_name", type="string", default="NONE",
                     help="Selection of the data by the Object name (default: %default -- no selection)")
     
-    if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or 
-        (len(os.environ.get('SPYDER_DEBUG_FILE')) > 0)):
+    if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
+        os.environ.get('SPYDER_DEBUG_FILE')):
         print("Running in compiler^")
         if getpass.getuser() == "slacour":
             file_patterns = "/Users/slacour/DATA/LANTERNE/Optim_maps/November2024/preproc"

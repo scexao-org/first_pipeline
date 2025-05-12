@@ -44,8 +44,8 @@ usage = """
 """
 
 parser = OptionParser(usage)
-parser.add_option("-c","--DATA-CAT", action="store",
-                  help="DATA-CAT gives the category of data")
+parser.add_option("-c","--DATA-TYP", action="store",
+                  help="DATA-TYP gives the category of data")
 parser.add_option("-t","--X_FIRTYP", action="store", 
                   help="X_FIRTYP gives the type of dataproduct")
 parser.add_option("-g","--GAIN", action="store", 
@@ -70,13 +70,13 @@ else :
 filelist.sort() # process the files in alphabetical order
 
     
-if (argoptions.X_FIRTYP!=None)|(argoptions.DATA_CAT!=None)|(argoptions.GAIN!=None)|(argoptions.DATE=="DEFAULT"):
+if (argoptions.X_FIRTYP!=None)|(argoptions.DATA_TYP!=None)|(argoptions.GAIN!=None)|(argoptions.DATE=="DEFAULT"):
     for filename in filelist:
         string_print=filename+"   ----->"
         with fits.open(filename, mode='update') as filehandle:
-            if argoptions.DATA_CAT:
-                filehandle[0].header['DATA-CAT'] = argoptions.DATA_CAT
-                string_print+='   DATA-CAT='+argoptions.DATA_CAT
+            if argoptions.DATA_TYP:
+                filehandle[0].header['DATA-TYP'] = argoptions.DATA_TYP
+                string_print+='   DATA-TYP='+argoptions.DATA_TYP
             if argoptions.X_FIRTYP:
                 filehandle[0].header['X_FIRTYP'] = argoptions.X_FIRTYP
                 string_print+='   X_FIRTYP='+argoptions.X_FIRTYP
