@@ -20,6 +20,7 @@ def clean_filelist(fits_keywords, filelist, verbose=False):
     filelist_cleaned = []
     if isinstance(filelist, str):
         filelist = [filelist]
+    print("Looking for files with the correct keywords :",fits_keywords)
     for filename in filelist:
         if verbose:
             print(("Check file: " + filename))
@@ -55,7 +56,7 @@ def clean_filelist(fits_keywords, filelist, verbose=False):
     
     filelist_cleaned = np.array(filelist_cleaned)
     if len(filelist_cleaned) == 0:
-        print("No file found with the correct keywords",fits_keywords)
+        print("No file found with the keywords :",fits_keywords)
     
     # Remove duplicate values
     filelist_cleaned = np.unique(filelist_cleaned)

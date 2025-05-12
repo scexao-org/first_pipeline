@@ -405,6 +405,7 @@ def extract_datacube(files_with_dark,Nsmooth = 1,Nbin = 1):
             data_var=data_var.reshape((Npos,Noutput,Nwave//Nbin,Nbin)).sum(axis=-1)
 
         datalist += [DataCube(data, data_var, data_file, header)]
+        # print(data_file,xmod)
         datalist[-1].add_modulation(xmod,ymod)
 
     return datalist

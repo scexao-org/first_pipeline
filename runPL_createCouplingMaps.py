@@ -79,7 +79,7 @@ def filter_filelist(filelist,modID):
     else:
         fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['OBJECT','TEST'],
-                        'MOD_ID': [modID]}
+                        'X_FIRMID': [modID]}
     filelist_cmap = runlib.clean_filelist(fits_keywords, filelist)
     print("runPL cmap filelist : ", filelist_cmap)
 
@@ -465,6 +465,7 @@ if __name__ == "__main__":
     print(filelist)
     files_with_dark = filter_filelist(filelist, modID)
 
+    print("Using modID: ", modID)
     run_create_coupling_maps(files_with_dark, 
                                 wavelength_smooth = wavelength_smooth,
                                 wavelength_bin = wavelength_bin,

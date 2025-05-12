@@ -78,7 +78,7 @@ def filter_filelist(filelist,coupling_map,modID):
     else:
         fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['OBJECT','TEST'],
-                        'MOD_ID': [modID]}
+                        'X_FIRMID': [modID]}
     filelist_data = runlib.clean_filelist(fits_keywords, filelist)
     print("runPL object filelist : ", filelist_data)
 
