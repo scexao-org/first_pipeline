@@ -155,12 +155,20 @@ def generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, singular
     initial_guess = (amplitude_0,x_0,y_0,sigma_0,offset_0)
 
     # Fit the Gaussian
-    popt, _ = curve_fit(basic.gaussian_2d, (x, y), z, p0=initial_guess)
-    x_fit=popt[1]
-    y_fit=popt[2]
+    print("Fitting Gaussian...")
+    try:
+        popt, _ = curve_fit(basic.gaussian_2d, (x, y), z, p0=initial_guess)
+        x_fit=popt[1]
+        y_fit=popt[2]
+    except RuntimeError as e:
+        print("Error in curve_fit:", e)
+        print("Using initial guess for parameters.")
+        popt = initial_guess
+
 
     # Generate the fitted Gaussian for plotting
     fitted_gaussian = basic.gaussian_2d((grid_x, grid_y), *popt).reshape(grid_x.shape)
+    print("Done fitting Gaussian...")
 
     # Plot the contours of the fitted Gaussian on top of the image
     # Plot the interpolated 2D image
@@ -260,7 +268,7 @@ def generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, singular
     axs[-1].legend()
     axs[-1].set_title('Chi2 Delta Histogram')
 
-
+    print('cov')
     plt.tight_layout()
 
     # Covariance and correlation matrix plot

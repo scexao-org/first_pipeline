@@ -72,12 +72,11 @@ def filter_filelist(filelist,modID=0,object_name="NONE"):
 
     # Use the function to clean the filelist
     fits_keywords = {'X_FIRTYP': ['PREPROC'],
-                    'DATA-TYP': ['OBJECT','TEST']}    
+                    'DATA-TYP': ['OBJECT','OJECT','TEST']}    
     if modID != 0:
-        fits_keywords['X_FIRMID'] = [str(modID)]
+        fits_keywords['X_FIRMID'] = [modID]
     if object_name != "NONE":
         fits_keywords['OBJECT'] = [object_name]
-    print(fits_keywords)
     filelist_cmap = clean_filelist(fits_keywords, filelist)
     print("runPL cmap filelist : ", filelist_cmap)
 
