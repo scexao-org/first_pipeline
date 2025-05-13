@@ -14,6 +14,7 @@ class PixelMap:
         self.pixel_max = self.header.get('PIX_MAX', 1600)
         self.pixel_wide = self.header.get('PIX_WIDE', 2)
         self.output_channels = self.header.get('OUT_CHAN', 38)
+        self.pm_check = self.header.get('PM_CHECK', 0)
 
 def preprocess_cutData(data, pixelMap, dark_calculation=False):
     """

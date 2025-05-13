@@ -39,10 +39,10 @@ usage = """
     Goal: Create the pixel map needed to preprocess the data.
 
     Example:
-    runPL_createPixelMap.py --pixel_min=100 --pixel_max=1600 --pixel_wide=2 --output_channels=38 *.fits
+    runPL_createPixelMap.py --pixel_min=20 --pixel_max=1600 --pixel_wide=2 --output_channels=38 *.fits
 
     Options:
-    --pixel_min: Minimum pixel value (default: 100)
+    --pixel_min: Minimum pixel value (default: 20)
     --pixel_max: Maximum pixel value (default: 1600)
     --pixel_wide: Pixel width (default: 3)
     --output_channels: Number of output channels (default: 38)
@@ -316,7 +316,7 @@ def quick_fits(data, title=""):
     runlib.save_fits_file(data, "/home/jsarrazin/Bureau/test zone/coupling_maps/"+title+"_"+date_time_str+".fits")
     print("check")
 
-def run_createPixelMap(folder, destination, pixel_min=100, pixel_max=1600, pixel_wide=3, output_channels=38, file_patterns=["**/*.fits"]):
+def run_createPixelMap(folder, destination, pixel_min=20, pixel_max=1600, pixel_wide=3, output_channels=38, file_patterns=["**/*.fits"]):
     filelist = process_files(folder, file_patterns)
     raw_Image, header = raw_image_clean(filelist)
     quick_fits(raw_Image)
@@ -332,7 +332,7 @@ if __name__ == "__main__":
 
 
     # Default values
-    pixel_min = 100
+    pixel_min = 20
     pixel_max = 1600
     pixel_wide = 2
     output_channels = 38

@@ -583,6 +583,7 @@ if __name__ == "__main__":
     header['NSINGUL'] = Nsingular  # Add number of singular values
     header['FLUXTHR'] = flux_threshold  # Add flux threshold
     header['CHI2THR'] = chi2_threshold  # Add chi2 threshold
+    header['CM_CHECK'] = np.random.randint(0, 2**32, dtype=np.uint32)
 
     # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
     os.makedirs(output_dir, exist_ok=True)

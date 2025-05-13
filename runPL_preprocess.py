@@ -105,27 +105,49 @@ def preprocess(filelist_pixelmap,files_by_dir):
     pixel_wide = pixelMap.pixel_wide
     output_channels = pixelMap.output_channels
     traces_loc = pixelMap.traces_loc
-
+    pm_check = pixelMap.pm_check
 
     # Process each directory separately 
     for dir_path, files in files_by_dir.items():
         raw_image = None
         center_image = None
         files_out = []
+
+        # create a directory named preproc if it does not exist
+        preproc_dir_path = os.path.join(dir_path, "preproc")
+        if not os.path.exists(preproc_dir_path):
+            os.makedirs(preproc_dir_path)
+
         
         for file in tqdm(files[:], desc=f"Pre-processing of files in {dir_path}"):
             data = fits.getdata(file)
             header = fits.getheader(file)
-            object = header.get('OBJECT', "NONAME")
             date = header.get('DATE', 'NODATE')
-            type = header.get('DATA-TYP',None)
+
+
+            header['X_FIRTYP'] = "PREPROC"
+            header['ORG_NAME'] = os.path.basename(file)
+            header['PIX_MIN'] = pixel_min
+            header['PIX_MAX'] = pixel_max
+            header['PIX_WIDE'] = pixel_wide
+            header['OUT_CHAN'] = output_channels
+            header['PIXELS'] = filelist_pixelmap[-1]
+            header['PM_CHECK'] = pm_check
+
             date_preproc = datetime.fromtimestamp(os.path.getctime(file)).strftime('%Y-%m-%dT%H:%M:%S')
-
-            header['GAIN'] = 1
-
             if date == 'NODATE':
                 header['DATE'] = date_preproc
                 date = date_preproc
+
+            output_filename = runlib.create_output_filename(header)
+            output_filename_full = os.path.join(preproc_dir_path, output_filename)
+
+            # Check if the file already exists
+            if os.path.exists(output_filename_full):
+                existing_header = fits.getheader(output_filename_full)
+                if existing_header.get('PM_CHECK') == pm_check:
+                    print(f"File {output_filename_full} already exists and PM_CHECK matches. Skipping.")
+                    continue
 
             if len(data.shape) == 2:
                 data = data[None]
@@ -151,18 +173,12 @@ def preprocess(filelist_pixelmap,files_by_dir):
 
             comp_hdu = fits.PrimaryHDU(data_cut, header=header)
 
-            # Update the header with the values read in the headers above
-            comp_hdu.header['X_FIRTYP'] = "PREPROC"
-            comp_hdu.header['ORG_NAME'] = os.path.basename(file)
-            comp_hdu.header['PIX_MIN'] = pixel_min
-            comp_hdu.header['PIX_MAX'] = pixel_max
-            comp_hdu.header['PIX_WIDE'] = pixel_wide
-            comp_hdu.header['OUT_CHAN'] = output_channels
-            comp_hdu.header['PIXELS'] = filelist_pixelmap[-1]
+            # Add quality control values to header with the values read in the header above
             comp_hdu.header['QC_SHIFT'] = centered
             comp_hdu.header['QC_BACK'] = perc_background[1]
             comp_hdu.header['QC_BACKR'] = (perc_background[2]-perc_background[0])/2*np.sqrt(2)
             comp_hdu.header['QC_FLUX'] = flux_mean
+
 
             # Add the MODULATION extension from the original file to the new FITS file
             if 'MODULATION' in fits.open(file):
@@ -170,15 +186,12 @@ def preprocess(filelist_pixelmap,files_by_dir):
                 comp_hdu.header['MOD_LEN'] = modulation_hdu.header['NAXIS2']
                 comp_hdu = fits.HDUList([comp_hdu, modulation_hdu])
 
-            # create a directory named preproc if it does not exist
-            preproc_dir_path = os.path.join(dir_path, "preproc")
-            if not os.path.exists(preproc_dir_path):
-                os.makedirs(preproc_dir_path)
-            
-            output_filename = runlib.create_output_filename(header)
             files_out += [output_filename]
-            comp_hdu.writeto(os.path.join(preproc_dir_path, output_filename), overwrite=True, output_verify='fix', checksum=True)
+            comp_hdu.writeto(output_filename_full, overwrite=True, output_verify='fix', checksum=True)
             
+        if len(files_out) == 0:
+            print(f"No files to process in {dir_path}.")
+            continue
 
         # copy filelist_pixelmap[-1] to the preproc directory
         shutil.copy(filelist_pixelmap[-1], preproc_dir_path)
