@@ -425,7 +425,7 @@ if __name__ == "__main__":
 
         # Pass the parsed options to the function
         modID=options.modID
-        object_name = object_name
+        object_name = options.object_name
         Nsingular=options.Nsingular
         wavelength_smooth=options.wavelength_smooth
         make_movie=options.make_movie
