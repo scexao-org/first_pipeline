@@ -295,7 +295,7 @@ if __name__ == "__main__":
             filelist_pixelmap,files_by_dir = filter_filelist(new_files , filelist_pixelmap)
             preprocess(filelist_pixelmap,files_by_dir)
         else:
-            print("Waiting for new files...", end="\r")
+            print("Waiting for new files for the next %is"%(int(loop+time_start-time.time())), end="\r")
 
 
 # %%
