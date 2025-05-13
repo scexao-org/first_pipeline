@@ -286,9 +286,16 @@ if __name__ == "__main__":
     
     while time.time()+time_wait < loop+time_start:
         time.sleep(time_wait)
-        filelist=runlib.get_filelist( file_patterns )
-        filelist_pixelmap=runlib.get_filelist( pixel_map )
-        filelist_pixelmap,files_by_dir = filter_filelist(filelist , filelist_pixelmap)
-        preprocess(filelist_pixelmap,files_by_dir)
+        filelist_new=runlib.get_filelist( file_patterns )
+        # Check for new files in filelist
+        new_files = [file for file in filelist_new if file not in filelist]
+        if new_files:
+            print(f"New files detected: {new_files}")
+            filelist.extend(new_files)
+            filelist_pixelmap,files_by_dir = filter_filelist(new_files , filelist_pixelmap)
+            preprocess(filelist_pixelmap,files_by_dir)
+        else:
+            print("Waiting for new files...", end="\r")
+
 
 # %%
