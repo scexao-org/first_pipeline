@@ -282,6 +282,11 @@ if __name__ == "__main__":
 
     if pixel_map is None:
         pixel_map = file_patterns
+    if loop > 0:
+        plot_sum = False
+    else:
+        plot_sum = True
+
 
     time_start = time.time()
     time_wait = 30 # in seconds
@@ -289,7 +294,7 @@ if __name__ == "__main__":
     filelist=runlib.get_filelist( file_patterns )
     filelist_pixelmap=runlib.get_filelist( pixel_map )
     filelist_pixelmap,files_by_dir = filter_filelist(filelist , filelist_pixelmap)
-    preprocess(filelist_pixelmap,files_by_dir, plot_sum = True)
+    preprocess(filelist_pixelmap,files_by_dir, plot_sum = plot_sum)
     
     while time.time()+time_wait < loop+time_start:
         time.sleep(time_wait)
