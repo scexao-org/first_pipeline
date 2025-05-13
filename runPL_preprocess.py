@@ -28,6 +28,7 @@ from datetime import datetime
 from tqdm import tqdm
 import runPL_library_io as runlib
 import runPL_library_basic as basic
+import runPL_library_imaging as runlib_i
 import shutil
 from collections import defaultdict
 import time
@@ -190,6 +191,13 @@ def preprocess(filelist_pixelmap,files_by_dir):
                 comp_hdu.header['MOD_LEN'] = modulation_hdu.header['NAXIS2']
                 comp_hdu = fits.HDUList([comp_hdu, modulation_hdu])
 
+                #make coupling map
+                xmod = fits.getdata(file,'MODULATION')['XMOD']
+                ymod = fits.getdata(file,'MODULATION')['YMOD']
+                fluxes = data_cut_pixels.mean(axis=(1,2,3))
+                fig= runlib_i.plot_couplinng_map(fluxes, xmod, ymod)
+                fig.savefig(output_filename_full[:-5]+".png", dpi=300)
+
             files_out += [output_filename]
             comp_hdu.writeto(output_filename_full, overwrite=True, output_verify='fix', checksum=True)
             
@@ -236,34 +244,51 @@ if __name__ == "__main__":
     parser = OptionParser(usage)
     # Default values
     default_folder ="."
-    loop = 1
+    loop = 0
+    pixel_map = None
 
     # Add options for these values
-    parser.add_option("--pixel_map", type="string", default=None,
-                    help="Force to select which pixel map file to use (default: the one in the directory)")
-    parser.add_option("--loop", type="int", default=None,
+    parser.add_option("--pixel_map", type="string", default=pixel_map,
+                    help="Force to select which pixel map file to use")
+    parser.add_option("--loop", type="int", default=1,
                     help="loop for X seconds (default: %default)")
 
 
-    (options, args) = parser.parse_args()
-    file_patterns=args if args else ['*.fits','./pixelmaps/*.fits']
+    if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
+        os.environ.get('SPYDER_DEBUG_FILE')):
+        print("Running in compiler^")
+        if getpass.getuser() == "slacour":
+            file_patterns = "/Users/slacour/DATA/LANTERNE/2025-05-13/firstpl/firstpl_19:51:23.573368642.fits"
+            pixel_map = "/Users/slacour/DATA/LANTERNE/2025-05-13/preproc/firstpl_2025-05-13T09:10:06_PIXELMAP.fits"
+        if getpass.getuser() == "jsarrazin":
+            file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
+            pixel_map = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
+        if getpass.getuser() == "ehuby":
+            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
+    else:
+        (options, args) = parser.parse_args()
+        file_patterns=args if args else ['*.fits','./pixelmaps/*.fits']
 
-    # If the user specifies a pixel map use it, otherwise look into the arguments
-    pixel_map = options.pixel_map
+        # If the user specifies a pixel map use it, otherwise look into the arguments
+        pixel_map = options.pixel_map
+        loop = options.loop
+
     if pixel_map is None:
         pixel_map = file_patterns
-
 
     time_start = time.time()
     time_wait = 30 # in seconds
 
-    while time.time() < loop+time_start:
+    filelist=runlib.get_filelist( file_patterns )
+    filelist_pixelmap=runlib.get_filelist( pixel_map )
+    filelist_pixelmap,files_by_dir = filter_filelist(filelist , filelist_pixelmap)
+    preprocess(filelist_pixelmap,files_by_dir)
+    
+    while time.time()+time_wait < loop+time_start:
+        time.sleep(time_wait)
         filelist=runlib.get_filelist( file_patterns )
         filelist_pixelmap=runlib.get_filelist( pixel_map )
         filelist_pixelmap,files_by_dir = filter_filelist(filelist , filelist_pixelmap)
         preprocess(filelist_pixelmap,files_by_dir)
-        if time.time() < loop+time_start-time_wait:
-            print("Waiting for new files to process...")
-            time.sleep(time_wait)
 
 # %%

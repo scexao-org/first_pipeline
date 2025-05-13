@@ -21,6 +21,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 from datetime import datetime
 from tqdm import tqdm
 import runPL_library_basic as basic
+import matplotlib.pyplot as plt
+plt.ion()
 
 def create_movie_cross(datacube):
 
@@ -123,68 +125,68 @@ def save_all_as_PDF(output_dir = "/home/jsarrazin/Bureau/test zone/coupling_maps
     print(f"All plots saved to {pdf_filename}")
     return 1
 
+def plot_couplinng_map(fluxes, xmod, ymod):
+
+    Ndit = len(fluxes)
+    Nmod = len(xmod)
+    Ncube = Ndit//Nmod
+
+    if (Ncube*Nmod)!=Ndit:
+        print("WARNING, CUBE not multiple of modulation pattern")
+        print("filling with zeros")
+        Ncube += 1
+
+    size_new = (Ncube,Nmod)
+    size_old = Ndit
+
+    flux_padded=np.zeros(np.prod(size_new))
+    flux_padded[:size_old]=fluxes
+    flux_padded=flux_padded.reshape(size_new)
+
+    plt.close("Coupling Map")
+    fig,axs = plt.subplots(Ncube, num="Coupling Map", figsize=(8, 6*Ncube), clear=True,squeeze=False)
+    for c in range(Ncube):
+        fluxes = flux_padded[c]
+        popt = basic.fit_gaussian_on_flux(fluxes, xmod, ymod)
+        x_fit=popt[1]
+        y_fit=popt[2]
+
+        xmin, xmax   = np.min(xmod), np.max(xmod)
+        ymin, ymax   = np.min(ymod), np.max(ymod)
+
+        # Define the grid for interpolation
+        grid_x, grid_y = np.mgrid[xmin:xmax:500j, ymin:ymax:500j]  # 500x500 grid
+
+        # Interpolate the fluxes onto the grid
+        flux_map = griddata((xmod, ymod), fluxes, (grid_x, grid_y), method='nearest')
+
+
+        # Generate the fitted Gaussian for plotting
+        fitted_gaussian = basic.gaussian_2d((grid_x, grid_y), *popt).reshape(grid_x.shape)
+
+        # Plot the contours of the fitted Gaussian on top of the image
+        # Plot the interpolated 2D image
+
+        axs[c,0].imshow(flux_map.T, extent=(xmin, xmax, ymin, ymax), origin="lower", aspect='auto')
+        axs[c,0].scatter(xmod, ymod, c='red', s=1, label='Data Points')
+        fig.colorbar(axs[c,0].images[-1], ax=axs[c,0], label="Mean Flux per pixel")
+        axs[c,0].set_xlabel("X")
+        axs[c,0].set_ylabel("Y")
+        axs[c,0].set_title("(Xmod,Ymod) maximum position: (%.3f,%.3f)"%(x_fit,y_fit))
+        axs[c,0].contour(grid_x, grid_y, fitted_gaussian, levels=10, colors='red', linewidths=0.8)
+        axs[c,0].set_aspect('equal')
+    
+    return fig
+
+
 def generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, singular_values, 
                    Nsingular, chi2_delta, flux_goodData, modes_rect, modes_mean, 
                    chi2_goodData, flux_threshold, chi2_threshold, output_dir):
 
+
     fluxes = datacube.mean(axis=(0,1,2))
-    popt = basic.fit_gaussian_on_flux(fluxes, xmod, ymod)
-    x_fit=popt[1]
-    y_fit=popt[2]
-
-    xmin, xmax   = np.min(xmod), np.max(xmod)
-    ymin, ymax   = np.min(ymod), np.max(ymod)
-
-    # Define the grid for interpolation
-    grid_x, grid_y = np.mgrid[xmin:xmax:500j, ymin:ymax:500j]  # 500x500 grid
-
-    # Interpolate the fluxes onto the grid
-    flux_map = griddata((xmod, ymod), fluxes, (grid_x, grid_y), method='cubic')
-
-    # Prepare data for fitting
-    z = fluxes
-    x = xmod
-    y = ymod
-    amplitude_0=np.max(fluxes)-np.min(fluxes)
-    x_0= x[fluxes.argmax()]
-    y_0= y[fluxes.argmax()]
-    sigma_0 = (x.max()-x.min())/4
-    offset_0=np.min(fluxes)
-
-    # Initial guess for the parameters
-    initial_guess = (amplitude_0,x_0,y_0,sigma_0,offset_0)
-
-    # Fit the Gaussian
-    print("Fitting Gaussian...")
-    try:
-        popt, _ = curve_fit(basic.gaussian_2d, (x, y), z, p0=initial_guess)
-        x_fit=popt[1]
-        y_fit=popt[2]
-    except RuntimeError as e:
-        print("Error in curve_fit:", e)
-        print("Using initial guess for parameters.")
-        popt = initial_guess
-
-
-    # Generate the fitted Gaussian for plotting
-    fitted_gaussian = basic.gaussian_2d((grid_x, grid_y), *popt).reshape(grid_x.shape)
-    print("Done fitting Gaussian...")
-
-    # Plot the contours of the fitted Gaussian on top of the image
-    # Plot the interpolated 2D image
-    import matplotlib.pyplot as plt
-    plt.ion()
-
-    plt.figure("Interpolated Flux",clear=True)
-    plt.imshow(flux_map.T, extent=(xmin, xmax, ymin, ymax), origin="lower", aspect='auto')
-    plt.scatter(xmod, ymod, c='red', s=1, label='Data Points')
+    plot_couplinng_map(fluxes, xmod, ymod)
     plt.scatter(xmod[masque_positions], ymod[masque_positions], c='w', s=3, label='Data Points')
-    plt.colorbar(label="Flux")
-    plt.xlabel("X")
-    plt.ylabel("Y")
-    plt.title("(Xmod,Ymod) maximum position: (%.3f,%.3f)"%(x_fit,y_fit))
-    plt.contour(grid_x, grid_y, fitted_gaussian, levels=10, colors='red', linewidths=0.8)
-
 
     # Singular values plot
 

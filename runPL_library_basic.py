@@ -338,6 +338,8 @@ def fit_gaussian_on_flux(fluxes, xmod, ymod):
         popt, _ = curve_fit(gaussian_2d, (x, y), z, p0=initial_guess)
     except RuntimeError:
         print("Error: Gaussian fit failed")
-        popt = initial_guess
+        popt = np.array(initial_guess)
+        popt[1] = 0.0
+        popt[2] = 0.0
 
     return popt
