@@ -120,9 +120,8 @@ def preprocess(filelist_pixelmap,files_by_dir):
 
         
         for file in tqdm(files[:], desc=f"Pre-processing of files in {dir_path}"):
-            data = fits.getdata(file)
+            # first read the header of the file
             header = fits.getheader(file)
-            date = header.get('DATE', 'NODATE')
 
 
             header['X_FIRTYP'] = "PREPROC"
@@ -133,7 +132,9 @@ def preprocess(filelist_pixelmap,files_by_dir):
             header['OUT_CHAN'] = output_channels
             header['PIXELS'] = filelist_pixelmap[-1]
             header['PM_CHECK'] = pm_check
+            header['X_FIRMID'] = int(header['X_FIRMID']) # for old data reduction
 
+            date = header.get('DATE', 'NODATE')
             date_preproc = datetime.fromtimestamp(os.path.getctime(file)).strftime('%Y-%m-%dT%H:%M:%S')
             if date == 'NODATE':
                 header['DATE'] = date_preproc
@@ -148,6 +149,9 @@ def preprocess(filelist_pixelmap,files_by_dir):
                 if existing_header.get('PM_CHECK') == pm_check:
                     print(f"File {output_filename_full} already exists and PM_CHECK matches. Skipping.")
                     continue
+
+            # now reading the data
+            data = fits.getdata(file)
 
             if len(data.shape) == 2:
                 data = data[None]
