@@ -149,7 +149,13 @@ def preprocess(filelist_pixelmap,files_by_dir):
             if os.path.exists(output_filename_full):
                 existing_header = fits.getheader(output_filename_full)
                 if existing_header.get('PM_CHECK') == pm_check:
-                    continue
+                    if 'MODULATION' in fits.open(file):
+                        # Check if the MODULATION extension is present in the original file
+                        if 'MODULATION' in fits.open(output_filename_full):
+                            # If it is, we can skip this file
+                            continue
+                    else:
+                        continue
 
             # now reading the data
             data = fits.getdata(file)
@@ -295,7 +301,7 @@ if __name__ == "__main__":
             filelist_pixelmap,files_by_dir = filter_filelist(new_files , filelist_pixelmap)
             preprocess(filelist_pixelmap,files_by_dir)
         else:
-            print("Waiting for new files for the next %is"%(int(loop+time_start-time.time())), end="\r")
+            print("Waiting for new files for the next %i seconds"%(int(loop+time_start-time.time())), end="\r")
 
 
 # %%
