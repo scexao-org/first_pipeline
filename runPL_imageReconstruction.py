@@ -20,8 +20,10 @@ from scipy.interpolate import griddata
 
 import getpass
 import matplotlib
-if "VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode':
+if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode'):
     matplotlib.use('Qt5Agg')
+elif os.environ.get('SPYDER_DEBUG_FILE'):
+    print("Running in Spyder")
 else:
     matplotlib.use('Agg')
      
@@ -64,7 +66,7 @@ usage = """
     --cmap_size: Width of cmap size, in pixels (default: 25)
 """
 
-def filter_filelist(filelist,coupling_map,modID):
+def filter_filelist(filelist,modID=0,object_name="NONE",mod_len=0):
     """
     Filters the input file list to separate coupling map files and dark files based on FITS keywords.
     Raises an error if no valid files are found.
@@ -72,29 +74,60 @@ def filter_filelist(filelist,coupling_map,modID):
     """
 
     # Use the function to clean the filelist
-    if modID == 0:
-        fits_keywords = {'X_FIRTYP': ['PREPROC'],
-                        'DATA-TYP': ['OBJECT','TEST']}
-    else:
-        fits_keywords = {'X_FIRTYP': ['PREPROC'],
-                        'DATA-TYP': ['OBJECT','TEST'],
-                        'X_FIRMID': [modID]}
-    filelist_data = runlib.clean_filelist(fits_keywords, filelist)
-    print("runPL object filelist : ", filelist_data)
+    fits_keywords = {'X_FIRTYP': ['PREPROC'],
+                    'DATA-TYP': ['OBJECT','TEST']}    
+    if modID != 0:
+        fits_keywords['X_FIRMID'] = [str(modID)]
+    if object_name != "NONE":
+        fits_keywords['OBJECT'] = [object_name]
+    if mod_len != 0:
+        fits_keywords['MOD_LEN'] = [mod_len]
+    print(fits_keywords)
+    filelist_cmap = runlib.clean_filelist(fits_keywords, filelist)
+    print("runPL cmap filelist : ", filelist_cmap)
 
     fits_keywords = {'X_FIRTYP': ['PREPROC'],
                     'DATA-TYP': ['DARK']}
     filelist_dark = runlib.clean_filelist(fits_keywords, filelist)
     print("runPL dark filelist : ", filelist_dark)
 
+    # raise an error if filelist_cleaned is empty
+    if len(filelist_cmap) == 0:
+        raise FileNotFoundError("No good file to run cmap")
+    # raise an error if filelist_cleaned is empty
+    if len(filelist_dark) == 0:
+        print("WARNING: No good dark to substract to cmap files")
+
+    # Check if all files have the same value for header['PM_CHECK']
+    pm_check_values = set()
+    combined_filelist = []
+    combined_filelist.extend(filelist_dark)
+    combined_filelist.extend(filelist_cmap)
+    for file in combined_filelist:
+        header = fits.getheader(file)
+        pm_check_values.add(header.get('PM_CHECK', 0))
+        
+    if len(pm_check_values) > 1:
+        print("WARNING: The 'PM_CHECK' values (ie, the pixel map used to preprocess the files) \n are not consistent across all files!")
+        print(f"Found values: {pm_check_values}")
+
+    # for each file in filelist_cmap find the closest dark file in filelist_dark with, by priority, first the directory in which the file is, and then by the date in the "DATE" fits keyword, and second, the directory in which the file is
+
+    files_with_dark = {cmap: runlib.find_closest_dark(cmap, filelist_dark) for cmap in filelist_cmap}
+
+    return files_with_dark
+
+def filter_couplingmapfile(cmaplist):
+    """
+    Filters the input file list to separate coupling map files and dark files based on FITS keywords.
+    Raises an error if no valid files are found.
+    Returns a dictionary mapping coupling map files to their closest dark files.
+    """
+
     fits_keywords = {'X_FIRTYP': ['COUPLINGMAP']}
 
-    filelist_cmap = runlib.clean_filelist(fits_keywords, coupling_map)
+    filelist_cmap = runlib.clean_filelist(fits_keywords, cmaplist)
     print("runPL object filelist : ", filelist_cmap)
-
-    # raise an error if filelist_cleaned is empty
-    if len(filelist_data) == 0:
-        raise FileNotFoundError("No good file to process")
 
     # raise an error if filelist_cleaned is empty
     if len(filelist_cmap) == 0:
@@ -102,13 +135,11 @@ def filter_filelist(filelist,coupling_map,modID):
 
     # raise an error if filelist_cleaned is more than one
     if len(filelist_cmap) > 1:
-        raise ValueError("Two coupling maps to use! I can only use one.\n Please specify which one to use with the option --coupling_map")
+        raise ValueError("Too many coupling maps to use! I can only use one.\n Please specify which one to use with the option --coupling_map")
 
     # Check if all files have the same value for header['PM_CHECK']
     pm_check_values = set()
     combined_filelist = []
-    combined_filelist.extend(filelist_data)
-    combined_filelist.extend(filelist_dark)
     combined_filelist.extend(filelist_cmap)
     for file in combined_filelist:
         header = fits.getheader(file)
@@ -119,10 +150,9 @@ def filter_filelist(filelist,coupling_map,modID):
         print(f"Found values: {pm_check_values}")
 
     # for each file in filelist_cmap find the closest dark file in filelist_dark with, by priority, first the directory in which the file is, and then by the date in the "DATE" fits keyword, and second, the directory in which the file is
+    # files_with_dark = {cmap: runlib.find_closest_dark(cmap, filelist_dark) for cmap in filelist_data}
 
-    files_with_dark = {cmap: runlib.find_closest_dark(cmap, filelist_dark) for cmap in filelist_data}
-
-    return files_with_dark,filelist_cmap
+    return filelist_cmap
 
 
 
@@ -285,7 +315,8 @@ if __name__ == "__main__":
 
     # default values
     wavelength_smooth = 1
-    modID = 0
+    modID = 3
+    object_name = 'HIP81126'
     save_individual_frames = True
     save_individual_wavelength = True
 
@@ -303,10 +334,14 @@ if __name__ == "__main__":
                     help="Save individual wavelength (default: %default)")
     
 
-    if "VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode':
+    if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or 
+        os.environ.get('SPYDER_DEBUG_FILE')):
         if getpass.getuser() == "slacour":
             file_patterns = "/Users/slacour/DATA/LANTERNE/Mai3/preproc/firstpl_2025-05-09T03:26:36_BETUMA.fits"
             coupling_map = "/Users/slacour/DATA/LANTERNE/Mai/preproc2/couplingmaps"
+        if getpass.getuser() == "ehuby" :
+            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/firstpl_*.fits"
+            coupling_map = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/couplingmaps_TETCRB/"
     else:
 
         (options, args) = parser.parse_args()
@@ -324,10 +359,10 @@ if __name__ == "__main__":
 
 
     filelist=runlib.get_filelist( file_patterns )
-    filelist_pixelmap=runlib.get_filelist(coupling_map)
+    cmaplist=runlib.get_filelist(coupling_map)
 
-    files_with_dark,filelist_cmap = filter_filelist(filelist,filelist_pixelmap,modID)
-
+    files_with_dark = filter_filelist(filelist,modID=modID,object_name=object_name,mod_len=595)
+    filelist_cmap   = filter_couplingmapfile(cmaplist)
 
     couplingMap = basic.CouplingMap(filelist_cmap[0])
 
@@ -373,7 +408,7 @@ if __name__ == "__main__":
     # Define the grid for interpolation
     # calcul de la grille de l'image que l'on souhaite reconstruire
     # if it is for a quick look of the real time display, use xmod=ymod=0
-    Npixel = 100
+    Npixel = 150
     grid_x, grid_y = basic.make_image_grid(couplingMap, Npixel, xmod, ymod)
 
     # create the image maps
