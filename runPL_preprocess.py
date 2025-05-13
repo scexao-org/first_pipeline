@@ -242,12 +242,12 @@ if __name__ == "__main__":
                     help="Force to select which pixel map file to use (default: the one in the directory)")
 
     (options, args) = parser.parse_args()
-    file_patterns=args if args else ['*.fits']
+    file_patterns=args if args else ['*.fits','./pixelmaps/*.fits']
 
     # If the user specifies a pixel map use it, otherwise look into the arguments
     pixel_map = options.pixel_map
     if pixel_map is None:
-        pixel_map = ['./pixelmaps/*.fits']
+        pixel_map = file_patterns
 
     filelist=runlib.get_filelist( file_patterns )
     filelist_pixelmap=runlib.get_filelist( pixel_map )

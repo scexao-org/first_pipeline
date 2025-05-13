@@ -355,7 +355,7 @@ if __name__ == "__main__":
         # If the user specifies a coupling map, use it, otherwise look into the arguments
         coupling_map = options.coupling_map
         if coupling_map is None:
-            coupling_map = ['./preproc/couplingmaps/*.fits']#file_patterns
+            coupling_map = file_patterns
 
 
     filelist=runlib.get_filelist( file_patterns )
