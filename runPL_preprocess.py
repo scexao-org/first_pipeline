@@ -30,6 +30,7 @@ import runPL_library_io as runlib
 import runPL_library_basic as basic
 import shutil
 from collections import defaultdict
+import time
 
 plt.ion()
 
@@ -147,7 +148,6 @@ def preprocess(filelist_pixelmap,files_by_dir):
             if os.path.exists(output_filename_full):
                 existing_header = fits.getheader(output_filename_full)
                 if existing_header.get('PM_CHECK') == pm_check:
-                    print(f"File {output_filename_full} already exists and PM_CHECK matches. Skipping.")
                     continue
 
             # now reading the data
@@ -236,10 +236,14 @@ if __name__ == "__main__":
     parser = OptionParser(usage)
     # Default values
     default_folder ="."
+    loop = 1
 
     # Add options for these values
     parser.add_option("--pixel_map", type="string", default=None,
                     help="Force to select which pixel map file to use (default: the one in the directory)")
+    parser.add_option("--loop", type="int", default=None,
+                    help="loop for X seconds (default: %default)")
+
 
     (options, args) = parser.parse_args()
     file_patterns=args if args else ['*.fits','./pixelmaps/*.fits']
@@ -249,10 +253,17 @@ if __name__ == "__main__":
     if pixel_map is None:
         pixel_map = file_patterns
 
-    filelist=runlib.get_filelist( file_patterns )
-    filelist_pixelmap=runlib.get_filelist( pixel_map )
-    filelist_pixelmap,files_by_dir = filter_filelist(filelist , filelist_pixelmap)
 
-    preprocess(filelist_pixelmap,files_by_dir)
+    time_start = time.time()
+    time_wait = 30 # in seconds
+
+    while time.time() < loop+time_start:
+        filelist=runlib.get_filelist( file_patterns )
+        filelist_pixelmap=runlib.get_filelist( pixel_map )
+        filelist_pixelmap,files_by_dir = filter_filelist(filelist , filelist_pixelmap)
+        preprocess(filelist_pixelmap,files_by_dir)
+        if time.time() < loop+time_start-time_wait:
+            print("Waiting for new files to process...")
+            time.sleep(time_wait)
 
 # %%
