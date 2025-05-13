@@ -90,7 +90,7 @@ def filter_filelist(filelist , filelist_pixelmap):
     return filelist_pixelmap,files_by_dir
 
 
-def preprocess(filelist_pixelmap,files_by_dir):
+def preprocess(filelist_pixelmap,files_by_dir, plot_sum =False):
     """
     Preprocesses the data files using the provided pixel map and organizes them by directory.
     This function handles the preprocessing of raw data files, applying the pixel map to extract
@@ -211,27 +211,28 @@ def preprocess(filelist_pixelmap,files_by_dir):
             print(f"No files to process in {dir_path}.")
             continue
 
-        # copy filelist_pixelmap[-1] to the preproc directory
-        shutil.copy(filelist_pixelmap[-1], preproc_dir_path)
+        if plot_sum:
+            # copy filelist_pixelmap[-1] to the preproc directory
+            shutil.copy(filelist_pixelmap[-1], preproc_dir_path)
 
-        # Generate and save the figure for the directory
-        fig,ax = runlib.make_figure_of_trace(raw_image, traces_loc, pixel_wide, pixel_min, pixel_max)
-        fig.savefig(os.path.join(preproc_dir_path, f"firstpl_"+date_preproc+"_PREPROC.png"), dpi=300)
+            # Generate and save the figure for the directory
+            fig,ax = runlib.make_figure_of_trace(raw_image, traces_loc, pixel_wide, pixel_min, pixel_max)
+            fig.savefig(os.path.join(preproc_dir_path, f"firstpl_"+date_preproc+"_PREPROC.png"), dpi=300)
 
-        # print("file saved as: " + os.path.join(preproc_dir_path, f"firstpl_PIXELS_{os.path.basename(dir_path)}.png"))
+            # print("file saved as: " + os.path.join(preproc_dir_path, f"firstpl_PIXELS_{os.path.basename(dir_path)}.png"))
 
-        fig = figure("Vertical offset of the dispersed outputs with respect to extracted windows", clear=True, figsize=(5+len(files_out)*0.1, 6))
-        imshow(np.log(center_image), aspect='auto', interpolation='none', extent=(-0.5, - 0.5 + len(center_image[0]), +pixel_wide + 0.5, - pixel_wide - 0.5))
-        plt.title(f"{fig.get_label()}")
-        plt.plot([-0.5, center_image.shape[1] - 0.5], [0, 0], ':', color='k')
-        plt.plot(center_image.argmax(axis=0)-pixel_wide, 'o-', color='r')
-        plt.xticks(ticks=np.arange(len(files_out)), labels=files_out, rotation=90)
-        plt.ylabel("File number")
-        plt.ylabel("Pixel shift")
-        plt.tight_layout()
-        filename_out = os.path.join(preproc_dir_path, f"firstpl_"+date_preproc+"_PREPROCSHIFT.png")
-        fig.savefig(filename_out, dpi=300)
-        print("PNG saved as: "+filename_out)
+            fig = figure("Vertical offset of the dispersed outputs with respect to extracted windows", clear=True, figsize=(5+len(files_out)*0.1, 6))
+            imshow(np.log(center_image), aspect='auto', interpolation='none', extent=(-0.5, - 0.5 + len(center_image[0]), +pixel_wide + 0.5, - pixel_wide - 0.5))
+            plt.title(f"{fig.get_label()}")
+            plt.plot([-0.5, center_image.shape[1] - 0.5], [0, 0], ':', color='k')
+            plt.plot(center_image.argmax(axis=0)-pixel_wide, 'o-', color='r')
+            plt.xticks(ticks=np.arange(len(files_out)), labels=files_out, rotation=90)
+            plt.ylabel("File number")
+            plt.ylabel("Pixel shift")
+            plt.tight_layout()
+            filename_out = os.path.join(preproc_dir_path, f"firstpl_"+date_preproc+"_PREPROCSHIFT.png")
+            fig.savefig(filename_out, dpi=300)
+            print("PNG saved as: "+filename_out)
     
 
 def run_preprocess(folder = ".",pixel_map_file = None):
@@ -288,7 +289,7 @@ if __name__ == "__main__":
     filelist=runlib.get_filelist( file_patterns )
     filelist_pixelmap=runlib.get_filelist( pixel_map )
     filelist_pixelmap,files_by_dir = filter_filelist(filelist , filelist_pixelmap)
-    preprocess(filelist_pixelmap,files_by_dir)
+    preprocess(filelist_pixelmap,files_by_dir, plot_sum = True)
     
     while time.time()+time_wait < loop+time_start:
         time.sleep(time_wait)
