@@ -301,7 +301,7 @@ if __name__ == "__main__":
     else:
 
         (options, args) = parser.parse_args()
-        file_patterns=args if args else ['*.fits','../couplingmaps/*.fits']
+        file_patterns=args if args else ['*.fits']
 
         wavelength_smooth=options.wavelength_smooth
         modID=options.modID
@@ -314,7 +314,7 @@ if __name__ == "__main__":
         # If the user specifies a coupling map, use it, otherwise look into the arguments
         coupling_map = options.coupling_map
         if coupling_map is None:
-            coupling_map = file_patterns
+            coupling_map = file_patterns +['../couplingmaps/*.fits']
 
 
     filelist=runlib.get_filelist(file_patterns)
