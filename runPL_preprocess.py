@@ -274,14 +274,14 @@ if __name__ == "__main__":
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
     else:
         (options, args) = parser.parse_args()
-        file_patterns=args if args else ['*.fits','../pixelmaps/*.fits']
+        file_patterns=args if args else ['*.fits']
 
         # If the user specifies a pixel map use it, otherwise look into the arguments
         pixel_map = options.pixel_map
         loop = options.loop
 
     if pixel_map is None:
-        pixel_map = file_patterns
+        pixel_map = file_patterns + ['../pixelmaps/*.fits']
     if loop > 0:
         plot_sum = False
     else:
