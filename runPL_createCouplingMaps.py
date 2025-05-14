@@ -436,7 +436,7 @@ if __name__ == "__main__":
     print(file_patterns)
     filelist = runlib.get_filelist(file_patterns)
     print(filelist)
-    files_with_dark = runlib.filter_filelist(filelist, modID=modID, object_name=object_name)
+    files_with_dark = runlib.filter_filelist(filelist, modID=modID, object_name=object_name, modScale=modScale)
 
     # run_create_coupling_maps(files_with_dark, 
     #                             wavelength_smooth = wavelength_smooth,

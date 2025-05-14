@@ -315,15 +315,20 @@ if __name__ == "__main__":
 
     # default values
     wavelength_smooth = 1
-    modID = 3
-    object_name = 'HIP81126'
     save_individual_frames = True
     save_individual_wavelength = True
+    modID = 0
+    modScale = 0
+    object_name = "NONE"
 
 
     # Add options for these values
+    parser.add_option("--object_name", type="string", default="NONE",
+                    help="Selection of the data by the Object name (default: %default -- no selection)")
     parser.add_option("--modID", type="int", default=modID,
-                      help="Selection of the modulation pattern by user [0 == first in the list of file] (default: %default)")
+                      help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
+    parser.add_option("--modScale", type="int", default=modScale,
+                      help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
     parser.add_option("--coupling_map", type="string", default=None,
                     help="Force to select which coupling map file to use (default: the one in the directory)")
     parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,
@@ -342,6 +347,7 @@ if __name__ == "__main__":
         if getpass.getuser() == "ehuby" :
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/firstpl_*.fits"
             coupling_map = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/couplingmaps_TETCRB/"
+            object_name = 'HIP81126'
     else:
 
         (options, args) = parser.parse_args()
@@ -349,6 +355,9 @@ if __name__ == "__main__":
 
         wavelength_smooth=options.wavelength_smooth
         modID=options.modID
+        modScale=options.modScale
+        object_name=options.object_name
+
         save_individual_frames=options.save_individual_frames
         save_individual_wavelength=options.save_individual_wavelength
 
@@ -358,10 +367,10 @@ if __name__ == "__main__":
             coupling_map = file_patterns
 
 
-    filelist=runlib.get_filelist( file_patterns )
+    filelist=runlib.get_filelist(file_patterns)
     cmaplist=runlib.get_filelist(coupling_map)
 
-    files_with_dark = filter_filelist(filelist,modID=modID,object_name=object_name,mod_len=595)
+    files_with_dark = runlib.filter_filelist(filelist, modID=modID, object_name=object_name, modScale=modScale)
     filelist_cmap   = filter_couplingmapfile(cmaplist)
 
     couplingMap = basic.CouplingMap(filelist_cmap[0])
