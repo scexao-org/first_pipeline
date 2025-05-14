@@ -385,26 +385,26 @@ if __name__ == "__main__":
 
     # Default values
     modID = 0
+    modScale = 0
     wavelength_smooth = 20
     wavelength_bin = 15
-    make_movie = False
     Nsingular=19*3 #for cmap=7, 57 is too high (34, 19 for plots is max for novemeber data in cmap=7)
     object_name = "NONE"
 
 
     # Add options for these values
-    parser.add_option("--modID", type="int", default=modID,
-                      help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
-    parser.add_option("--Nsingular", type="int", default=Nsingular,
-                      help="Number of singular values to use (default: %default)")
     parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,
                     help="smoothing factor for wavelength (default: %default)")
     parser.add_option("--wavelength_bin", type="int", default=wavelength_bin,
                     help="binning factor for wavelength (default: %default)")
-    parser.add_option("--make_movie", action="store_true", default=make_movie,
-                    help="Create a nice mp4 with all datacubes -- can be long (default: %default)")
     parser.add_option("--object_name", type="string", default="NONE",
                     help="Selection of the data by the Object name (default: %default -- no selection)")
+    parser.add_option("--modID", type="int", default=modID,
+                      help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
+    parser.add_option("--modScale", type="int", default=modScale,
+                      help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
+    parser.add_option("--Nsingular", type="int", default=Nsingular,
+                      help="Number of singular values to use (default: %default)")
     
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
         os.environ.get('SPYDER_DEBUG_FILE')):
@@ -425,10 +425,10 @@ if __name__ == "__main__":
 
         # Pass the parsed options to the function
         modID=options.modID
+        modScale=options.modScale
         object_name = options.object_name
         Nsingular=options.Nsingular
         wavelength_smooth=options.wavelength_smooth
-        make_movie=options.make_movie
         wavelength_bin=options.wavelength_bin
         file_patterns=args if args else ['*.fits','./preproc/*.fits']
 
@@ -460,10 +460,17 @@ if __name__ == "__main__":
 
     modScale = datalist[0].modScale
     datalist = [d for d in datalist if d.modScale == modScale]
+    modID = datalist[0].modID
+    datalist = [d for d in datalist if d.modID == modID]
+    object_name = datalist[0].object_name
+    datalist = [d for d in datalist if d.object_name == object_name]
 
     if len(datalist) == 0:
-        print("No data with the selected modulation parameters",modID,modScale)
+        error_string = "No data with the selected modulation parameters %i, %i, %s"%(modID,modScale,object_name)
+        raise FileNotFoundError(error_string)
 
+    filenames= [d.filename for d in datalist]
+    
     datacube=np.concatenate([d.data for d in datalist])
     datacube=datacube.transpose((3,2,0,1))
 
@@ -584,6 +591,8 @@ if __name__ == "__main__":
     header['FLUXTHR'] = flux_threshold  # Add flux threshold
     header['CHI2THR'] = chi2_threshold  # Add chi2 threshold
     header['CM_CHECK'] = np.random.randint(0, 2**32, dtype=np.uint32)
+    for i, filename in enumerate(filenames):
+        header['FILE_%i' % i] = filename
 
     # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
     os.makedirs(output_dir, exist_ok=True)
@@ -602,10 +611,10 @@ if __name__ == "__main__":
     hdul.writeto(output_filename, overwrite=True)
 
 
-    runlib_i.generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, 
+    runlib_i.generate_plots(filenames, datacube, xmod, ymod, masque_positions, flux_2_data, 
                             singular_values, Nsingular, chi2_delta, flux_goodData, 
                             modes_rect, modes_mean, 
-                            chi2_goodData, flux_threshold, chi2_threshold, output_dir)
+                            chi2_goodData, flux_threshold, chi2_threshold, output_filename)
 
 
 # if __name__ == "__main__":
