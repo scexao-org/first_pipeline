@@ -257,7 +257,7 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
     # Définir le chemin complet du sous-dossier
     if folder.endswith("*fits"):
         folder = folder[:-5]
-    output_dir = os.path.join(folder,"pixelmaps")
+    output_dir = os.path.join(folder,"../pixelmaps")
 
     if os.path.exists(output_dir) and os.path.isdir(output_dir):
         shutil.rmtree(output_dir)

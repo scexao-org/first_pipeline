@@ -116,7 +116,7 @@ def preprocess(filelist_pixelmap,files_by_dir, plot_sum =False):
         files_out = []
 
         # create a directory named preproc if it does not exist
-        preproc_dir_path = os.path.join(dir_path, "preproc")
+        preproc_dir_path = os.path.join(dir_path, "../preproc")
         if not os.path.exists(preproc_dir_path):
             os.makedirs(preproc_dir_path)
 
@@ -274,7 +274,7 @@ if __name__ == "__main__":
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
     else:
         (options, args) = parser.parse_args()
-        file_patterns=args if args else ['*.fits','./pixelmaps/*.fits']
+        file_patterns=args if args else ['*.fits','../pixelmaps/*.fits']
 
         # If the user specifies a pixel map use it, otherwise look into the arguments
         pixel_map = options.pixel_map

@@ -575,7 +575,7 @@ if __name__ == "__main__":
     header = datalist[-1].header
     # Définir le chemin complet du sous-dossier "output/couplingmaps"
     folder = datalist[-1].dirname
-    output_dir = os.path.join(folder,"couplingmaps")
+    output_dir = os.path.join(folder,"../couplingmaps")
 
     header['X_FIRTYP'] = 'COUPLINGMAP'
     # Add date and time to the header

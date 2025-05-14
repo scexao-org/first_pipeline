@@ -266,7 +266,7 @@ if __name__ == "__main__":
     # default values
     wavelength_smooth = 1
     save_individual_frames = True
-    save_individual_wavelength = True
+    save_individual_wavelength = False
     modID = 0
     modScale = 0
     object_name = "NONE"
@@ -301,7 +301,7 @@ if __name__ == "__main__":
     else:
 
         (options, args) = parser.parse_args()
-        file_patterns=args if args else ['*.fits','preproc/*.fits','preproc/couplingmaps/*.fits']
+        file_patterns=args if args else ['*.fits','../couplingmaps/*.fits']
 
         wavelength_smooth=options.wavelength_smooth
         modID=options.modID
@@ -427,7 +427,7 @@ if __name__ == "__main__":
         header['WLSMOOTH'] = wavelength_smooth  # Add wavelength smoothing factor
 
         # Définir le chemin complet du sous-dossier "images"
-        output_dir = os.path.join(d.dirname,"images")
+        output_dir = os.path.join(d.dirname,"../images")
 
         #if os.path.exists(output_dir) and os.path.isdir(output_dir):
         #    shutil.rmtree(output_dir)
