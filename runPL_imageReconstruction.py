@@ -66,56 +66,6 @@ usage = """
     --cmap_size: Width of cmap size, in pixels (default: 25)
 """
 
-def filter_filelist(filelist,modID=0,object_name="NONE",mod_len=0):
-    """
-    Filters the input file list to separate coupling map files and dark files based on FITS keywords.
-    Raises an error if no valid files are found.
-    Returns a dictionary mapping coupling map files to their closest dark files.
-    """
-
-    # Use the function to clean the filelist
-    fits_keywords = {'X_FIRTYP': ['PREPROC'],
-                    'DATA-TYP': ['OBJECT','TEST']}    
-    if modID != 0:
-        fits_keywords['X_FIRMID'] = [str(modID)]
-    if object_name != "NONE":
-        fits_keywords['OBJECT'] = [object_name]
-    if mod_len != 0:
-        fits_keywords['MOD_LEN'] = [mod_len]
-    print(fits_keywords)
-    filelist_cmap = runlib.clean_filelist(fits_keywords, filelist)
-    print("runPL cmap filelist : ", filelist_cmap)
-
-    fits_keywords = {'X_FIRTYP': ['PREPROC'],
-                    'DATA-TYP': ['DARK']}
-    filelist_dark = runlib.clean_filelist(fits_keywords, filelist)
-    print("runPL dark filelist : ", filelist_dark)
-
-    # raise an error if filelist_cleaned is empty
-    if len(filelist_cmap) == 0:
-        raise FileNotFoundError("No good file to run cmap")
-    # raise an error if filelist_cleaned is empty
-    if len(filelist_dark) == 0:
-        print("WARNING: No good dark to substract to cmap files")
-
-    # Check if all files have the same value for header['PM_CHECK']
-    pm_check_values = set()
-    combined_filelist = []
-    combined_filelist.extend(filelist_dark)
-    combined_filelist.extend(filelist_cmap)
-    for file in combined_filelist:
-        header = fits.getheader(file)
-        pm_check_values.add(header.get('PM_CHECK', 0))
-        
-    if len(pm_check_values) > 1:
-        print("WARNING: The 'PM_CHECK' values (ie, the pixel map used to preprocess the files) \n are not consistent across all files!")
-        print(f"Found values: {pm_check_values}")
-
-    # for each file in filelist_cmap find the closest dark file in filelist_dark with, by priority, first the directory in which the file is, and then by the date in the "DATE" fits keyword, and second, the directory in which the file is
-
-    files_with_dark = {cmap: runlib.find_closest_dark(cmap, filelist_dark) for cmap in filelist_cmap}
-
-    return files_with_dark
 
 def filter_couplingmapfile(cmaplist):
     """
