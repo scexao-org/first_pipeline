@@ -58,7 +58,7 @@ usage = """
 def filter_filelist(filelist , filelist_pixelmap):
 
     # Keys to keep only the RAW files
-    fits_keywords = {'X_FIRTYP': ['RAW']}
+    fits_keywords = {'X_FIRTYP': ['RAW'], 'X_FIRTRG': ['EXT']}
         
     # Use the function to clean the filelist
     filelist_rawdata = runlib.clean_filelist(fits_keywords, filelist)
