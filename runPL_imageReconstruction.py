@@ -351,6 +351,16 @@ if __name__ == "__main__":
     Noutput=datalist[0].Noutput
     Ncube=len(datalist)
 
+    # Coupling maps for inspection
+    Npixel = 100
+    couplingmaps = np.mean(datacube, axis=(0,1))
+    # Define the grid for interpolation
+    grid_x, grid_y = np.mgrid[np.min(xmod):np.max(xmod):Npixel*1j, np.min(ymod):np.max(ymod):Npixel*1j]  # 500x500 grid
+    # Interpolate the fluxes onto the grid
+    couplingmaps_interp= np.zeros((len(couplingmaps), Npixel, Npixel))
+    for i,fm in enumerate(couplingmaps):
+        couplingmaps_interp[i] = griddata((xmod, ymod), fm, (grid_x, grid_y), method='cubic').T
+    
     # Convert arg_model values into 2D indices of size cmap_size
     # Utilise pour selectionner les bonnes images 
     # ===> Pas utile pour le quick look
@@ -379,15 +389,6 @@ if __name__ == "__main__":
     # Save image and residual maps to FITS files :
 
 
-    # Coupling maps for inspection
-    couplingmaps = np.mean(datacube, axis=(0,1))
-    # Define the grid for interpolation
-    grid_x, grid_y = np.mgrid[np.min(xmod):np.max(xmod):Npixel*1j, np.min(ymod):np.max(ymod):Npixel*1j]  # 500x500 grid
-    # Interpolate the fluxes onto the grid
-    couplingmaps_interp= np.zeros((len(couplingmaps), Npixel, Npixel))
-    for i,fm in enumerate(couplingmaps):
-        couplingmaps_interp[i] = griddata((xmod, ymod), fm, (grid_x, grid_y), method='cubic').T
-    
 
     for i,d in enumerate(datalist):
         header = d.header

@@ -200,9 +200,10 @@ def preprocess(filelist_pixelmap,files_by_dir, plot_sum =False):
                 #make coupling map
                 xmod = fits.getdata(file,'MODULATION')['XMOD']
                 ymod = fits.getdata(file,'MODULATION')['YMOD']
-                fluxes = data_cut_pixels.mean(axis=(1,2,3))
-                fig= runlib_i.plot_couplinng_map(fluxes, xmod, ymod)
-                fig.savefig(output_filename_full[:-5]+".png", dpi=300)
+                if len(xmod) > 9:
+                    fluxes = data_cut_pixels.mean(axis=(1,2,3))
+                    fig= runlib_i.plot_couplinng_map(fluxes, xmod, ymod)
+                    fig.savefig(output_filename_full[:-5]+".png", dpi=300)
 
             files_out += [output_filename]
             comp_hdu.writeto(output_filename_full, overwrite=True, output_verify='fix', checksum=True)
@@ -265,8 +266,8 @@ if __name__ == "__main__":
         os.environ.get('SPYDER_DEBUG_FILE')):
         print("Running in compiler^")
         if getpass.getuser() == "slacour":
-            file_patterns = "/Users/slacour/DATA/LANTERNE/2025-05-13/firstpl/firstpl_19:51:23.573368642.fits"
-            pixel_map = "/Users/slacour/DATA/LANTERNE/2025-05-13/preproc/firstpl_2025-05-13T09:10:06_PIXELMAP.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/2025-05-15/firstpl/*s"
+            pixel_map = "/Users/slacour/DATA/LANTERNE/2025-05-15/pixelmaps"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             pixel_map = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"

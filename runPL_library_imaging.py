@@ -185,7 +185,8 @@ def generate_plots(filenames, datacube, xmod, ymod, masque_positions, flux_2_dat
 
 
     fluxes = datacube.mean(axis=(0,1,2))
-    plot_couplinng_map(fluxes, xmod, ymod)
+    if len(xmod) >1:
+        plot_couplinng_map(fluxes, xmod, ymod)
     plt.scatter(xmod[masque_positions], ymod[masque_positions], c='w', s=3, label='Data Points')
     # Singular values plot
 
