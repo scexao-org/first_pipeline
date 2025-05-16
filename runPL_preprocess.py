@@ -62,6 +62,13 @@ def filter_filelist(filelist , filelist_pixelmap):
         
     # Use the function to clean the filelist
     filelist_rawdata = runlib.clean_filelist(fits_keywords, filelist)
+
+    fits_keywords = {'X_FIRTYP': ['RAW'], 'DATA-TYP': ['DARK','FLAT']}
+        
+    # Adding the flats and draks which have X_FIRTRG as INT
+    filelist_rawdata = np.append( filelist_rawdata, runlib.clean_filelist(fits_keywords, filelist))
+    filelist_rawdata = np.unique(filelist_rawdata)
+
     print("runPL filelist : ", filelist_rawdata)
 
     # raise an error if filelist_cleaned is empty
@@ -220,7 +227,6 @@ def preprocess(filelist_pixelmap,files_by_dir, plot_sum =False):
             fig,ax = runlib.make_figure_of_trace(raw_image, traces_loc, pixel_wide, pixel_min, pixel_max)
             fig.savefig(os.path.join(preproc_dir_path, f"firstpl_"+date_preproc+"_PREPROC.png"), dpi=300)
 
-            # print("file saved as: " + os.path.join(preproc_dir_path, f"firstpl_PIXELS_{os.path.basename(dir_path)}.png"))
 
             fig = figure("Vertical offset of the dispersed outputs with respect to extracted windows", clear=True, figsize=(5+len(files_out)*0.1, 6))
             imshow(np.log(center_image), aspect='auto', interpolation='none', extent=(-0.5, - 0.5 + len(center_image[0]), +pixel_wide + 0.5, - pixel_wide - 0.5))
