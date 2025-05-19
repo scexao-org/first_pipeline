@@ -219,13 +219,16 @@ def preprocess(filelist_pixelmap,files_by_dir, plot_sum =False):
             print(f"No files to process in {dir_path}.")
             continue
 
-        if plot_sum:
+        if plot_sum == True:
             # copy filelist_pixelmap[-1] to the preproc directory
             shutil.copy(filelist_pixelmap[-1], preproc_dir_path)
+            filename_out = files_out[-1]
+            filename_out = "_".join(filename_out.split("_")[:-2])
+            filename_out_full = os.path.join(preproc_dir_path, filename_out)
 
             # Generate and save the figure for the directory
             fig,ax = runlib.make_figure_of_trace(raw_image, traces_loc, pixel_wide, pixel_min, pixel_max)
-            fig.savefig(os.path.join(preproc_dir_path, f"firstpl_"+date_preproc+"_PREPROC.png"), dpi=300)
+            fig.savefig(filename_out_full+"_PREPROC.png", dpi=300)
 
 
             fig = figure("Vertical offset of the dispersed outputs with respect to extracted windows", clear=True, figsize=(5+len(files_out)*0.1, 6))
@@ -237,9 +240,8 @@ def preprocess(filelist_pixelmap,files_by_dir, plot_sum =False):
             plt.ylabel("File number")
             plt.ylabel("Pixel shift")
             plt.tight_layout()
-            filename_out = os.path.join(preproc_dir_path, f"firstpl_"+date_preproc+"_PREPROCSHIFT.png")
-            fig.savefig(filename_out, dpi=300)
-            print("PNG saved as: "+filename_out)
+            fig.savefig(filename_out_full+"_PREPROCSHIFT.png", dpi=300)
+            print("PNG saved as: "+filename_out_full+"_PREPROCSHIFT.png")
     
 
 def run_preprocess(folder = ".",pixel_map_file = None):
@@ -264,7 +266,7 @@ if __name__ == "__main__":
     # Add options for these values
     parser.add_option("--pixel_map", type="string", default=pixel_map,
                     help="Force to select which pixel map file to use")
-    parser.add_option("--loop", type="int", default=1,
+    parser.add_option("--loop", type="int", default=loop,
                     help="loop for X seconds (default: %default)")
 
 
@@ -311,7 +313,7 @@ if __name__ == "__main__":
         if new_files:
             print(f"New files detected: {new_files}")
             filelist.extend(new_files)
-            filelist_pixelmap,files_by_dir = filter_filelist(new_files , filelist_pixelmap)
+            filelist_pixelmap,files_by_dir = filter_filelist(new_files , filelist_pixelmap, plot_sum= False)
             preprocess(filelist_pixelmap,files_by_dir)
         else:
             print("Waiting for new files for the next %i seconds"%(int(loop+time_start-time.time())), end="\r")
