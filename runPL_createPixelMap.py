@@ -34,18 +34,30 @@ plt.ion()
 
 # Add options
 usage = """
-    usage:  %prog [options] files.fits
+Usage: %prog [options] [file_patterns]
 
-    Goal: Create the pixel map needed to preprocess the data.
+Goal: Create the pixel map needed to preprocess the data.
 
-    Example:
+Arguments:
+    file_patterns       One or more glob patterns for FITS files (default: *.fits)
+
+Input:
+    - Files of type X_FIRTYP=RAW in the directory.
+
+Output:
+    - A FITS file with the pixel map.
+    - A PNG file with the pixel map.
+    
+Options:
+    --pixel_min         Minimum pixel value along wavelength axis (default: 20)
+    --pixel_max         Maximum pixel value along wavelength axis  (default: 1600)
+    --pixel_wide        Window half width (default: 2) (full width = 2*pixel_wide+1)
+    --output_channels   Number of output channels (default: 38)
+
+Examples:
     runPL_createPixelMap.py --pixel_min=20 --pixel_max=1600 --pixel_wide=2 --output_channels=38 *.fits
+    runPL_createPixelMap.py --pixel_min=50 --pixel_max=1500 --output_channels=32 data/*.fits
 
-    Options:
-    --pixel_min: Minimum pixel value (default: 20)
-    --pixel_max: Maximum pixel value (default: 1600)
-    --pixel_wide: Pixel width (default: 3)
-    --output_channels: Number of output channels (default: 38)
 """
 
 

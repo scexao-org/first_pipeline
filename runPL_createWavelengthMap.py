@@ -39,48 +39,28 @@ from runPL_calibrateNeon import its_a_match, run_trials_for_all_combination_of_w
 
 # Add options
 usage = """
-    usage:  %prog [options] files.fits
+Usage: %prog [options]
 
-    Goal: Create a wavelength map from the provided FITS files.
+Goal: Create a wavelength map from the provided FITS files.
 
-    It will get as input a list of files with X_FIRTYP=PREPROC and DATA-TYP=WAVE keywords. 
-    It will also find the corresponding dark files with X_FIRTYP=PREPROC and DATA-TYP=DARK keywords.
-    It will read the wave files and subtract the median of the dark files from them.
-    Then, it will find the highest N peaks in the flux and fit a polynomial to create a wavelength map.
-    The value N is the number of wavelength provided in th wave_list
+Summary:
+- Searches for FITS files with X_FIRTYP=PREPROC and DATA-TYP=WAVE keywords.
+- Finds corresponding dark files (X_FIRTYP=PREPROC, DATA-TYP=DARK).
+- Reads wave files, subtracts the median of the dark files.
+- Detects emission peaks and fits a polynomial to create a wavelength map.
+- N (number of peaks) is determined by the number of wavelengths in --wave_list.
+- Saves the wavelength map as a FITS file in the output directory.
+- Generates and saves figures for visualization.
+- Output files are stored in an "output/wave" directory.
 
-    Example:
-    runPL_createWavelengthMap.py --wave_list="[753.6, 748.9, 743.9, 724.5, 717.4, 703.2, 693, 671.7, 667.8, 659.9, 653.3, 650.7, 640.2, 638.2, 633.4, 630.5, 626.7, 621.7, 616.4]" *.fits
+Options:
+    --wave_list   Comma-separated list of emission lines (default: [748.9, 743.9, 724.5, 717.4, 703.2, 693, 671.7, 667.8, 659.9, 653.3, 650.7, 640.2, 638.2, 633.4, 630.5, 626.7, 621.7, 616.4])
+    --filelist    Folder containing the preprocessed FITS files (default: .)
 
-    Options:
-    --wave_list: Comma-separated list of emission lines (default: [753.6, 748.9, 743.9, 724.5, 717.4, 703.2, 693, 671.7, 667.8, 659.9, 653.3, 650.7, 640.2, 638.2, 633.4, 630.5, 626.7, 621.7, 616.4])
+Example:
+    runPL_createWavelengthMap.py --wave_list="[748.9, 743.9, 724.5, 717.4, 703.2, 693, 671.7, 667.8, 659.9, 653.3, 650.7, 640.2, 638.2, 633.4, 630.5, 626.7, 621.7, 616.4]"
 """
 
-
-
-""" if "VSCODE_PID" in os.environ:
-    filelist = glob("/home/jsarrazin/Bureau/PLDATA/InitData/preproc/*fits")
-    wave_list_string = wave_list_string_default
-    filelist.sort()  # process the files in alphabetical order
-else:
-    (options, args) = parser.parse_args()
-    wave_list_string = options.wave_list
-    filelist = []
-    #DEBUGGING ON
-    ##args = glob("/home/jsarrazin/Bureau/PLDATA/InitData/Neon2/preproc/*fits")
-    if len(args) > 0:
-        for f in args:
-            if os.path.isdir(f):
-                filelist += glob(os.path.join(f, "*.fit*"))
-            else:
-                filelist += glob(f)
-    # Processing of the full current directory
-    else:
-        for file in os.listdir("."):
-            if file.endswith(".fits"):
-                filelist.append(file)
-
- """
 
 def shift_array_left(arr):
     """

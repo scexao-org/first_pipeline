@@ -53,17 +53,30 @@ DEBUG = True
 usage = """
     usage:  %prog [options] files.fits
 
-    Goal: Compare different coupling maps and make a movie of the correlation between them. Also, plot the deconvolved images.
+    Goal: Create coupling maps from preprocessed photonic lantern data.
 
-    It will get as input a list of files with DPR_CATG=CMAP and DPR_TYPE=PREPROC keywords. 
-    On those, it will find which ones have the keyword DPR_OPT=DARK and which ones have nothing for DPR_OPT.
-    It will read the files which have nothing in the DPR_OPT keyword, and it will subtract from them the files which have the DARK keyword.
-    
-    Example:
-    runPL_compareCouplingMaps.py  *.fits
+    Sumary
+    It will get as input a list of files with DPR_CATG=CMAP and DPR_TYPE=PREPROC keywords.
+    It will select files based on modulation pattern, modulation scale, and object name if specified.
+    The script computes SVD-based coupling maps, saves results to FITS, and generates diagnostic plots.
+
+    Input:
+    - Files of type X_FIRTYP=PREPROC in the directory or in the argument pattern.
+
+    Output:
+    - Files of type X_FIRTYP=COULPLINGMAP in the directory "../couplingmaps".
+    - A pdf report with the plots of the coupling maps and the SVD analysis.
 
     Options:
-    --cmap_size: Width of cmap size, in pixels (default: 25) (removed)
+    --wavelength_smooth: Smoothing factor for wavelength (default: 20)
+    --wavelength_bin: Binning factor for wavelength (default: 15)
+    --object_name: Selection of the data by the Object name (default: NONE)
+    --modID: Selection of the modulation pattern by user [0 == first in the list] (default: 0)
+    --modScale: Selection of the modulation scale by user [0 == first in the list] (default: 0)
+    --Nsingular: Number of singular values to use (default: 57)
+
+    Example:
+    runPL_createCouplingMaps.py  *.fits
 """
 
 def filter_data(datacube,flux_goodData,Nsingular):

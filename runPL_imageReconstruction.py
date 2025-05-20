@@ -51,19 +51,32 @@ DEBUG = False
 
 # Add options
 usage = """
-    usage:  %prog [options] files.fits
+Goal:
+    Reconstruct images from FIRST Photonic Lantern data using specified coupling maps and options.
 
-    Goal: Compare different coupling maps and make a movie of the correlation between them. Also, plot the deconvolved images.
+Summary:
+    This script processes preprocessed FITS files, applies coupling maps, reconstructs images, and saves the results.
+    It supports selection by object name, modulation pattern, and smoothing options. The script can save individual frames,
+    wavelength slices, and residuals, and allows explicit selection of coupling map files.
 
-    It will get as input a list of files with DPR_CATG=CMAP and DPR_TYPE=PREPROC keywords. 
-    On those, it will find which ones have the keyword DPR_OPT=DARK and which ones have nothing for DPR_OPT.
-    It will read the files which have nothing in the DPR_OPT keyword, and it will subtract from them the files which have the DARK keyword.
-    
-    Example:
-    runPL_compareCouplingMaps.py --cmap_size=25 *.fits
+Input files:
+    - Preprocessed data FITS files (e.g., with DPR_CATG=OBJECT and DPR_TYPE=PREPROC)
+    - Coupling map FITS files (e.g., with X_FIRTYP=COUPLINGMAP)
 
-    Options:
-    --cmap_size: Width of cmap size, in pixels (default: 25)
+Output files:
+    - Reconstructed image FITS files, including summed images, residuals, and optionally individual frames and wavelength slices.
+
+Options:
+    --object_name <str>           Selection of the data by the Object name (default: NONE)
+    --modID <int>                 Selection of the modulation pattern by user [0 == first in the list] (default: 0)
+    --modScale <int>              Selection of the modulation scale by user [0 == first in the list] (default: 0)
+    --coupling_map <str>          Force to select which coupling map file to use (default: the one in the directory)
+    --wavelength_smooth <int>     Smoothing factor for wavelength (default: 1)
+    --save_individual_frames      Save individual frames (default: True)
+    --save_individual_wavelength  Save individual wavelength slices (default: False)
+
+Example:
+    python runPL_imageReconstruction.py --object_name=HIP81126 --modID=1 --coupling_map=path/to/couplingmap.fits *.fits
 """
 
 

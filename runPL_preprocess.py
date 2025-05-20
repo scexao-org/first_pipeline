@@ -37,21 +37,34 @@ plt.ion()
 
 # Add options
 usage = """
-    usage:  %prog [options] [directory | files.fits]
+Usage: %prog [options] [directory | files.fits]
 
-    Goal: Preprocess the data using the pixel map.
+Goal:
+    Preprocess the data using the pixel map.
 
-    Output: files of type DPR_CATG=PREPROC in the preproc directory.
-    Also, a figure of the pixel is saved in the preproc directory.
-    Also, a figure of the centroid of the data in the pixel map as a function of time.
-    This last figure is useful to check if the position of the pixels changed.
-    This information (pixel shift) is also stored in the header ('PIX_SHIF').
+Input: 
+    - Files of type X_FIRTYP=RAW in the directory.
+    - Files of type X_FIRTYP=PIXELMAP in the directory.
+    - The pixel map file is used to extract the data from the raw files.
+    - The pixel map file is used to create a new FITS file with the data extracted from the raw files. 
 
-    Example:
+Output:
+    - Files of type X_FIRTYP=PREPROC in the preproc directory.
+    - Diagnostic figures saved in the preproc directory:
+        * Pixel map overlay on raw images.
+        * Centroid shift of the data in the pixel map as a function of time.
+    - Pixel shift information is also stored in the FITS header ('QC_SHIFT').
+
+Options:
+    --pixel_map=FILE   Specify which pixel map FITS file to use (default: auto-detect in directory)
+    --loop=SECONDS     Loop and check for new files every X seconds (default: 0, i.e., run once)
+
+Examples:
     runPL_preprocess.py --pixel_map=/path/to/pixel_map.fits /path/to/directory
+    runPL_preprocess.py /path/to/files*.fits
 
-    Options:
-    --pixel_map: Force to select which pixel map file to use (default: the one in the directory)
+Notes:
+    The centroid shift figure is useful to check if the position of the pixels changed over time.
 """
 
 
