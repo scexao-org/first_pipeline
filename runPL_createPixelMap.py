@@ -436,8 +436,6 @@ if __name__ == "__main__":
     filter_files=options.filter_files
     
 
-    file_patterns = glob("/home/jsarrazin/Bureau/imported_data/2025_06_07/firstpl_11:0*.fits")
-
     filelist=runlib.get_filelist( file_patterns )
     if filter_files==True: 
         filelist = filter_only_good_files(filelist, True)
