@@ -20,7 +20,7 @@ from matplotlib import animation
 from matplotlib.backends.backend_pdf import PdfPages
 from datetime import datetime
 from tqdm import tqdm
-import runPL_library_basic as basic
+import first_pipeline.runPL_library_basic as basic
 import matplotlib.pyplot as plt
 plt.ion()
 

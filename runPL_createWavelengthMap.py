@@ -416,7 +416,26 @@ def runForStar(filepath, bestWavesFit, output_dir=""):
     return
 
 
+def saveTXT_wavelength_pixel(wavePoly, whereToSave, filename):
+    bestFit = np.poly1d(wavePoly)
+    pixels = np.arange(0, 5001) 
+    wavelengths = bestFit(pixels)
 
+    data = np.column_stack((pixels, wavelengths))
+    np.savetxt(os.path.join(whereToSave,filename), data, fmt="%.6f", header="Pixels Wavelengths", comments="")
+    
+
+def getPoly_from_txt():
+    file_name="WavePolyBest.txt"
+    if os.path.exists(file_name):
+        # File exists, read it
+        WavePolyBest_loaded = np.loadtxt(file_name)
+        print("Loaded coefficients : ", WavePolyBest_loaded)
+        return WavePolyBest_loaded
+    else:
+    # File does not exist
+        print(f"Error: File '{file_name}' does not exist.")
+    return 
 
 
 if __name__ == "__main__":
@@ -443,4 +462,5 @@ if __name__ == "__main__":
     
     options, args = parser.parse_args()
 
-    runCreateWavelengthMap(options.filelist, options.wave_list)
+    result = runCreateWavelengthMap(options.filelist, options.wave_list)
+    np.savetxt("WavePolyBest.txt", result)

@@ -227,7 +227,7 @@ def fluxmap_interpolation(fluxmaps, xmod, ymod, gridsize=500):
     fluxmap_interp= np.zeros((len(fluxmaps), gridsize, gridsize))
     for i,fm in enumerate(fluxmaps):
         fluxmap_interp[i] = griddata((xmod, ymod), fm, (grid_x, grid_y), method='cubic').T
-        
+
     return fluxmap_interp
     
 # def run_create_coupling_maps(files_with_dark, 

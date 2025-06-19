@@ -53,9 +53,10 @@ Options:
     --pixel_max         Maximum pixel value along wavelength axis  (default: 1600)
     --pixel_wide        Window half width (default: 2) (full width = 2*pixel_wide+1)
     --output_channels   Number of output channels (default: 38)
+    --filter_files      Flag to filter out files that don't have enough flux. Can be long, recommended only if previous run failed.
 
 Examples:
-    runPL_createPixelMap.py --pixel_min=20 --pixel_max=1600 --pixel_wide=2 --output_channels=38 *.fits
+    runPL_createPixelMap.py --pixel_min=20 --pixel_max=1600 --pixel_wide=2 --output_channels=38 --filter_files *.fits
     runPL_createPixelMap.py --pixel_min=50 --pixel_max=1500 --output_channels=32 data/*.fits
 
 """
@@ -121,7 +122,10 @@ def quick_fits(data, title=""):
     runlib.save_fits_file(data, "/home/jsarrazin/Bureau/test zone/coupling_maps/"+title+"_"+date_time_str+".fits")
     print("check")
 
-def loop_lowering_my_treshold( sampling, peaks_number, raw_image, peaks, output_channels, start = 0.01, stop = 0.1, num = 50, instance=0):
+def loop_lowering_my_treshold( sampling, peaks_number, raw_image, peaks, output_channels, filelist, start = 0.01, stop = 0.1, num = 50, instance=0):
+    if instance==1:
+        print("Cant find flux at the moment.... Running additional tests on your files.")
+        filter_only_good_files(filelist)
     threshold_array = np.linspace(start, stop, num)
     solution_found=[]
     for i in (range(sampling.shape[0])): #from 0 to the number of samples
@@ -145,13 +149,12 @@ def loop_lowering_my_treshold( sampling, peaks_number, raw_image, peaks, output_
     if percentage>=0.1 : 
         return solution_found, peaks
     elif instance<5:
-        solution_found, peaks = loop_lowering_my_treshold(sampling, peaks_number, raw_image, peaks, output_channels, start = start/2, stop = stop*2, num=num+20, instance=instance+1)
+        solution_found, peaks = loop_lowering_my_treshold(sampling, peaks_number, raw_image, peaks, output_channels,filelist, start = start/2, stop = stop*2, num=num+20, instance=instance+1)
 
-    print("Too many runs, no solution found. Verify your pixelmap")
-    print(instance)
-    return
+    raise ValueError("Too many runs, no solution found. Verify your pixelmap or run with --filter_files True.")
 
-def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels):
+
+def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist):
 
     pixel_length=raw_image.shape[1]
 
@@ -162,7 +165,7 @@ def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels):
     threshold_array=np.linspace(0.01,0.1,50) #originally #np.linspace(0.01,0.1,50) 
     peaks_number=output_channels
     
-    solution_found, peaks = loop_lowering_my_treshold( sampling, peaks_number, raw_image, peaks, output_channels)
+    solution_found, peaks = loop_lowering_my_treshold( sampling, peaks_number, raw_image, peaks, output_channels, filelist)
     traces_loc= np.ones([pixel_length,output_channels],dtype=int)
 
     x_found=[]
@@ -332,12 +335,70 @@ def run_createPixelMap(folder, destination, pixel_min=20, pixel_max=1600, pixel_
     filelist = process_files(folder, file_patterns)
     raw_Image, header = raw_image_clean(filelist)
     quick_fits(raw_Image)
-    traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_Image, pixel_min, pixel_max, output_channels)
+    traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_Image, pixel_min, pixel_max, output_channels, filelist)
     #checking_wavelength_aligment_in_modes(x_none, y_none) # TESTING ONLY, TO REMOVE
     save_fits_and_png(raw_Image, traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder)
     save_fits_and_png(raw_Image,traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, destination)
     return raw_Image, traces_loc, header,  x_found,y_found
 
+
+def get_fits_statistics(filepath):
+    """
+    Opens a FITS file and returns general statistics about the data.
+    
+    Parameters:
+        filepath (str): Path to the FITS file.
+        
+    Returns:
+        dict: Dictionary containing statistical measures.
+    """
+    with fits.open(filepath) as hdul:
+        data = hdul[0].data
+
+    # Ensure it's a NumPy array and mask NaNs if present
+    data = np.array(data)
+    data = data[np.isfinite(data)]
+
+    stats = {
+        'std_dev': np.std(data),
+        'variance': np.var(data),
+        'coefficient_of_variation': np.std(data) / np.mean(data) if np.mean(data) != 0 else float('inf')
+    }
+
+    return stats
+
+
+def filter_only_good_files(filelist, filter_files=False):
+    good_files = []
+    bad_files = []
+    stats = {}
+    #evaluate_shapes(filelist)
+    for file in tqdm(filelist):
+        with fits.open(file) as hdul:
+            
+            data = hdul[0].data
+            #maybe measure the value of individiual scans then discriminate scans ? Or like take 100 at random and discriminate on those
+            var_coef = np.std(data) / np.mean(data)
+            stats = {file : var_coef}
+    
+            if var_coef >=0.031 : #approx value for which it works
+                good_files.append(file)
+            else : 
+                bad_files.append(file)
+    
+    if len(bad_files)==0: 
+        print("All files have the correct flux")
+        return filelist
+    elif filter_files==False:
+        print(len(bad_files), " bad files detected out of ", len(filelist), ", you might want to rerun with filter_files=True. Now proceeding with all files.")
+        return filelist
+    elif filter_files==True and len(good_files)==0:
+        print("No flux detected in any files ! Are you running on darks ?")
+        return 0
+    else :
+        print(f"{len(good_files)} have enough flux out of the {len(filelist)}, now using them.")
+        return good_files
+    return 0
 
 if __name__ == "__main__":
     parser = OptionParser(usage)
@@ -349,6 +410,7 @@ if __name__ == "__main__":
     pixel_wide = 2
     output_channels = 38
     folder = "."  # Default to current directory
+    filter_files=False
 
     # Add options for these values
     parser.add_option("--pixel_min", type="int", default=pixel_min,
@@ -359,6 +421,8 @@ if __name__ == "__main__":
                     help="Pixel width (default: %default)")
     parser.add_option("--output_channels", type="int", default=output_channels,
                     help="Number of output channels (default: %default)")
+    parser.add_option("--filter_files", action="store_true", default=filter_files,
+                    help="Wether to filter files that dont have enough flux (default: %default)")
     
     # Parse the options
     (options, args) = parser.parse_args()
@@ -369,9 +433,15 @@ if __name__ == "__main__":
     pixel_wide=options.pixel_wide
     output_channels=options.output_channels
     file_patterns=args if args else ['*.fits']
+    filter_files=options.filter_files
     
+
+    file_patterns = glob("/home/jsarrazin/Bureau/imported_data/2025_06_07/firstpl_11:0*.fits")
+
     filelist=runlib.get_filelist( file_patterns )
+    if filter_files==True: 
+        filelist = filter_only_good_files(filelist, True)
 
     raw_Image, header = raw_image_clean(filelist)
-    traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_Image, pixel_min, pixel_max, output_channels)
+    traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_Image, pixel_min, pixel_max, output_channels, filelist)
     save_fits_and_png(raw_Image, traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder)

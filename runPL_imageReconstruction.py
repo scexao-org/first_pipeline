@@ -144,6 +144,40 @@ def quick_plot(data,title =""):
     print("Done")
 
 
+def getWaves_from_polytxt(pixels = np.arange(0, 5001) ):
+    file_name="WavePolyBest.txt"
+    if os.path.exists(file_name):
+        # File exists, read it
+        WavePolyBest_loaded = np.loadtxt(file_name)
+        print("Loaded coefficients : ", WavePolyBest_loaded)
+        
+        bestFit = np.poly1d(WavePolyBest_loaded)
+        wavelengths = bestFit(pixels)
+        data = np.column_stack((pixels, wavelengths))
+        return data
+    else:
+    # File does not exist
+        print(f"Error: File '{file_name}' does not exist.")
+    return 
+
+def identify_halpha_ray(modScale, data_2_postiptilt, ray=656.3):
+
+    waves_to_pixels = getWaves_from_polytxt(pixels=modScale) #if we start at 625
+    wave_binning_to = data_2_postiptilt.shape[1] #then get to like 50
+    
+    #Retrieve Nbin
+    for q in range(modScale// 1, 0, -1):
+        if wave_binning_to % q == 0:
+            Nbin = wave_binning_to // q
+            if (modScale // Nbin) * Nbin == wave_binning_to:
+                break
+    print(waves_to_pixels)
+    waves_to_pixels[:,:,:(Nwave//Nbin)*Nbin]
+    print(waves_to_pixels)
+    #For a binning Nbin we apply waveDim = (waveInit//Nbin)*Nbin
+    
+
+    return
 
 def interpolate_halpha(data_2_postiptilt, postiptilt_2_data, pix_to_waves=""):
     """
@@ -303,7 +337,7 @@ if __name__ == "__main__":
     
 
     if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or 
-        os.environ.get('SPYDER_DEBUG_FILE')):
+        os.environ.get('SPYDER_DEBUG_FILEfile =')):
         if getpass.getuser() == "slacour":
             file_patterns = "/Users/slacour/DATA/LANTERNE/Mai3/preproc/firstpl_2025-05-09T03:26:36_BETUMA.fits"
             coupling_map = "/Users/slacour/DATA/LANTERNE/Mai/preproc2/couplingmaps"
