@@ -48,6 +48,8 @@ parser.add_option("-c","--DATA-TYP", action="store",
                   help="DATA-TYP gives the category of data")
 parser.add_option("-t","--X_FIRTYP", action="store", 
                   help="X_FIRTYP gives the type of dataproduct")
+parser.add_option("-i","--X_FIRMID", action="store",
+                  help="X_FIRMID gives the modulation ID of the data")
 parser.add_option("-g","--GAIN", action="store", 
                   help="")
 parser.add_option("-d","--DATE", action="store", 
@@ -70,22 +72,24 @@ else :
 filelist.sort() # process the files in alphabetical order
 
     
-if (argoptions.X_FIRTYP!=None)|(argoptions.DATA_TYP!=None)|(argoptions.GAIN!=None)|(argoptions.DATE=="DEFAULT"):
-    for filename in filelist:
-        string_print=filename+"   ----->"
-        with fits.open(filename, mode='update') as filehandle:
-            if argoptions.DATA_TYP:
-                filehandle[0].header['DATA-TYP'] = argoptions.DATA_TYP
-                string_print+='   DATA-TYP='+argoptions.DATA_TYP
-            if argoptions.X_FIRTYP:
-                filehandle[0].header['X_FIRTYP'] = argoptions.X_FIRTYP
-                string_print+='   X_FIRTYP='+argoptions.X_FIRTYP
-            if argoptions.GAIN:
-                filehandle[0].header['GAIN'] = argoptions.GAIN
-                string_print+='   GAIN='+argoptions.GAIN
-            if argoptions.DATE:
-                argoptions.DATE = runlib.get_date_from_filename(filename)
-                filehandle[0].header['DATE'] = argoptions.DATE
-                string_print+='   DATE='+argoptions.DATE
-        print(string_print)
+# Update FITS headers based on provided options
+header_updates = {
+    'DATA-TYP': argoptions.DATA_TYP,
+    'X_FIRTYP': argoptions.X_FIRTYP,
+    'X_FIRMID': argoptions.X_FIRMID,
+    'GAIN': argoptions.GAIN,
+    'DATE': argoptions.DATE if argoptions.DATE != "DEFAULT" else None,
+}
 
+if any(v is not None for v in header_updates.values()) or argoptions.DATE == "DEFAULT":
+    for filename in filelist:
+        updates = header_updates.copy()
+        if argoptions.DATE == "DEFAULT":
+            updates['DATE'] = runlib.get_date_from_filename(filename)
+        string_print = filename + "   ----->"
+        with fits.open(filename, mode='update') as filehandle:
+            for key, value in updates.items():
+                if value is not None:
+                    filehandle[0].header[key] = value
+                    string_print += f'   {key}={value}'
+        print(string_print)

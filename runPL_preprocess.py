@@ -70,16 +70,18 @@ Notes:
 
 def filter_filelist(filelist , filelist_pixelmap):
 
-    # Keys to keep only the RAW files
+    # Keys to keep only the RAW files with external triggers
     fits_keywords = {'X_FIRTYP': ['RAW'], 'X_FIRTRG': ['EXT']}
-        
-    # Use the function to clean the filelist
     filelist_rawdata = runlib.clean_filelist(fits_keywords, filelist)
 
-    fits_keywords = {'X_FIRTYP': ['RAW'], 'DATA-TYP': ['DARK','FLAT']}
-        
-    # Adding the flats and draks which have X_FIRTRG as INT
+    # Keys to keep only the RAW files with position unique (allow internal trigger in that case)
+    fits_keywords = {'X_FIRTYP': ['RAW'], 'X_FIRMID': ["1"]}
     filelist_rawdata = np.append( filelist_rawdata, runlib.clean_filelist(fits_keywords, filelist))
+
+    # Keys to keep only the RAW files with position unique (allow internal trigger in that case)
+    fits_keywords = {'X_FIRTYP': ['RAW'], 'DATA-TYP': ['DARK','FLAT']}
+    filelist_rawdata = np.append( filelist_rawdata, runlib.clean_filelist(fits_keywords, filelist))
+
     filelist_rawdata = np.unique(filelist_rawdata)
 
     print("runPL filelist : ", filelist_rawdata)
