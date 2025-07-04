@@ -15,32 +15,36 @@ import runPL_library_io as runlib
 
 # Add options
 usage = """
-    usage:  %prog files.fits *files.fits
+    usage: %prog [options] files.fits [more_files.fits] [wildcards]
 
-    Goal: update the FIRST_PL Data keywords
+    Goal: Update the FIRST_PL FITS header keywords.
 
-    example:
-    runPL_changeKeyword.py --DATA_CAT=FLAT --X_FIRTYP=RAW
+    Examples:
+      runPL_changeKeyword.py --DATA-TYP=FLAT --X_FIRTYP=RAW *.fits
 
-    Fits header Keywords:
+    Options:
+      -c, --DATA-TYP   Category of data (RAW, PREPROC, REDUCED)
+      -t, --X_FIRTYP   Type of dataproduct (WAVE, FLAT, SCIENCE, PIXELS, SPECTRA)
+      -i, --X_FIRMID   Modulation ID of the data
+      -r, --X_FIRTRG   Trigger of camera (INT for internal, EXT for external)
+      -g, --GAIN       Gain value
+      -d, --DATE       Date value (use DEFAULT to extract from filename)
 
-    DATA_CAT = RAW , PREPROC, REDUCED
-    X_FIRTYP =  WAVE, FLAT, SCIENCE, PIXELS, SPECTRA
+    Keyword meanings:
+      DATA-TYP:
+        TEST   - Test data
+        DARK   - Dark data
+        FLAT   - Flat field data
+        
+      X_FIRTYP:
+        RAW    - Raw data from the camera
+        WAVE     - Neon source data
+        FLAT     - Data from SuperK
+        SCIENCE  - Night time observation data
+        PIXELS   - Pixel map on the detector (for REDUCED data)
+        SPECTRA  - Extracted spectra (for REDUCED data)
 
-    X_FIRTYP gives the type of dataproduct:
-    RAW means raw data from the camera
-    PREPROC means the data has been cut and compressed
-    REDUCED means that the data has been reduced
-
-    DATA_CAT gives the category of data
-    WAVE is Neon source data
-    FLAT is data from SuperK
-    SCIENCE is the night time observation data
-    But REDUCED data can also have special types:
-    PIXELS is the pixel map on the detector
-    SPECTRA is the extracted spectra
-
-    Update the keywords.
+    This script updates the specified FITS header keywords for all matching files.
 """
 
 parser = OptionParser(usage)
