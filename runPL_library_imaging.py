@@ -406,6 +406,11 @@ def extract_datacube(files_with_dark,Nsmooth = 1,Nbin = 1):
         # reading modulation data
         xmod=np.double(fits.getdata(data_file,'MODULATION').field('xmod'))
         ymod=np.double(fits.getdata(data_file,'MODULATION').field('ymod'))
+        # Ensure xmod and ymod are arrays, even if they are scalars
+        if np.isscalar(xmod):
+            xmod = np.array([xmod])
+        if np.isscalar(ymod):
+            ymod = np.array([ymod])
 
         if dark_file is not None:
             data_dark=fits.getdata(dark_file)
