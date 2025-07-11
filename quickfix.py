@@ -151,14 +151,9 @@ def most_recent_stars():
     print(latest_star)
 
 if __name__ == "__main__":
-    recent = "/home/jsarrazin/Bureau/PLDATA/2025_03_14"
+    recent = "/mnt/datazpool/PL/20240814/firstpl"
 
     filelist = runlib.get_all_fits_files(recent)
     for file in filelist:
-        if "optim" not in file:
-            runlib.update_anything_in_fits(file, "DATA-CAT", "RAW")
+        runlib.update_anything_in_fits(file, "X_FIRTYP","RAW")
 
-            if "cube" in file:
-                runlib.update_anything_in_fits(file, "DATA-TYP", "OBJECT")
-            elif "dark" in file:
-                runlib.update_anything_in_fits(file, "DATA-TYP", "DARK")
