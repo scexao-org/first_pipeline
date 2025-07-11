@@ -165,7 +165,7 @@ def loop_lowering_my_treshold( sampling, peaks_number, raw_image, peaks, output_
     raise ValueError("Too many runs, no solution found. Verify your pixelmap or run with --filter_files True.")
 
 
-def generate_pixelmap(raw_image, pixel_min, pixel_max, filelist):
+def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist):
 
     pixel_length=raw_image.shape[1]
 
