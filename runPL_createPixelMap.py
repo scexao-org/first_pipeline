@@ -97,10 +97,21 @@ def raw_image_clean(filelist):
         '''
 
         # Keys to keep only the RAW files
-        fits_keywords = {'X_FIRTYP': ['RAW']}
+        fits_keywords = {'X_FIRTYP': ['RAW'], }
             
         # Use the function to clean the filelist
         filelist_cleaned = runlib.clean_filelist(fits_keywords, filelist)
+
+        wollaston = fits.getheader(filelist_cleaned[0]).get('X_FIRWOL', 'IN')
+
+        # Remove files that do not have the same status of the wollaston
+        filelist_filtered = []
+        for file in filelist_cleaned:
+            header = fits.getheader(file)
+            file_wollaston = header.get('X_FIRWOL', 'IN')
+            if file_wollaston == wollaston:
+                filelist_filtered.append(file)
+        filelist_cleaned = np.array(filelist_filtered)
 
         # raise an error if filelist_cleaned is empty
         if len(filelist_cleaned) == 0:
@@ -154,7 +165,7 @@ def loop_lowering_my_treshold( sampling, peaks_number, raw_image, peaks, output_
     raise ValueError("Too many runs, no solution found. Verify your pixelmap or run with --filter_files True.")
 
 
-def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist):
+def generate_pixelmap(raw_image, pixel_min, pixel_max, filelist):
 
     pixel_length=raw_image.shape[1]
 
@@ -408,7 +419,6 @@ if __name__ == "__main__":
     pixel_min = 20
     pixel_max = 1600
     pixel_wide = 2
-    output_channels = 38
     folder = "."  # Default to current directory
     filter_files=False
 
@@ -419,8 +429,6 @@ if __name__ == "__main__":
                     help="Maximum pixel value (default: %default)")
     parser.add_option("--pixel_wide", type="int", default=pixel_wide,
                     help="Pixel width (default: %default)")
-    parser.add_option("--output_channels", type="int", default=output_channels,
-                    help="Number of output channels (default: %default)")
     parser.add_option("--filter_files", action="store_true", default=filter_files,
                     help="Wether to filter files that dont have enough flux (default: %default)")
     
@@ -431,14 +439,20 @@ if __name__ == "__main__":
     pixel_min=options.pixel_min
     pixel_max=options.pixel_max
     pixel_wide=options.pixel_wide
-    output_channels=options.output_channels
     file_patterns=args if args else ['*.fits']
     filter_files=options.filter_files
     
-
     filelist=runlib.get_filelist( file_patterns )
+
     if filter_files==True: 
         filelist = filter_only_good_files(filelist, True)
+
+    wollaston = fits.getheader(filelist[0]).get('X_FIRWOL', 'IN')
+
+    if wollaston == 'IN':
+        output_channels = 38
+    else:
+        output_channels = 19
 
     raw_Image, header = raw_image_clean(filelist)
     traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_Image, pixel_min, pixel_max, output_channels, filelist)

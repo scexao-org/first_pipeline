@@ -435,8 +435,6 @@ if __name__ == "__main__":
     residuals_maps_sum = np.nansum(residuals_maps,axis=1)
     # Save image and residual maps to FITS files :
 
-
-
     for i,d in enumerate(datalist):
         header = d.header
         header['X_FIRTYP'] = 'IMAGE'
@@ -493,13 +491,6 @@ if __name__ == "__main__":
         # Write to a FITS file
         hdul.writeto(output_filename, overwrite=True)
         print(f"Image saved to {output_filename}")
-
-
-
-
-
-
-
 
 
 # %%

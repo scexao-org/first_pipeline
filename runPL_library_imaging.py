@@ -326,6 +326,7 @@ class DataCube:
         self.modID = int(header.get('X_FIRMID', 0))
         self.modScale = int(header.get('X_FIRMSC', 1))
         self.object_name = header.get('OBJECT', 'Unknown')
+        self.wollaston = header.get('X_FIRWOL', 'IN')
 
     def add_modulation(self, xmod, ymod):
         self.xmod = xmod

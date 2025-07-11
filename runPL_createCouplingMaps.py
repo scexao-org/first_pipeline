@@ -425,6 +425,7 @@ if __name__ == "__main__":
         if getpass.getuser() == "slacour":
             file_patterns = "/Users/slacour/DATA/LANTERNE/Optim_maps/November2024/preproc"
             file_patterns = "/Users/slacour/DATA/LANTERNE/Mai3/preproc/firstpl_2025-05-09T02:4*_BETUMA.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/firstpl_2025-05-10T09?2*"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
@@ -477,6 +478,12 @@ if __name__ == "__main__":
     datalist = [d for d in datalist if d.modID == modID]
     object_name = datalist[0].object_name
     datalist = [d for d in datalist if d.object_name == object_name]
+    wollaston = datalist[0].wollaston
+    datalist = [d for d in datalist if d.wollaston == wollaston]
+
+    print("----------------")
+    print(f"Selected object='{object_name}' with modScale={modScale} and modID={modID}")
+    print("----------------")
 
     if len(datalist) == 0:
         error_string = "No data with the selected modulation parameters %i, %i, %s"%(modID,modScale,object_name)

@@ -70,6 +70,22 @@ Notes:
 
 def filter_filelist(filelist , filelist_pixelmap):
 
+    fits_keywords = {'X_FIRTYP': ['PIXELMAP']}
+        
+    # Use the function to clean the filelist
+    filelist_pixelmap = runlib.clean_filelist(fits_keywords, filelist_pixelmap)
+    print("Pixel map file ==>> ",filelist_pixelmap)
+
+    # raise an error if filelist_cleaned is empty
+    if len(filelist_pixelmap) == 0:
+        raise FileNotFoundError("No pixel map to pre-process")
+
+    # raise an error if filelist_cleaned is more than one
+    if len(filelist_pixelmap) > 1:
+        raise ValueError("Two many pixel maps to use! I can only use one.\n Please specify which one to use with the option --pixel_map")
+
+    wollaston = fits.getheader(filelist_pixelmap[-1]).get('X_FIRWOL', 'IN')
+
     # Keys to keep only the RAW files with external triggers
     fits_keywords = {'X_FIRTYP': ['RAW'], 'X_FIRTRG': ['EXT']}
     filelist_rawdata = runlib.clean_filelist(fits_keywords, filelist)
@@ -84,25 +100,20 @@ def filter_filelist(filelist , filelist_pixelmap):
 
     filelist_rawdata = np.unique(filelist_rawdata)
 
+    # Remove files that do not have the same status of the wollaston
+    filelist_rawdata_filtered = []
+    for file in filelist_rawdata:
+        header = fits.getheader(file)
+        file_wollaston = header.get('X_FIRWOL', 'IN')
+        if file_wollaston == wollaston:
+            filelist_rawdata_filtered.append(file)
+    filelist_rawdata = np.array(filelist_rawdata_filtered)
+
     print("runPL filelist : ", filelist_rawdata)
 
     # raise an error if filelist_cleaned is empty
     if len(filelist_rawdata) == 0:
         raise FileNotFoundError("No good file to pre-process")
-
-    fits_keywords = {'X_FIRTYP': ['PIXELMAP']}
-        
-    # Use the function to clean the filelist
-    filelist_pixelmap = runlib.clean_filelist(fits_keywords, filelist_pixelmap)
-    print("Pixel map file ==>> ",filelist_pixelmap)
-
-    # raise an error if filelist_cleaned is empty
-    if len(filelist_pixelmap) == 0:
-        raise FileNotFoundError("No pixel map to pre-process")
-
-    # raise an error if filelist_cleaned is more than one
-    if len(filelist_pixelmap) > 1:
-        raise ValueError("Two many pixel maps to use! I can only use one.\n Please specify which one to use with the option --pixel_map")
 
     files_by_dir = defaultdict(list)
     for file in filelist_rawdata:

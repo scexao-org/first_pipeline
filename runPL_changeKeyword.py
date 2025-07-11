@@ -56,6 +56,8 @@ parser.add_option("-i","--X_FIRMID", action="store",
                   help="X_FIRMID gives the modulation ID of the data")
 parser.add_option("-r","--X_FIRTRG", action="store", 
                   help="Trigger of camera. Use INT for internal or EXT for external trigger")
+parser.add_option("-r","--X_FIRWOL", action="store", 
+                  help="Wollaston status. Use IN for internal or OUT for no wollaston")
 parser.add_option("-g","--GAIN", action="store", 
                   help="")
 parser.add_option("-d","--DATE", action="store", 
@@ -84,6 +86,7 @@ header_updates = {
     'X_FIRTYP': argoptions.X_FIRTYP,
     'X_FIRMID': argoptions.X_FIRMID,
     'X_FIRTRG': argoptions.X_FIRTRG,
+    'X_FIRWOL': argoptions.X_FIRWOL,
     'GAIN': argoptions.GAIN,
     'DATE': argoptions.DATE if argoptions.DATE != "DEFAULT" else None,
 }
