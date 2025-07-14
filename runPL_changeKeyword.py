@@ -50,6 +50,8 @@ usage = """
 parser = OptionParser(usage)
 parser.add_option("-c","--DATA-TYP", action="store",
                   help="DATA-TYP gives the category of data")
+parser.add_option("-o","--OBJECT", action="store",
+                  help="OBJECT gives the name of the observed target")
 parser.add_option("-t","--X_FIRTYP", action="store", 
                   help="X_FIRTYP gives the type of dataproduct")
 parser.add_option("-i","--X_FIRMID", action="store",
@@ -82,6 +84,7 @@ filelist.sort() # process the files in alphabetical order
     
 # Update FITS headers based on provided options
 header_updates = {
+    'OBJECTP': argoptions.OBJECTP,
     'DATA-TYP': argoptions.DATA_TYP,
     'X_FIRTYP': argoptions.X_FIRTYP,
     'X_FIRMID': argoptions.X_FIRMID,
