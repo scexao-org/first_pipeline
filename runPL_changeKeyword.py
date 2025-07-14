@@ -84,7 +84,7 @@ filelist.sort() # process the files in alphabetical order
     
 # Update FITS headers based on provided options
 header_updates = {
-    'OBJECTP': argoptions.OBJECTP,
+    'OBJECT': argoptions.OBJECT,
     'DATA-TYP': argoptions.DATA_TYP,
     'X_FIRTYP': argoptions.X_FIRTYP,
     'X_FIRMID': argoptions.X_FIRMID,
