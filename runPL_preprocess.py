@@ -80,10 +80,6 @@ def filter_filelist(filelist , filelist_pixelmap):
     if len(filelist_pixelmap) == 0:
         raise FileNotFoundError("No pixel map to pre-process")
 
-    # raise an error if filelist_cleaned is more than one
-    if len(filelist_pixelmap) > 1:
-        raise ValueError("Two many pixel maps to use! I can only use one.\n Please specify which one to use with the option --pixel_map")
-
     wollaston = fits.getheader(filelist_pixelmap[-1]).get('X_FIRWOL', 'IN')
 
     # Keys to keep only the RAW files with external triggers
@@ -115,15 +111,36 @@ def filter_filelist(filelist , filelist_pixelmap):
     if len(filelist_rawdata) == 0:
         raise FileNotFoundError("No good file to pre-process")
 
-    files_by_dir = defaultdict(list)
-    for file in filelist_rawdata:
-        dir_path = os.path.dirname(os.path.realpath(file))
-        files_by_dir[dir_path].append(file)
+    # for each file in filelist_rawdata find the closest pixelmap file in filelist_dark with, by priority, 
+    # first the wollaston status in the header,
+    # and lastest pixel map date from the DATE-PRO keyword in the header
 
-    return filelist_pixelmap,files_by_dir
+    def find_closest_pixelmap(raw, filelist_pixelmap):
+        """
+        Find the closest pixel map file for a given raw data file.
+        The closest pixel map is determined by the wollaston status, and date.
+        """
+        header = fits.getheader(raw)
+        raw_wollaston = header.get('X_FIRWOL', 'IN')
+        raw_dir = os.path.dirname(raw)
+
+        # Filter pixel maps by wollaston status
+        pixelmaps_filtered = [pm for pm in filelist_pixelmap if fits.getheader(pm).get('X_FIRWOL', 'IN') == raw_wollaston]
+
+        # If no pixel map found, return None
+        if not pixelmaps_filtered:
+            return None
+
+        # Sort by date and return the most recent one
+        pixelmaps_filtered.sort(key=lambda pm: fits.getheader(pm).get('DATE-PRO', '1970-01-01'))
+        return pixelmaps_filtered[-1]
+
+    files_with_pixelmap = {raw: find_closest_pixelmap(raw, filelist_pixelmap) for raw in filelist_rawdata}
+
+    return files_with_pixelmap
 
 
-def preprocess(filelist_pixelmap,files_by_dir, plot_sum =False):
+def preprocess(files_with_pixelmap, plot_sum =False):
     """
     Preprocesses the data files using the provided pixel map and organizes them by directory.
     This function handles the preprocessing of raw data files, applying the pixel map to extract
@@ -134,129 +151,135 @@ def preprocess(filelist_pixelmap,files_by_dir, plot_sum =False):
                              raw data files in those directories.
     """
 
-    pixelMap=basic.PixelMap(filelist_pixelmap[-1])
-    pixel_min = pixelMap.pixel_min
-    pixel_max = pixelMap.pixel_max
-    pixel_wide = pixelMap.pixel_wide
-    output_channels = pixelMap.output_channels
-    traces_loc = pixelMap.traces_loc
-    pm_check = pixelMap.pm_check
+    center_image = None
+    files_out = []
+    dir_path_0 = os.path.dirname(files_with_pixelmap[list(files_with_pixelmap.keys())[0]])
 
     # Process each directory separately 
-    for dir_path, files in files_by_dir.items():
-        raw_image = None
-        center_image = None
-        files_out = []
+    for file, pixelmap in tqdm(files_with_pixelmap.items(), desc=f"Pre-processing of files in {dir_path_0}"):
 
-        # create a directory named preproc if it does not exist
+        pixelMap=basic.PixelMap(pixelmap)
+        pixel_min = pixelMap.pixel_min
+        pixel_max = pixelMap.pixel_max
+        pixel_wide = pixelMap.pixel_wide
+        output_channels = pixelMap.output_channels
+        traces_loc = pixelMap.traces_loc
+        pm_check = pixelMap.pm_check
+
+        dir_path = os.path.dirname(file)
+        # Create a directory named preproc if it does not exist
         preproc_dir_path = os.path.join(dir_path, "../preproc")
         if not os.path.exists(preproc_dir_path):
             os.makedirs(preproc_dir_path)
-
         
-        for file in tqdm(files[:], desc=f"Pre-processing of files in {dir_path}"):
-            # first read the header of the file
-            header = fits.getheader(file)
+        
+        # first read the header of the file
+        header = fits.getheader(file)
 
 
-            header['X_FIRTYP'] = "PREPROC"
-            header['ORG_NAME'] = os.path.basename(file)
-            header['PIX_MIN'] = pixel_min
-            header['PIX_MAX'] = pixel_max
-            header['PIX_WIDE'] = pixel_wide
-            header['OUT_CHAN'] = output_channels
-            header['PIXELS'] = filelist_pixelmap[-1]
-            header['PM_CHECK'] = pm_check
-            header['X_FIRMID'] = int(header['X_FIRMID']) # for old data reduction
+        header['X_FIRTYP'] = "PREPROC"
+        header['X_FIRWOL'] = fits.getheader(file).get('X_FIRWOL', 'IN')
+        header['X_FIRMID'] = int(header['X_FIRMID']) # for old data reduction
 
-            date = header.get('DATE', 'NODATE')
-            date_preproc = datetime.fromtimestamp(os.path.getctime(file)).strftime('%Y-%m-%dT%H:%M:%S')
-            if date == 'NODATE':
-                header['DATE'] = date_preproc
-                date = date_preproc
+        # Add date and time to the header
+        current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        header['DATE-PRO'] = current_time
 
-            output_filename = runlib.create_output_filename(header)
-            output_filename_full = os.path.join(preproc_dir_path, output_filename)
+        header['ORG_NAME'] = os.path.basename(file)
+        header['PIX_MIN'] = pixel_min
+        header['PIX_MAX'] = pixel_max
+        header['PIX_WIDE'] = pixel_wide
+        header['OUT_CHAN'] = output_channels
+        header['PM_FILE'] = pixelmap
+        header['PM_CHECK'] = pm_check
 
-            # Check if the file already exists
-            if os.path.exists(output_filename_full):
-                existing_header = fits.getheader(output_filename_full)
-                if existing_header.get('PM_CHECK') == pm_check:
-                    if 'MODULATION' in fits.open(file):
-                        # Check if the MODULATION extension is present in the original file
-                        if 'MODULATION' in fits.open(output_filename_full):
-                            # If it is, we can skip this file
-                            continue
-                    else:
+        date_preproc = datetime.fromtimestamp(os.path.getctime(file)).strftime('%Y-%m-%dT%H:%M:%S')
+        header['DATE'] = header.get('DATE', date_preproc)
+
+
+        output_filename = runlib.create_output_filename(header)
+        output_filename_full = os.path.join(preproc_dir_path, output_filename)
+
+        # Check if the file already exists
+        if os.path.exists(output_filename_full):
+            existing_header = fits.getheader(output_filename_full)
+            if existing_header.get('PM_CHECK') == pm_check:
+                if 'MODULATION' in fits.open(file):
+                    # Check if the MODULATION extension is present in the original file
+                    if 'MODULATION' in fits.open(output_filename_full):
+                        # If it is, we can skip this file
                         continue
+                else:
+                    continue
 
-            # now reading the data
-            data = fits.getdata(file)
+        # now reading the data
+        data = fits.getdata(file)
 
-            if len(data.shape) == 2:
-                data = data[None]
+        if len(data.shape) == 2:
+            data = data[None]
 
-            if raw_image is None:
-                raw_image = np.zeros_like(data.sum(axis=0), dtype=np.double)
+        raw_image = data.sum(axis=0)
 
-            raw_image += data.sum(axis=0)
+        # Generate and save the figure for the directory
+        fig,ax = runlib.make_figure_of_trace(raw_image, traces_loc, pixel_wide, pixel_min, pixel_max)
+        fig.savefig(output_filename_full[:-5]+"_I.png", dpi=300)
+        
+        data_cut_pixels, data_dark_pixels = basic.preprocess_cutData(data, pixelMap, True)
+
+        perc_background=np.percentile(data_dark_pixels.ravel(),[50-34.1,50,50+34.1],axis=0)
+        data_mean= np.percentile(np.mean(data_cut_pixels,axis=(1,2)),90,axis=0)
+        data_cut = np.sum(data_cut_pixels,axis=-1,dtype='uint32')
+        flux_mean = np.mean(data_cut,axis=(0,1,2))-perc_background[1]*(pixel_wide*2+1)
+
+        if center_image is None:
+            center_image = data_mean[:,None]
+        else:
+            center_image = np.concatenate((center_image,data_mean[:,None]),axis=1)
+
+        centered=data_mean.argmax()-pixel_wide
+
+        comp_hdu = fits.PrimaryHDU(data_cut, header=header)
+
+        # Add quality control values to header with the values read in the header above
+        comp_hdu.header['QC_SHIFT'] = centered
+        comp_hdu.header['QC_BACK'] = perc_background[1]
+        comp_hdu.header['QC_BACKR'] = (perc_background[2]-perc_background[0])/2*np.sqrt(2)
+        comp_hdu.header['QC_FLUX'] = flux_mean
+
+
+        # Add the MODULATION extension from the original file to the new FITS file
+        if 'MODULATION' in fits.open(file):
+            modulation_hdu = fits.open(file)['MODULATION']
+            comp_hdu.header['MOD_LEN'] = modulation_hdu.header['NAXIS2']
+            comp_hdu = fits.HDUList([comp_hdu, modulation_hdu])
+
+            #make coupling map
+            xmod = fits.getdata(file,'MODULATION')['XMOD']
+            ymod = fits.getdata(file,'MODULATION')['YMOD']
+            if len(xmod) > 9:
+                fluxes = data_cut_pixels.mean(axis=(1,2,3))
+                fig= runlib_i.plot_couplinng_map(fluxes, xmod, ymod)
+                fig.savefig(output_filename_full[:-5]+"_M.png", dpi=300)
+
+        files_out += [output_filename]
+        comp_hdu.writeto(output_filename_full, overwrite=True, output_verify='fix', checksum=True)
+
+        # copy the pixelmap to the preproc directory
+        dest_pixelmap = os.path.join(preproc_dir_path, os.path.basename(pixelmap))
+        if not os.path.exists(dest_pixelmap):
+            shutil.copy(pixelmap, preproc_dir_path)
             
-            data_cut_pixels, data_dark_pixels = basic.preprocess_cutData(data, pixelMap, True)
+    if len(files_out) == 0:
+        print(f"No files to process in {dir_path}.")
+        return
 
-            perc_background=np.percentile(data_dark_pixels.ravel(),[50-34.1,50,50+34.1],axis=0)
-            data_mean= np.percentile(np.mean(data_cut_pixels,axis=(1,2)),90,axis=0)
-            data_cut = np.sum(data_cut_pixels,axis=-1,dtype='uint32')
-            flux_mean = np.mean(data_cut,axis=(0,1,2))-perc_background[1]*(pixel_wide*2+1)
+    if plot_sum == True:
+        # copy filelist_pixelmap[-1] to the preproc directory
+        filename_out = files_out[-1]
+        filename_out = "_".join(filename_out.split("_")[:-2])
+        filename_out_full = os.path.join(preproc_dir_path, filename_out)
 
-            if center_image is None:
-                center_image = data_mean[:,None]
-            else:
-                center_image = np.concatenate((center_image,data_mean[:,None]),axis=1)
-
-            centered=data_mean.argmax()-pixel_wide
-
-            comp_hdu = fits.PrimaryHDU(data_cut, header=header)
-
-            # Add quality control values to header with the values read in the header above
-            comp_hdu.header['QC_SHIFT'] = centered
-            comp_hdu.header['QC_BACK'] = perc_background[1]
-            comp_hdu.header['QC_BACKR'] = (perc_background[2]-perc_background[0])/2*np.sqrt(2)
-            comp_hdu.header['QC_FLUX'] = flux_mean
-
-
-            # Add the MODULATION extension from the original file to the new FITS file
-            if 'MODULATION' in fits.open(file):
-                modulation_hdu = fits.open(file)['MODULATION']
-                comp_hdu.header['MOD_LEN'] = modulation_hdu.header['NAXIS2']
-                comp_hdu = fits.HDUList([comp_hdu, modulation_hdu])
-
-                #make coupling map
-                xmod = fits.getdata(file,'MODULATION')['XMOD']
-                ymod = fits.getdata(file,'MODULATION')['YMOD']
-                if len(xmod) > 9:
-                    fluxes = data_cut_pixels.mean(axis=(1,2,3))
-                    fig= runlib_i.plot_couplinng_map(fluxes, xmod, ymod)
-                    fig.savefig(output_filename_full[:-5]+".png", dpi=300)
-
-            files_out += [output_filename]
-            comp_hdu.writeto(output_filename_full, overwrite=True, output_verify='fix', checksum=True)
-            
-        if len(files_out) == 0:
-            print(f"No files to process in {dir_path}.")
-            continue
-
-        if plot_sum == True:
-            # copy filelist_pixelmap[-1] to the preproc directory
-            shutil.copy(filelist_pixelmap[-1], preproc_dir_path)
-            filename_out = files_out[-1]
-            filename_out = "_".join(filename_out.split("_")[:-2])
-            filename_out_full = os.path.join(preproc_dir_path, filename_out)
-
-            # Generate and save the figure for the directory
-            fig,ax = runlib.make_figure_of_trace(raw_image, traces_loc, pixel_wide, pixel_min, pixel_max)
-            fig.savefig(filename_out_full+"_PREPROC.png", dpi=300)
-
-
+        try:
             fig = figure("Vertical offset of the dispersed outputs with respect to extracted windows", clear=True, figsize=(5+len(files_out)*0.1, 6))
             imshow(np.log(center_image), aspect='auto', interpolation='none', extent=(-0.5, - 0.5 + len(center_image[0]), +pixel_wide + 0.5, - pixel_wide - 0.5))
             plt.title(f"{fig.get_label()}")
@@ -268,6 +291,8 @@ def preprocess(filelist_pixelmap,files_by_dir, plot_sum =False):
             plt.tight_layout()
             fig.savefig(filename_out_full+"_PREPROCSHIFT.png", dpi=300)
             print("PNG saved as: "+filename_out_full+"_PREPROCSHIFT.png")
+        except:
+            print("Error while plotting the vertical offset of the dispersed outputs with respect to extracted windows")
     
 
 def run_preprocess(folder = ".",pixel_map_file = None):
@@ -276,8 +301,8 @@ def run_preprocess(folder = ".",pixel_map_file = None):
     if pixel_map_file==None :
         pixel_map_file = folder + "pixelmaps"
     
-    filelist_pixelmap,files_by_dir = filter_filelist(filelist, pixel_map_file)
-    preprocess(filelist_pixelmap,files_by_dir, output_channels_nb=1)#38)
+    files_with_pixelmap = filter_filelist(filelist, pixel_map_file)
+    preprocess(files_with_pixelmap)
 
 
 if __name__ == "__main__":
@@ -328,8 +353,8 @@ if __name__ == "__main__":
 
     filelist=runlib.get_filelist( file_patterns )
     filelist_pixelmap=runlib.get_filelist( pixel_map )
-    filelist_pixelmap,files_by_dir = filter_filelist(filelist , filelist_pixelmap)
-    preprocess(filelist_pixelmap,files_by_dir, plot_sum = plot_sum)
+    files_with_pixelmap = filter_filelist(filelist , filelist_pixelmap)
+    preprocess(files_with_pixelmap, plot_sum = plot_sum)
     
     while time.time()+time_wait < loop+time_start:
         time.sleep(time_wait)
@@ -340,7 +365,7 @@ if __name__ == "__main__":
             print(f"New files detected: {new_files}")
             filelist.extend(new_files)
             filelist_pixelmap,files_by_dir = filter_filelist(new_files , filelist_pixelmap, plot_sum= False)
-            preprocess(filelist_pixelmap,files_by_dir)
+            preprocess(files_with_pixelmap)
         else:
             print("Waiting for new files for the next %i seconds"%(int(loop+time_start-time.time())), end="\r")
 

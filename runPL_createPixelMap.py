@@ -120,6 +120,7 @@ def raw_image_clean(filelist):
         header = fits.getheader(filelist_cleaned[-1])
 
         raw_image = np.zeros((header['NAXIS2'], header['NAXIS1']), dtype=np.double)
+        print("Processing files: ", filelist_cleaned)
         for filename in tqdm(filelist_cleaned, desc="Co-adding files"):
             if not "optim" in filename:
                 raw_image += fits.getdata(filename).sum(axis=0)
@@ -384,7 +385,7 @@ def filter_only_good_files(filelist, filter_files=False):
     bad_files = []
     stats = {}
     #evaluate_shapes(filelist)
-    for file in tqdm(filelist):
+    for file in tqdm(filelist, desc="Filtering files"):
         with fits.open(file) as hdul:
             
             data = hdul[0].data
@@ -447,13 +448,22 @@ if __name__ == "__main__":
     if filter_files==True: 
         filelist = filter_only_good_files(filelist, True)
 
-    wollaston = fits.getheader(filelist[0]).get('X_FIRWOL', 'IN')
+    wollastons = np.unique([fits.getheader(f).get('X_FIRWOL', 'IN') for f in filelist])
 
-    if wollaston == 'IN':
-        output_channels = 38
-    else:
-        output_channels = 19
+    for wollaston in wollastons:
+        print(f"Processing files with wollaston status: {wollaston}")
+        # Filter files based on wollaston status
+        filtered_files = [f for f in filelist if fits.getheader(f).get('X_FIRWOL', 'IN') == wollaston]
+        
+        if not filtered_files:
+            print(f"No files found with wollaston status: {wollaston}")
+            continue
 
-    raw_Image, header = raw_image_clean(filelist)
-    traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_Image, pixel_min, pixel_max, output_channels, filelist)
-    save_fits_and_png(raw_Image, traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder)
+        if wollaston == 'IN':
+            output_channels = 38
+        else:
+            output_channels = 19
+
+        raw_Image, header = raw_image_clean(filtered_files)
+        traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_Image, pixel_min, pixel_max, output_channels, filtered_files)
+        save_fits_and_png(raw_Image, traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder)
