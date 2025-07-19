@@ -265,8 +265,9 @@ def checking_wavelength_aligment_in_modes(x_none, y_none):
     print("buffer")
 
 def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder):
+
     # Save fits file with traces_loc inside
-    hdu = fits.PrimaryHDU(traces_loc)
+    hdu = fits.PrimaryHDU(traces_loc.copy())
     header['X_FIRTYP'] = 'PIXELMAP'
     # Add date and time to the header
     current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
@@ -286,10 +287,7 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
         folder = folder[:-5]
     output_dir = os.path.join(folder,"../pixelmaps")
 
-    if os.path.exists(output_dir) and os.path.isdir(output_dir):
-        shutil.rmtree(output_dir)
-
-    # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
+    # Créer le dossier "pixelmaps" s'il n'existe pas déjà
     os.makedirs(output_dir, exist_ok=True)
 
     hdu.header.extend(header, strip=True)
@@ -297,6 +295,8 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
     filename_out = os.path.join(output_dir, runlib.create_output_filename(header))
 
     hdul.writeto(filename_out, overwrite=True)
+    hdul.close()
+
 
     fig,ax=runlib.make_figure_of_trace(raw_image,traces_loc,pixel_wide,pixel_min,pixel_max)
 
@@ -335,6 +335,7 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
 
     print("File saved as: "+filename_out)
     print("PNG saved as: "+filename_out[:-4]+"png")
+    os.system("ls -l "+os.path.join(folder,"../pixelmaps"))
 
 def quick_fits(data, title=""):
     #For debugging purpose
