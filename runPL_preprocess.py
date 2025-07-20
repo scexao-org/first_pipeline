@@ -96,8 +96,21 @@ def filter_filelist(filelist , filelist_pixelmap):
         print("Pre-processing all RAW files !!!")
         fits_keywords = {'X_FIRTYP': ['RAW']}
         filelist_rawdata = runlib.clean_filelist(fits_keywords, filelist)
-
+    
     filelist_rawdata = np.unique(filelist_rawdata)
+
+    # Check for pixel maps with wollaston IN and OUT
+    wollaston_status = [fits.getheader(pm).get('X_FIRWOL', 'IN') for pm in filelist_pixelmap]
+    if 'IN' not in wollaston_status:
+        print("WARNING: No pixel map found with Wollaston status 'IN'.")
+    if 'OUT' not in wollaston_status:
+        print("WARNING: No pixel map found with Wollaston status 'OUT'.")
+
+    # Remove files with wollaston status that are in the wollaston_status list
+    filelist_rawdata = [
+            f for f in filelist_rawdata
+            if fits.getheader(f).get('X_FIRWOL', 'IN') in wollaston_status
+        ]
 
     print("runPL filelist : ", filelist_rawdata)
 
