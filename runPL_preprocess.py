@@ -80,30 +80,24 @@ def filter_filelist(filelist , filelist_pixelmap):
     if len(filelist_pixelmap) == 0:
         raise FileNotFoundError("No pixel map to pre-process")
 
-    wollaston = fits.getheader(filelist_pixelmap[-1]).get('X_FIRWOL', 'IN')
+    if False:
+        # Keys to keep only the RAW files with external triggers
+        fits_keywords = {'X_FIRTYP': ['RAW'], 'X_FIRTRG': ['EXT']}
+        filelist_rawdata = runlib.clean_filelist(fits_keywords, filelist)
 
-    # Keys to keep only the RAW files with external triggers
-    fits_keywords = {'X_FIRTYP': ['RAW'], 'X_FIRTRG': ['EXT']}
-    filelist_rawdata = runlib.clean_filelist(fits_keywords, filelist)
+        # Keys to keep only the RAW files with position unique (allow internal trigger in that case)
+        fits_keywords = {'X_FIRTYP': ['RAW'], 'X_FIRMID': ["1"]}
+        filelist_rawdata = np.append( filelist_rawdata, runlib.clean_filelist(fits_keywords, filelist))
 
-    # Keys to keep only the RAW files with position unique (allow internal trigger in that case)
-    fits_keywords = {'X_FIRTYP': ['RAW'], 'X_FIRMID': ["1"]}
-    filelist_rawdata = np.append( filelist_rawdata, runlib.clean_filelist(fits_keywords, filelist))
-
-    # Keys to keep only the RAW files with position unique (allow internal trigger in that case)
-    fits_keywords = {'X_FIRTYP': ['RAW'], 'DATA-TYP': ['DARK','FLAT']}
-    filelist_rawdata = np.append( filelist_rawdata, runlib.clean_filelist(fits_keywords, filelist))
+        # Keys to keep only the RAW files with position unique (allow internal trigger in that case)
+        fits_keywords = {'X_FIRTYP': ['RAW'], 'DATA-TYP': ['DARK','FLAT']}
+        filelist_rawdata = np.append( filelist_rawdata, runlib.clean_filelist(fits_keywords, filelist))
+    else:
+        print("Pre-processing all RAW files !!!")
+        fits_keywords = {'X_FIRTYP': ['RAW']}
+        filelist_rawdata = runlib.clean_filelist(fits_keywords, filelist)
 
     filelist_rawdata = np.unique(filelist_rawdata)
-
-    # Remove files that do not have the same status of the wollaston
-    filelist_rawdata_filtered = []
-    for file in filelist_rawdata:
-        header = fits.getheader(file)
-        file_wollaston = header.get('X_FIRWOL', 'IN')
-        if file_wollaston == wollaston:
-            filelist_rawdata_filtered.append(file)
-    filelist_rawdata = np.array(filelist_rawdata_filtered)
 
     print("runPL filelist : ", filelist_rawdata)
 
@@ -222,7 +216,7 @@ def preprocess(files_with_pixelmap, plot_sum =False):
 
         # Generate and save the figure for the directory
         fig,ax = runlib.make_figure_of_trace(raw_image, traces_loc, pixel_wide, pixel_min, pixel_max)
-        fig.savefig(output_filename_full[:-5]+"_I.png", dpi=300)
+        fig.savefig(output_filename_full[:-5]+"I.png", dpi=300)
         
         data_cut_pixels, data_dark_pixels = basic.preprocess_cutData(data, pixelMap, True)
 
@@ -259,7 +253,7 @@ def preprocess(files_with_pixelmap, plot_sum =False):
             if len(xmod) > 9:
                 fluxes = data_cut_pixels.mean(axis=(1,2,3))
                 fig= runlib_i.plot_couplinng_map(fluxes, xmod, ymod)
-                fig.savefig(output_filename_full[:-5]+"_M.png", dpi=300)
+                fig.savefig(output_filename_full[:-5]+"M.png", dpi=300)
 
         files_out += [output_filename]
         comp_hdu.writeto(output_filename_full, overwrite=True, output_verify='fix', checksum=True)
