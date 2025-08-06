@@ -444,7 +444,7 @@ if __name__ == "__main__":
     file_patterns=args if args else ['*.fits']
     filter_files=options.filter_files
     
-    filelist=runlib.get_filelist( file_patterns )
+    filelist=runlib.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']})
 
     if filter_files==True: 
         filelist = filter_only_good_files(filelist, True)

@@ -80,16 +80,81 @@ Example:
 """
 
 
-def filter_couplingmapfile(cmaplist):
+def get_filelist(file_patterns, cmap_patterns, modID, modScale, object_name, wollaston):
+
+        fits_keywords = {'X_FIRTYP': ['PREPROC'],
+                        'DATA-TYP': ['OBJECT','OJECT','TEST'],
+                        }    
+        
+        # Adding other constraints if asked by user
+        if modID is not None:
+            fits_keywords['X_FIRMID'] = [modID]
+        if modScale is not None:
+            fits_keywords['X_FIRMSC'] = [modScale]
+        if object_name is not None:
+            fits_keywords['OBJECT'] = [object_name]
+        if wollaston is not None:
+            fits_keywords['X_FIRWOL'] = [wollaston]
+        
+        print(file_patterns)
+        filelist = runlib.get_filelist(file_patterns, fits_keywords)
+
+        if len(filelist) == 0:
+            raise FileNotFoundError("No files found with the specified patterns and keywords.")
+
+        # Adding new constraints if not asked by user
+        hd=fits.getheader(filelist[0])
+        modID = hd.get('X_FIRMID', 0)
+        modScale = hd.get('X_FIRMSC', 0)
+        object_name = hd.get('OBJECT', 'NONE')
+        wollaston = hd.get('X_FIRWOL', 'IN')
+        fits_keywords['OBJECT'] = [object_name]
+        fits_keywords['X_FIRMID'] = [modID]
+        fits_keywords['X_FIRMSC'] = [modScale]
+        fits_keywords['X_FIRWOL'] = [wollaston]
+
+        print("----------------")
+        print(f"Selected object='{object_name}' with modScale={modScale} and modID={modID}")
+        print("----------------")
+
+        filelist = runlib.get_filelist(file_patterns, fits_keywords)
+
+        if len(filelist) == 0:
+            raise FileNotFoundError("No files found with the specified patterns and keywords.")
+
+        fits_keywords = {'X_FIRTYP': ['PREPROC'],
+                        'DATA-TYP': ['DARK'],
+                        'X_FIRWOL': [wollaston],
+                        }    
+    
+        filelist_dark = runlib.get_filelist(file_patterns, fits_keywords)
+
+        if len(filelist_dark) == 0:
+            print("WARNING: No dark files found with the specified patterns and keywords.")
+
+        fits_keywords = {'X_FIRTYP': ['COUPLINGMAP'],
+                        'X_FIRWOL': [wollaston],
+                        }    
+
+        filelist_cmap = runlib.get_filelist(cmap_patterns, fits_keywords)
+
+        if len(filelist_cmap) == 0:
+            raise FileNotFoundError("WARNING: No coupling map files found with the specified patterns and keywords.")
+
+        files_with_dark = runlib.associate_dark(filelist, filelist_dark)
+
+        return files_with_dark, filelist_cmap
+
+
+
+
+def filter_couplingmapfile(filelist_cmap):
     """
     Filters the input file list to separate coupling map files and dark files based on FITS keywords.
     Raises an error if no valid files are found.
     Returns a dictionary mapping coupling map files to their closest dark files.
     """
 
-    fits_keywords = {'X_FIRTYP': ['COUPLINGMAP']}
-
-    filelist_cmap = runlib.clean_filelist(fits_keywords, cmaplist)
     print("runPL object filelist : ", filelist_cmap)
 
     # raise an error if filelist_cleaned is empty
@@ -314,19 +379,17 @@ if __name__ == "__main__":
     wavelength_smooth = 1
     save_individual_frames = True
     save_individual_wavelength = False
-    modID = 0
-    modScale = 0
-    object_name = "NONE"
-
 
     # Add options for these values
-    parser.add_option("--object_name", type="string", default="NONE",
+    parser.add_option("--object_name", type="string", 
                     help="Selection of the data by the Object name (default: %default -- no selection)")
-    parser.add_option("--modID", type="int", default=modID,
+    parser.add_option("--modID", type="int", 
                       help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
-    parser.add_option("--modScale", type="int", default=modScale,
+    parser.add_option("--modScale", type="int", 
                       help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
-    parser.add_option("--coupling_map", type="string", default=None,
+    parser.add_option("--wollaston", type="string", 
+                      help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
+    parser.add_option("--coupling_map", type="string", 
                     help="Force to select which coupling map file to use (default: the one in the directory)")
     parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,
                     help="smoothing factor for wavelength (default: %default)")
@@ -336,11 +399,16 @@ if __name__ == "__main__":
                     help="Save individual wavelength (default: %default)")
     
 
-    if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or 
-        os.environ.get('SPYDER_DEBUG_FILEfile =')):
+    if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or os.environ.get('SPYDER_DEBUG_FILEfile =')):
+        print("Running in compiler")
+        modID = None
+        modScale = None
+        object_name = None
+        wollaston = None
+
         if getpass.getuser() == "slacour":
-            file_patterns = "/Users/slacour/DATA/LANTERNE/Mai3/preproc/firstpl_2025-05-09T03:26:36_BETUMA.fits"
-            coupling_map = "/Users/slacour/DATA/LANTERNE/Mai/preproc2/couplingmaps"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/firstpl_2025-06-14T01:38*fits"
+            coupling_map = "/Users/slacour/DATA/LANTERNE/20250614/preproc/../couplingmaps/firstpl_2025-06-14T01:42:19_COUPLINGMAP.fits"
         if getpass.getuser() == "ehuby" :
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/firstpl_*.fits"
             coupling_map = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/couplingmaps_TETCRB/"
@@ -364,27 +432,18 @@ if __name__ == "__main__":
             coupling_map = file_patterns +['../couplingmaps/*.fits']
 
 
+    files_with_dark, filelist_cmap = get_filelist(file_patterns, coupling_map, modID, modScale, object_name, wollaston=None)
     filelist=runlib.get_filelist(file_patterns)
     cmaplist=runlib.get_filelist(coupling_map)
 
-    files_with_dark = runlib.filter_filelist(filelist, modID=modID, object_name=object_name, modScale=modScale)
-    filelist_cmap   = filter_couplingmapfile(cmaplist)
+    filelist_cmap   = filter_couplingmapfile(filelist_cmap)
 
     couplingMap = basic.CouplingMap(filelist_cmap[0])
 
     #Input preproc
     #clean and sum all data
 
-    datalist=runlib_i.extract_datacube(files_with_dark,wavelength_smooth,Nbin=couplingMap.wavelength_bin)
-
-    #datacube (625, 38, 100)
-    #select only the data in datalist which has the same modulation pattern
-    if modID == 0:
-        modID = datalist[0].modID
-        datalist = [d for d in datalist if d.modID == modID]
-        if len(datalist) == 0:
-            print("No data with the selected modulation pattern")
-            exit()
+    datalist=runlib_i.extract_datacube(files_with_dark,Nsmooth=wavelength_smooth,Nbin=couplingMap.wavelength_bin,flat = couplingMap.flat)
 
     datacube=np.concatenate([d.data for d in datalist])
     datacube=datacube.transpose((3,2,0,1))

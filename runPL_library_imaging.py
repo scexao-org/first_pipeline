@@ -132,7 +132,7 @@ def plot_couplinng_map(fluxes, xmod, ymod):
     Ncube = Ndit//Nmod
 
     if (Ncube*Nmod)!=Ndit:
-        print("WARNING, CUBE not multiple of modulation pattern")
+        print(f"WARNING, CUBE not multiple of modulation pattern (Ncube={Ncube}, Nmod={Nmod}, Ndit={Ndit})")
         print("filling with zeros")
         Ncube += 1
 
@@ -327,27 +327,98 @@ class DataCube:
         self.modScale = int(header.get('X_FIRMSC', 1))
         self.object_name = header.get('OBJECT', 'Unknown')
         self.wollaston = header.get('X_FIRWOL', 'IN')
+        self.add_modulation()
 
-    def add_modulation(self, xmod, ymod):
+    def add_modulation(self):
+        """ 
+        Adds modulation information to the data cube.
+        Reads the 'MODULATION' extension from the FITS file and extracts xmod and ymod arrays.
+        If the extension does not exist, initializes xmod and ymod to zeros.
+        """
+
+        # Check if 'MODULATION' extension exists in the FITS file
+        with fits.open(self.filename) as hdul:
+            if 'MODULATION' not in hdul:
+                print(f"WARNING: 'MODULATION' extension not found in {self.filename}")
+                xmod = np.zeros(1)
+                ymod = np.zeros(1)
+            elif hdul[0].header.get('X_FIRMID', -1) < 0:
+                xmod = np.zeros(1)
+                ymod = np.zeros(1)
+            else:
+                # reading modulation data
+                modulation_data = hdul['MODULATION'].data
+                xmod = np.double(modulation_data['xmod'])
+                ymod = np.double(modulation_data['ymod'])
+                # Ensure xmod and ymod are arrays, even if they are scalars
+                if np.isscalar(xmod):
+                    xmod = np.array([xmod])
+                if np.isscalar(ymod):
+                    ymod = np.array([ymod])
+
         self.xmod = xmod
         self.ymod = ymod
         self.Nmod = len(xmod)
         self.Ncube = self.Ndit//self.Nmod
         if (self.Ncube*self.Nmod)!=self.Ndit:
-            print("WARNING, CUBE not multiple of modulation pattern")
-            print("filling with zeros")
+            print(f"WARNING, CUBE not multiple of modulation pattern (Ncube={self.Ncube}, Nmod={self.Nmod}, Ndit={self.Ndit})")
+            print("filling with zeros file: ",self.filename)
             self.Ncube += 1
 
         size_new = (self.Ncube,self.Nmod,self.Noutput,self.Nwave)
         size_old = np.prod((self.Ndit,self.Noutput,self.Nwave))
 
-        data_padded=np.zeros(np.prod(size_new))
-        data_padded[:size_old]=self.data.ravel()[:size_old]
-        self.data=data_padded.reshape(size_new)
+        if np.prod(size_new) != size_old:
+            data_padded=np.zeros(np.prod(size_new))
+            data_padded[:size_old]=self.data.ravel()[:size_old]
+            self.data=data_padded.reshape(size_new)
 
-        variance_padded=np.zeros(np.prod(size_new))
-        variance_padded[:size_old]=self.variance.ravel()[:size_old]
-        self.variance=variance_padded.reshape(size_new)
+            variance_padded=np.zeros(np.prod(size_new))
+            variance_padded[:size_old]=self.variance.ravel()[:size_old]
+            self.variance=variance_padded.reshape(size_new)
+        else:
+            self.data = self.data.reshape(size_new)
+            self.variance = self.variance.reshape(size_new)
+
+    def normalize_with_flat(self, flat):
+        """
+        Normalize the data cube by a flat field.
+        Args:
+            flat (numpy.ndarray): The flat field to normalize the data cube.
+        """
+        self.data /= flat
+        self.variance /= flat**2
+
+    def normalize_with_spectra(self):
+        """
+        Normalize the extracted data.
+        """
+        inv_spectra = 1/self.data.mean(axis=(0, 1, 2))
+
+        self.data *= inv_spectra
+        self.variance *= inv_spectra**2  # Update variance based on the normalized spectra
+        
+    def smooth(self, Nsmooth):
+        """
+        Smooth the data cube.
+        """
+
+        self.data = uniform_filter1d(self.data, size=Nsmooth, axis=-1, mode='nearest')
+        self.variance = uniform_filter1d(self.variance, size=Nsmooth, axis=-1, mode='nearest')
+
+    def bin(self, Nbin):
+        """
+        Bin the data cube.
+        """
+        Nwave = self.data.shape[3]
+
+        self.data = self.data[:, :, :, :(Nwave // Nbin) * Nbin]
+        self.variance = self.variance[:, :, :, :(Nwave // Nbin) * Nbin]
+
+        self.data = self.data.reshape((self.Ncube, self.Nmod, self.Noutput, Nwave // Nbin, Nbin)).sum(axis=-1)
+        self.variance = self.variance.reshape((self.Ncube, self.Nmod, self.Noutput, Nwave // Nbin, Nbin)).sum(axis=-1)
+        
+        self.Nwave = self.data.shape[3]
 
     def get_triangle(self):
     
@@ -387,7 +458,7 @@ class DataCube:
 
         return good_triangles
 
-def extract_datacube(files_with_dark,Nsmooth = 1,Nbin = 1):
+def extract_datacube(files_with_dark, Nsmooth = 1, Nbin = 1, flat = None, normalize = False):
     """
     Extracts and processes data cubes from the input files.
     Subtracts dark files, applies wavelength smoothing, and calculates variance.
@@ -404,14 +475,6 @@ def extract_datacube(files_with_dark,Nsmooth = 1,Nbin = 1):
         header=fits.getheader(data_file)
         # important to cast the data in double!
         data=np.double(fits.getdata(data_file))
-        # reading modulation data
-        xmod=np.double(fits.getdata(data_file,'MODULATION').field('xmod'))
-        ymod=np.double(fits.getdata(data_file,'MODULATION').field('ymod'))
-        # Ensure xmod and ymod are arrays, even if they are scalars
-        if np.isscalar(xmod):
-            xmod = np.array([xmod])
-        if np.isscalar(ymod):
-            ymod = np.array([ymod])
 
         if dark_file is not None:
             data_dark=fits.getdata(dark_file)
@@ -424,30 +487,29 @@ def extract_datacube(files_with_dark,Nsmooth = 1,Nbin = 1):
         else:
             # using default values if we do not know the dark
             data_dark=header["DETBIAS"]*(1+2*header["PIX_WIDE"])
-            data_dark_std=20
+            data_dark_std=12*np.sqrt(1+2*header["PIX_WIDE"])
+
         data-=data_dark
         gain=header['GAIN']
         data_var=data_dark_std**2+gain*np.abs(data)
 
-        Npos=data.shape[0]
-        Noutput=data.shape[1]
-        Nwave=data.shape[2]
+        dataCube = DataCube(data, data_var, data_file, header)
 
+        # Normalize the data cube by the flat field if provided
+        if flat is not None:
+            dataCube.normalize_with_flat(flat)
+
+        # If smoothing and binning is required
         if Nsmooth > 1:
-            # Smooth data along its third dimension by Nsmooth values using uniform_filter1d
-            data = uniform_filter1d(data, size=Nsmooth, axis=2, mode='nearest')
-            data_var = uniform_filter1d(data_var, size=Nsmooth, axis=2, mode='nearest')
-
+            dataCube.smooth(Nsmooth)
         if Nbin > 1:
-            data=data[:,:,:(Nwave//Nbin)*Nbin]
-            data_var=data_var[:,:,:(Nwave//Nbin)*Nbin]
+            dataCube.bin(Nbin)
 
-            data=data.reshape((Npos,Noutput,Nwave//Nbin,Nbin)).sum(axis=-1)
-            data_var=data_var.reshape((Npos,Noutput,Nwave//Nbin,Nbin)).sum(axis=-1)
+        # If normalization with spectra is required
+        if normalize == True:
+            dataCube.normalize_with_spectra()
 
-        datalist += [DataCube(data, data_var, data_file, header)]
-        # print(data_file,xmod)
-        datalist[-1].add_modulation(xmod,ymod)
+        datalist += [dataCube]
 
     return datalist
 

@@ -79,6 +79,85 @@ usage = """
     runPL_createCouplingMaps.py  *.fits
 """
 
+def get_filelist(file_patterns, flat_patterns, modID, modScale, object_name, wollaston):
+
+        fits_keywords = {'X_FIRTYP': ['PREPROC'],
+                        'DATA-TYP': ['OBJECT','OJECT','TEST'],
+                        'X_FIRTRG': ['EXT'],
+                        }    
+        
+        # Adding other constraints if asked by user
+        if modID is not None:
+            fits_keywords['X_FIRMID'] = [modID]
+        if modScale is not None:
+            fits_keywords['X_FIRMSC'] = [modScale]
+        if object_name is not None:
+            fits_keywords['OBJECT'] = [object_name]
+        if wollaston is not None:
+            fits_keywords['X_FIRWOL'] = [wollaston]
+        
+        print(file_patterns)
+        filelist = runlib.get_filelist(file_patterns, fits_keywords)
+
+        if len(filelist) == 0:
+            raise FileNotFoundError("No files found with the specified patterns and keywords.")
+
+        # Adding new constraints if not asked by user
+        hd=fits.getheader(filelist[0])
+        modID = hd.get('X_FIRMID', 0)
+        modScale = hd.get('X_FIRMSC', 0)
+        object_name = hd.get('OBJECT', 'NONE')
+        wollaston = hd.get('X_FIRWOL', 'IN')
+        fits_keywords['OBJECT'] = [object_name]
+        fits_keywords['X_FIRMID'] = [modID]
+        fits_keywords['X_FIRMSC'] = [modScale]
+        fits_keywords['X_FIRWOL'] = [wollaston]
+
+        print("----------------")
+        print(f"Selected object='{object_name}' with modScale={modScale} and modID={modID}")
+        print("----------------")
+
+        filelist = runlib.get_filelist(file_patterns, fits_keywords)
+
+        if len(filelist) == 0:
+            raise FileNotFoundError("No files found with the specified patterns and keywords.")
+
+        fits_keywords = {'X_FIRTYP': ['PREPROC'],
+                        'DATA-TYP': ['DARK'],
+                        'X_FIRWOL': [wollaston],
+                        }    
+    
+        filelist_dark = runlib.get_filelist(file_patterns, fits_keywords)
+
+        if len(filelist_dark) == 0:
+            print("WARNING: No dark files found with the specified patterns and keywords.")
+
+        fits_keywords = {'X_FIRTYP': ['PREPROC'],
+                        'DATA-TYP': ['FLAT'],
+                        'X_FIRWOL': [wollaston],
+                        }    
+
+        filelist_flat = runlib.get_filelist(flat_patterns, fits_keywords)
+
+        if len(filelist_flat) == 0:
+            print("WARNING: No flat files found with the specified patterns and keywords: using star for flats.")
+            filelist_flat = filelist
+
+        files_with_dark = runlib.associate_dark(filelist, filelist_dark)
+        flats_with_dark = runlib.associate_dark(filelist_flat, filelist_dark)
+
+        return files_with_dark, flats_with_dark
+
+
+def compute_flat(flat_with_dark):
+    
+    datalist=runlib_i.extract_datacube(flat_with_dark)
+    flats=[d.data.sum(axis=(0,1)) for d in datalist]
+    flat=np.sum(flats,axis=0)
+    flat/=np.mean(flat,axis=0)
+
+    return flat
+
 def filter_data(datacube,flux_goodData,Nsingular):
     """
     Filters the input datacube based on good flux data and applies Singular Value Decomposition (SVD).
@@ -230,233 +309,73 @@ def fluxmap_interpolation(fluxmaps, xmod, ymod, gridsize=500):
 
     return fluxmap_interp
     
-# def run_create_coupling_maps(files_with_dark, 
-#                                 wavelength_smooth = 20,
-#                                 wavelength_bin = 15,
-#                                 modID = 0,
-#                                 Nsingular=19*3):
-#     """
-#     Used in lancementserie.py for global generation
-    
-#     """
-    
-#     plt.close("all")
-
-#     #Input preproc
-#     #clean and sum all data
-#     datalist=runlib_i.extract_datacube(files_with_dark,wavelength_smooth,Nbin=wavelength_bin)
-#     #datacube (625, 38, 100)
-#     #select only the data in datalist which has the same modulation pattern
-#     if modID == 0:
-#         modID = datalist[0].modID
-#         datalist = [d for d in datalist if d.modID == modID]
-
-#     modScale = datalist[0].modScale
-#     datalist = [d for d in datalist if d.modID == modScale]
-
-#     if len(datalist) == 0:
-#         print("No data with the selected modulation parameters",modID,modScale)
-#         return
-
-#     datacube=np.concatenate([d.data for d in datalist])
-#     datacube=datacube.transpose((3,2,0,1))
-
-#     xmod=datalist[0].xmod
-#     ymod=datalist[0].ymod
-#     triangles = datalist[0].get_triangle()
-
-#     # select data only above a threshold based on flux
-#     flux_threshold=np.percentile(datacube.mean(axis=(0,1)),80)/5
-#     flux_goodData=datacube.mean(axis=(0,1)) > flux_threshold
-#     # plt.imshow(flux_goodData)
-#     if np.sum(flux_goodData)<57:
-#         #too little good data, we need to lower the bar
-#         flux_goodData=datacube.mean(axis=(0,1)) > flux_threshold/2
-#         print("Not enough good data, lowering the threshold to ",flux_threshold/2)
-
-#     # get the Nsingulat highest singular values and the projection vectors into that space 
-#     #VSD
-#     #datacube : (100, 38, 10, 625)
-#     #flux_gooddata : (10, 625)
-#     #Nsingular : 57
-#     pos_2_singular,singular_values,singular_2_data=get_projection_matrice(datacube,flux_goodData,Nsingular)
-
-#     # average all the datacubes, do not includes the bad frames
-#     pos_2_singular[:,~flux_goodData]=np.nan
-#     pos_2_singular_mean = np.nanmean(pos_2_singular,axis=1)
-
-#     # compute the matrices to go from the projected data to the flux and tip tilt (and inverse)
-#     flux_2_data,data_2_flux,fluxtiptilt_2_data,data_2_fluxtiptilt,masque_positions,masque_triangles = get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles)
-
-#     #use flux tip tilt matrice to check if the observations are point like
-#     # To do so, fits the vector model and check if the chi2 decrease resonably
-#     chi2_min,chi2_max,arg_triangle=runlib_i.get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt)
-#     chi2_delta=chi2_min/chi2_max
-#     percents=np.nanpercentile(chi2_delta[flux_goodData],[16,50,84])
-#     chi2_threshold=percents[1]+(percents[2]-percents[0])*3/2
-#     chi2_goodData = (chi2_delta < chi2_threshold)&flux_goodData
-
-#     #redo most of the work above but with flagged datasets
-#     pos_2_singular,singular_values,singular_2_data=get_projection_matrice(datacube,chi2_goodData,Nsingular)
-#     pos_2_singular[:,~chi2_goodData]=np.nan
-#     pos_2_singular_mean = np.nanmean(pos_2_singular,axis=1)
-#     flux_2_data,data_2_flux,fluxtiptilt_2_data,data_2_fluxtiptilt,masque_positions,masque_triangles = get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles)
-    
-#     # Flux maps for inspection
-#     fluxmaps = np.mean(datacube, axis=(0,1))
-#     # Define the grid for interpolation
-#     grid_x, grid_y = np.mgrid[np.min(xmod):np.max(xmod):500j, np.min(ymod):np.max(ymod):500j]  # 500x500 grid
-#     # Interpolate the fluxes onto the grid
-#     fluxmap_interp= np.zeros((len(fluxmaps), 500, 500))
-#     for i,fm in enumerate(fluxmaps):
-#         fluxmap_interp[i] = griddata((xmod, ymod), fm, (grid_x, grid_y), method='cubic').T
-    
-#     # Save arrays into a FITS file
-
-#     # Create a primary HDU with no data, just the header
-#     hdu_primary = fits.PrimaryHDU()
-
-#     # Create HDUs for each array
-#     hdu_1 = fits.ImageHDU(data=flux_2_data, name='F2DATA')
-#     hdu_2 = fits.ImageHDU(data=data_2_flux, name='DATA2F')
-#     hdu_3 = fits.ImageHDU(data=fluxtiptilt_2_data, name='FTT2DATA')
-#     hdu_4 = fits.ImageHDU(data=data_2_fluxtiptilt, name='DATA2FTT')
-#     hdu_fluxmap = fits.ImageHDU(data=fluxmap_interp, name='FLUXMAP')
-
-#     # Create columns for xmod and ymod using fits.Column
-#     x_pos = xmod[masque_positions]
-#     y_pos = ymod[masque_positions]
-#     x_triangles = xmod[triangles[masque_triangles]]
-#     y_triangles = ymod[triangles[masque_triangles]]
-
-#     # shifting all positions around the maximum of flux found from gaussian fitting
-#     fluxes = datacube.mean(axis=(0,1,2))
-#     popt = basic.fit_gaussian_on_flux(fluxes, xmod, ymod)
-#     x_fit=popt[1]
-#     y_fit=popt[2]
-#     x_fit = x_pos[((x_fit-x_pos)**2).argmin()] 
-#     y_fit = y_pos[((y_fit-y_pos)**2).argmin()] 
-
-#     x_triangles -= x_fit
-#     y_triangles -= y_fit
-#     x_pos -= x_fit
-#     y_pos -= y_fit
-
-#     col_xmod = fits.Column(name='X_POS', format='E', array=x_pos, unit='mas')
-#     col_ymod = fits.Column(name='Y_POS', format='E', array=y_pos, unit='mas')
-
-#     col_xtriangles = fits.Column(name='X_TRI', format='3E', array=x_triangles, unit='mas')
-#     col_ytriangles = fits.Column(name='Y_TRI', format='3E', array=y_triangles, unit='mas')
-
-#     # Create a table HDU for xmod and ymod
-#     hdu_table_mod = fits.BinTableHDU.from_columns([col_xmod, col_ymod], name='POSITIONS')
-#     hdu_table_triangle = fits.BinTableHDU.from_columns([col_xtriangles, col_ytriangles], name='TRIANGLES')
-
-#     modulation_hdu = fits.open(datalist[-1].filename)['MODULATION']
-
-#     header = datalist[-1].header
-#     # Définir le chemin complet du sous-dossier "output/couplingmaps"
-#     folder = datalist[-1].dirname
-#     output_dir = os.path.join(folder,"couplingmaps")
-
-#     header['X_FIRTYP'] = 'COUPLINGMAP'
-#     # Add date and time to the header
-#     current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-#     header['DATE-PRO'] = current_time
-#     if 'DATE' not in header:
-#         header['DATE'] = current_time
-
-#     # Add input parameters to the header
-#     header['WLSMOOTH'] = wavelength_smooth  # Add wavelength smoothing factor
-#     header['WL_BIN'] = wavelength_bin
-#     header['NSINGUL'] = Nsingular  # Add number of singular values
-#     header['FLUXTHR'] = flux_threshold  # Add flux threshold
-#     header['CHI2THR'] = chi2_threshold  # Add chi2 threshold
-
-#     # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
-#     os.makedirs(output_dir, exist_ok=True)
-
-#     hdu_primary.header.extend(header, strip=True)
-
-#     # Combine all HDUs into an HDUList
-#     hdul = fits.HDUList([hdu_primary, hdu_1, hdu_2, hdu_3, hdu_4,
-#                          hdu_table_mod,hdu_table_triangle,modulation_hdu,
-#                          hdu_fluxmap])
-
-#     output_filename = os.path.join(output_dir, runlib.create_output_filename(header))
-
-#     # Write to a FITS file
-#     print(f"Saving data to {output_filename}")
-#     hdul.writeto(output_filename, overwrite=True)
-
-#     runlib_i.generate_plots(datacube, xmod, ymod, masque_positions, flux_2_data, singular_values, Nsingular, chi2_delta, flux_goodData, chi2_goodData, flux_threshold, chi2_threshold, output_dir)
-
 
 
 if __name__ == "__main__":
     parser = OptionParser(usage)
 
     # Default values
-    modID = 0
-    modScale = 0
     wavelength_smooth = 20
     wavelength_bin = 15
     Nsingular=19*3 #for cmap=7, 57 is too high (34, 19 for plots is max for novemeber data in cmap=7)
-    object_name = "NONE"
 
 
     # Add options for these values
+
+    # Add options for these values
+    parser.add_option("--object_name", type="string", 
+                    help="Selection of the data by the Object name (default: first target the list)")
+    parser.add_option("--flat_files", type="string", 
+                    help="Select a specific flat file to use (default: use the flat files or if not the ones used to create the coupling maps)")
     parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,
                     help="smoothing factor for wavelength (default: %default)")
     parser.add_option("--wavelength_bin", type="int", default=wavelength_bin,
                     help="binning factor for wavelength (default: %default)")
-    parser.add_option("--object_name", type="string", default="NONE",
-                    help="Selection of the data by the Object name (default: %default -- no selection)")
-    parser.add_option("--modID", type="int", default=modID,
-                      help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
-    parser.add_option("--modScale", type="int", default=modScale,
-                      help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
     parser.add_option("--Nsingular", type="int", default=Nsingular,
                       help="Number of singular values to use (default: %default)")
+    parser.add_option("--modID", type="int", 
+                      help="Selection of the modulation pattern by user (default: first in the list)")
+    parser.add_option("--modScale", type="int", 
+                      help="Selection of the modulation pattern by user (default: first in the list)")
+    parser.add_option("--wollaston", type="string", 
+                      help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
     
-    if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
-        os.environ.get('SPYDER_DEBUG_FILE')):
-        print("Running in compiler^")
+    if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('SPYDER_DEBUG_FILE')):
+        print("Running in compiler")
+        flat_patterns = None
+        modID = None
+        modScale = None
+        object_name = None
+        wollaston = None
         if getpass.getuser() == "slacour":
-            file_patterns = "/Users/slacour/DATA/LANTERNE/Optim_maps/November2024/preproc"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/Mai3/preproc/firstpl_2025-05-09T02:4*_BETUMA.fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/firstpl_2025-05-10T09?2*"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/firstpl_2025-06-14T01:42*fits"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
         if getpass.getuser() == "ehuby":
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
-        #file_patterns = "/home/jsarrazin/Bureau/PLDATA/2025_03_14"
-        #file_patterns = "/home/jsarrazin/Bureau/PLDATA/selection_prises_15_mars"
     else:
         # Parse the options
         (options, args) = parser.parse_args()
+        file_patterns=args if args else ['*.fits','./preproc/*.fits']
 
         # Pass the parsed options to the function
         modID=options.modID
         modScale=options.modScale
         object_name = options.object_name
+        wollaston = options.wollaston
         Nsingular=options.Nsingular
         wavelength_smooth=options.wavelength_smooth
         wavelength_bin=options.wavelength_bin
-        file_patterns=args if args else ['*.fits','./preproc/*.fits']
+        flat_patterns = options.flat_files
 
-    # file_patterns = ['./preproc/*.fits']
-    print(file_patterns)
-    filelist = runlib.get_filelist(file_patterns)
-    print(filelist)
-    files_with_dark = runlib.filter_filelist(filelist, modID=modID, object_name=object_name, modScale=modScale)
+    if flat_patterns is None:
+        flat_patterns = file_patterns
 
-    # run_create_coupling_maps(files_with_dark, 
-    #                             wavelength_smooth = wavelength_smooth,
-    #                             wavelength_bin = wavelength_bin,
-    #                             modID = modID,
-    #                             Nsingular= Nsingular)
+    files_with_dark, flats_with_dark = get_filelist(file_patterns, flat_patterns, modID, modScale, object_name, wollaston)
+
+    flat = compute_flat(flats_with_dark)
 
 
     ### run_create_coupling_maps function
@@ -465,33 +384,14 @@ if __name__ == "__main__":
 
     #Input preproc
     #clean and sum all data
-    datalist=runlib_i.extract_datacube(files_with_dark,wavelength_smooth,Nbin=wavelength_bin)
-    #datacube (625, 38, 100)
-    #select only the data in datalist which has the same modulation pattern
-    # if modID == 0:
-    #     modID = datalist[0].modID
-    #     datalist = [d for d in datalist if d.modID == modID]
-
-    modScale = datalist[0].modScale
-    datalist = [d for d in datalist if d.modScale == modScale]
-    modID = datalist[0].modID
-    datalist = [d for d in datalist if d.modID == modID]
-    object_name = datalist[0].object_name
-    datalist = [d for d in datalist if d.object_name == object_name]
-    wollaston = datalist[0].wollaston
-    datalist = [d for d in datalist if d.wollaston == wollaston]
-
-    print("----------------")
-    print(f"Selected object='{object_name}' with modScale={modScale} and modID={modID}")
-    print("----------------")
-
-    if len(datalist) == 0:
-        error_string = "No data with the selected modulation parameters %i, %i, %s"%(modID,modScale,object_name)
-        raise FileNotFoundError(error_string)
+    datalist=runlib_i.extract_datacube(files_with_dark,Nsmooth=wavelength_smooth,Nbin=wavelength_bin, flat =flat, normalize=True)
 
     filenames= [d.filename for d in datalist]
     
     datacube=np.concatenate([d.data for d in datalist])
+    datacube_var=np.concatenate([d.variance for d in datalist])
+
+
     datacube=datacube.transpose((3,2,0,1))
 
     xmod=datalist[0].xmod
@@ -560,6 +460,7 @@ if __name__ == "__main__":
     hdu_4 = fits.ImageHDU(data=data_2_fluxtiptilt, name='DATA2FTT')
     hdu_fluxmap = fits.ImageHDU(data=fluxmap_interp, name='FLUXMAP')
     hdu_modes2D = fits.ImageHDU(data=modes_rect.reshape((Nsingular,gridsize*Ncube,gridsize)), name='MODES2D')
+    hdu_flat = fits.ImageHDU(data=flat, name='FLAT')
 
     # Create columns for xmod and ymod using fits.Column
     x_pos = xmod[masque_positions]
@@ -622,7 +523,7 @@ if __name__ == "__main__":
     # Combine all HDUs into an HDUList
     hdul = fits.HDUList([hdu_primary, hdu_1, hdu_2, hdu_3, hdu_4,
                          hdu_table_mod,hdu_table_triangle,modulation_hdu,
-                         hdu_fluxmap, hdu_modes2D])
+                         hdu_fluxmap, hdu_modes2D,hdu_flat])
 
     output_filename = os.path.join(output_dir, runlib.create_output_filename(header))
 
@@ -636,61 +537,6 @@ if __name__ == "__main__":
                             modes_rect, modes_mean, 
                             chi2_goodData, flux_threshold, chi2_threshold, output_filename)
 
-
-# if __name__ == "__main__":
-#     parser = OptionParser(usage)
-
-
-#     # Default values
-#     modID = 0
-#     wavelength_smooth = 20
-#     wavelength_bin = 15
-#     make_movie = False
-#     Nsingular=19*3 #for cmap=7, 57 is too high (34, 19 for plots is max for novemeber data in cmap=7)
-
-#     # Add options for these values
-#     parser.add_option("--modID", type="int", default=modID,
-#                       help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
-#     parser.add_option("--Nsingular", type="int", default=Nsingular,
-#                       help="Number of singular values to use (default: %default)")
-#     parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,
-#                     help="smoothing factor for wavelength (default: %default)")
-#     parser.add_option("--wavelength_bin", type="int", default=wavelength_bin,
-#                     help="binning factor for wavelength (default: %default)")
-#     parser.add_option("--make_movie", action="store_true", default=make_movie,
-#                     help="Create a nice mp4 with all datacubes -- can be long (default: %default)")
-    
-#     if "VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode':
-#         if getpass.getuser() == "slacour":
-#             file_patterns = "/Users/slacour/DATA/LANTERNE/Optim_maps/November2024/preproc"
-#             file_patterns = "/Users/slacour/DATA/LANTERNE/Mai3/preproc/firstpl_2025-05-09T02:4*_BETUMA.fits"
-#         if getpass.getuser() == "jsarrazin":
-#             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
-#             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
-#         #file_patterns = "/home/jsarrazin/Bureau/PLDATA/2025_03_14"
-#         #file_patterns = "/home/jsarrazin/Bureau/PLDATA/selection_prises_15_mars"
-#     else:
-#         # Parse the options
-#         (options, args) = parser.parse_args()
-
-#         # Pass the parsed options to the function
-#         modID=options.modID
-#         Nsingular=options.Nsingular
-#         wavelength_smooth=options.wavelength_smooth
-#         make_movie=options.make_movie
-#         wavelength_bin=options.wavelength_bin
-#         file_patterns=args if args else ['./preproc/*.fits','*.fits']
-
-#     print(file_patterns)
-#     filelist = runlib.get_filelist(file_patterns)
-#     print(filelist)
-#     files_with_dark = filter_filelist(filelist, modID)
-
-#     run_create_coupling_maps(files_with_dark, 
-#                                 wavelength_smooth = wavelength_smooth,
-#                                 wavelength_bin = wavelength_bin,
-#                                 modID = modID,
-#                                 Nsingular= Nsingular)
 
 
 # %%

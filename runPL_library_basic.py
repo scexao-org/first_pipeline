@@ -104,6 +104,8 @@ class CouplingMap:
         self.ytri=cmap_file['TRIANGLES'].data.field('Y_TRI')
         self.Ntriangles=cmap_file['TRIANGLES'].header['NAXIS2']
 
+        self.flat = cmap_file['FLAT'].data
+
         cmap_file.close()
 
 

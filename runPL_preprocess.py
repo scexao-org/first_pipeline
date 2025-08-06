@@ -68,84 +68,6 @@ Notes:
 """
 
 
-def filter_filelist(filelist , filelist_pixelmap):
-
-    fits_keywords = {'X_FIRTYP': ['PIXELMAP']}
-        
-    # Use the function to clean the filelist
-    filelist_pixelmap = runlib.clean_filelist(fits_keywords, filelist_pixelmap)
-    print("Pixel map file ==>> ",filelist_pixelmap)
-
-    # raise an error if filelist_cleaned is empty
-    if len(filelist_pixelmap) == 0:
-        raise FileNotFoundError("No pixel map to pre-process")
-
-    if False:
-        # Keys to keep only the RAW files with external triggers
-        fits_keywords = {'X_FIRTYP': ['RAW'], 'X_FIRTRG': ['EXT']}
-        filelist_rawdata = runlib.clean_filelist(fits_keywords, filelist)
-
-        # Keys to keep only the RAW files with position unique (allow internal trigger in that case)
-        fits_keywords = {'X_FIRTYP': ['RAW'], 'X_FIRMID': ["1"]}
-        filelist_rawdata = np.append( filelist_rawdata, runlib.clean_filelist(fits_keywords, filelist))
-
-        # Keys to keep only the RAW files with position unique (allow internal trigger in that case)
-        fits_keywords = {'X_FIRTYP': ['RAW'], 'DATA-TYP': ['DARK','FLAT']}
-        filelist_rawdata = np.append( filelist_rawdata, runlib.clean_filelist(fits_keywords, filelist))
-    else:
-        print("Pre-processing all RAW files !!!")
-        fits_keywords = {'X_FIRTYP': ['RAW']}
-        filelist_rawdata = runlib.clean_filelist(fits_keywords, filelist)
-    
-    filelist_rawdata = np.unique(filelist_rawdata)
-
-    # Check for pixel maps with wollaston IN and OUT
-    wollaston_status = [fits.getheader(pm).get('X_FIRWOL', 'IN') for pm in filelist_pixelmap]
-    if 'IN' not in wollaston_status:
-        print("WARNING: No pixel map found with Wollaston status 'IN'.")
-    if 'OUT' not in wollaston_status:
-        print("WARNING: No pixel map found with Wollaston status 'OUT'.")
-
-    # Remove files with wollaston status that are in the wollaston_status list
-    filelist_rawdata = [
-            f for f in filelist_rawdata
-            if fits.getheader(f).get('X_FIRWOL', 'IN') in wollaston_status
-        ]
-
-    print("runPL filelist : ", filelist_rawdata)
-
-    # raise an error if filelist_cleaned is empty
-    if len(filelist_rawdata) == 0:
-        raise FileNotFoundError("No good file to pre-process")
-
-    # for each file in filelist_rawdata find the closest pixelmap file in filelist_dark with, by priority, 
-    # first the wollaston status in the header,
-    # and lastest pixel map date from the DATE-PRO keyword in the header
-
-    def find_closest_pixelmap(raw, filelist_pixelmap):
-        """
-        Find the closest pixel map file for a given raw data file.
-        The closest pixel map is determined by the wollaston status, and date.
-        """
-        header = fits.getheader(raw)
-        raw_wollaston = header.get('X_FIRWOL', 'IN')
-        raw_dir = os.path.dirname(raw)
-
-        # Filter pixel maps by wollaston status
-        pixelmaps_filtered = [pm for pm in filelist_pixelmap if fits.getheader(pm).get('X_FIRWOL', 'IN') == raw_wollaston]
-
-        # If no pixel map found, return None
-        if not pixelmaps_filtered:
-            return None
-
-        # Sort by date and return the most recent one
-        pixelmaps_filtered.sort(key=lambda pm: fits.getheader(pm).get('DATE-PRO', '1970-01-01'))
-        return pixelmaps_filtered[-1]
-
-    files_with_pixelmap = {raw: find_closest_pixelmap(raw, filelist_pixelmap) for raw in filelist_rawdata}
-
-    return files_with_pixelmap
-
 
 def preprocess(files_with_pixelmap, plot_sum =False):
     """
@@ -160,7 +82,10 @@ def preprocess(files_with_pixelmap, plot_sum =False):
 
     center_image = None
     files_out = []
-    dir_path_0 = os.path.dirname(files_with_pixelmap[list(files_with_pixelmap.keys())[0]])
+    print(files_with_pixelmap)
+    dir_path_0 = os.path.dirname(list(files_with_pixelmap.keys())[0])
+    if len(dir_path_0) == 0:
+        dir_path_0 = '.'
 
     # Process each directory separately 
     for file, pixelmap in tqdm(files_with_pixelmap.items(), desc=f"Pre-processing of files in {dir_path_0}"):
@@ -255,18 +180,21 @@ def preprocess(files_with_pixelmap, plot_sum =False):
 
 
         # Add the MODULATION extension from the original file to the new FITS file
-        if 'MODULATION' in fits.open(file):
-            modulation_hdu = fits.open(file)['MODULATION']
-            comp_hdu.header['MOD_LEN'] = modulation_hdu.header['NAXIS2']
-            comp_hdu = fits.HDUList([comp_hdu, modulation_hdu])
+        if comp_hdu.header.get('X_FIRMID', 0) > 1:
+            if 'MODULATION' in fits.open(file):
+                modulation_hdu = fits.open(file)['MODULATION']
+                comp_hdu.header['MOD_LEN'] = modulation_hdu.header['NAXIS2']
+                hd=comp_hdu.header
+                comp_hdu = fits.HDUList([comp_hdu, modulation_hdu])
 
-            #make coupling map
-            xmod = fits.getdata(file,'MODULATION')['XMOD']
-            ymod = fits.getdata(file,'MODULATION')['YMOD']
-            if len(xmod) > 9:
-                fluxes = data_cut_pixels.mean(axis=(1,2,3))
-                fig= runlib_i.plot_couplinng_map(fluxes, xmod, ymod)
-                fig.savefig(output_filename_full[:-5]+"M.png", dpi=300)
+                #make coupling map
+                xmod = fits.getdata(file,'MODULATION')['XMOD']
+                ymod = fits.getdata(file,'MODULATION')['YMOD']
+                if len(xmod) > 9:
+                    fluxes = data_cut_pixels.mean(axis=(1,2,3))
+                    fig= runlib_i.plot_couplinng_map(fluxes, xmod, ymod)
+                    fig.suptitle(hd['OBJECT']+" - "+hd['DATA-TYP']+" - "+str(hd['EXPTIME'])+'s')
+                    fig.savefig(output_filename_full[:-5]+"M.png", dpi=300)
 
         files_out += [output_filename]
         comp_hdu.writeto(output_filename_full, overwrite=True, output_verify='fix', checksum=True)
@@ -304,11 +232,13 @@ def preprocess(files_with_pixelmap, plot_sum =False):
 
 def run_preprocess(folder = ".",pixel_map_file = None):
     # Default values
-    filelist = runlib.get_filelist(folder)
+    filelist = runlib.get_filelist(folder, {'X_FIRTYP': ['RAW']})
     if pixel_map_file==None :
         pixel_map_file = folder + "pixelmaps"
-    
-    files_with_pixelmap = filter_filelist(filelist, pixel_map_file)
+
+    pixel_map_file = runlib.get_filelist(pixel_map_file, {'X_FIRTYP': ['PIXELMAP']})
+
+    files_with_pixelmap = runlib.associate_pixelmap(filelist, pixel_map_file)
     preprocess(files_with_pixelmap)
 
 
@@ -358,20 +288,24 @@ if __name__ == "__main__":
     time_start = time.time()
     time_wait = 30 # in seconds
 
-    filelist=runlib.get_filelist( file_patterns )
-    filelist_pixelmap=runlib.get_filelist( pixel_map )
-    files_with_pixelmap = filter_filelist(filelist , filelist_pixelmap)
+    filelist = runlib.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']})
+    print(f"Found {len(filelist)} files to process in {file_patterns}")
+    print(filelist)
+    filelist_pixelmap = runlib.get_filelist( pixel_map , {'X_FIRTYP': ['PIXELMAP']})
+    print(f"Found {len(filelist_pixelmap)} pixel map files in {pixel_map}")
+    print(filelist_pixelmap)
+    files_with_pixelmap = runlib.associate_pixelmap(filelist , filelist_pixelmap)
     preprocess(files_with_pixelmap, plot_sum = plot_sum)
     
     while time.time()+time_wait < loop+time_start:
         time.sleep(time_wait)
-        filelist_new=runlib.get_filelist( file_patterns )
+        filelist_new=runlib.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']})
         # Check for new files in filelist
         new_files = [file for file in filelist_new if file not in filelist]
         if new_files:
             print(f"New files detected: {new_files}")
             filelist.extend(new_files)
-            filelist_pixelmap,files_by_dir = filter_filelist(new_files , filelist_pixelmap, plot_sum= False)
+            filelist_pixelmap,files_by_dir = runlib.associate_pixelmap(new_files , filelist_pixelmap, plot_sum= False)
             preprocess(files_with_pixelmap)
         else:
             print("Waiting for new files for the next %i seconds"%(int(loop+time_start-time.time())), end="\r")
