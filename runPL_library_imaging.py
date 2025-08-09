@@ -621,7 +621,7 @@ def get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt):
     Returns the minimum chi-squared, maximum chi-squared, and the chi-squared map.
     """
 
-    print("Computing chi2 of observations for each triangle :")
+    print("Computing chi2 of observations for each position :")
     Nwave=datacube.shape[0]
     Noutput=datacube.shape[1]
     Ncube=datacube.shape[2]
