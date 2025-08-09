@@ -290,10 +290,10 @@ if __name__ == "__main__":
 
     filelist = runlib.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']})
     print(f"Found {len(filelist)} files to process in {file_patterns}")
-    print(filelist)
-    filelist_pixelmap = runlib.get_filelist( pixel_map , {'X_FIRTYP': ['PIXELMAP']})
+    # print(filelist)
+    filelist_pixelmap = runlib.get_filelist( pixel_map , {'X_FIRTYP': ['PIXELMAP']},  name_search="pixel map")
     print(f"Found {len(filelist_pixelmap)} pixel map files in {pixel_map}")
-    print(filelist_pixelmap)
+    # print(filelist_pixelmap)
     files_with_pixelmap = runlib.associate_pixelmap(filelist , filelist_pixelmap)
     preprocess(files_with_pixelmap, plot_sum = plot_sum)
     

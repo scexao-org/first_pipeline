@@ -335,7 +335,7 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
 
     print("File saved as: "+filename_out)
     print("PNG saved as: "+filename_out[:-4]+"png")
-    os.system("ls -l "+os.path.join(folder,"../pixelmaps"))
+    # os.system("ls -l "+os.path.join(folder,"../pixelmaps"))
 
 def quick_fits(data, title=""):
     #For debugging purpose

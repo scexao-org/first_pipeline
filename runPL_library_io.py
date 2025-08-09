@@ -16,14 +16,11 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import re
 
-def clean_filelist(fits_keywords, filelist, verbose=False):
+def clean_filelist(fits_keywords, filelist):
     filelist_cleaned = []
     if isinstance(filelist, str):
         filelist = [filelist]
-    print("Looking for files with the correct keywords :",fits_keywords)
     for filename in filelist:
-        if verbose:
-            print(("Check file: " + filename))
         try:
             first_file = fits.open(filename, memmap=True)
         except:
@@ -39,8 +36,6 @@ def clean_filelist(fits_keywords, filelist, verbose=False):
             type_ok *= (strname in header)
 
         if not type_ok:
-            if verbose:
-                print("DPR_XXX does not exist in header")
             continue
 
         keys_ok = True
@@ -48,18 +43,11 @@ def clean_filelist(fits_keywords, filelist, verbose=False):
             keys_ok *= (header[name] in fits_keywords[name])
 
         if not keys_ok:
-            if verbose:
-                print("DPR_XXX is not set to correct value")
             continue
 
         filelist_cleaned.append(filename)
     
     filelist_cleaned = np.array(filelist_cleaned)
-    if len(filelist_cleaned) == 0:
-        print("No file found with the keywords :",fits_keywords)
-    
-    # Remove duplicate values
-    filelist_cleaned = np.unique(filelist_cleaned)
 
     return np.sort(filelist_cleaned)
 
@@ -212,7 +200,7 @@ def latest_file(filelist):
     
     return last_created_file
 
-def get_filelist(file_patterns=["*.fits"], fits_keywords=None):
+def get_filelist(file_patterns=["*.fits"], fits_keywords=None, name_search=None):
     """
     Find files based on the given parameters.
 
@@ -223,6 +211,11 @@ def get_filelist(file_patterns=["*.fits"], fits_keywords=None):
     Returns:
         list: A list of files to process.
     """
+    if name_search is not None:
+        str_search = "for " + str(name_search).upper()
+    else:
+        str_search=""
+
     filelist = []
 
     if isinstance(file_patterns, str):
@@ -242,9 +235,24 @@ def get_filelist(file_patterns=["*.fits"], fits_keywords=None):
     # Filter out non-fits files
     filelist = [file for file in filelist if file.endswith('.fits')]
     
+    if len(filelist) == 0:
+        raise FileNotFoundError("No fits files found "+str_search+" with the specified patterns")
+
     if fits_keywords is not None:
         # If fits_keywords is provided, filter the file list based on the keywords
-        filelist = clean_filelist(fits_keywords, filelist)
+        print("Looking for files with the correct keywords :",fits_keywords)
+        filelist_filtered = clean_filelist(fits_keywords, filelist)
+
+        if len(filelist_filtered) == 0:
+            for key in list(fits_keywords.keys()):
+                test_keywords = fits_keywords.copy()
+                test_keywords.pop(key)
+                test_filelist = clean_filelist(test_keywords, filelist)
+                if len(test_filelist) > 0:
+                    continue
+            raise FileNotFoundError(f"No fits files found "+str_search+f", Keyword {key}={fits_keywords[key]} may be too restrictive.")
+
+        filelist = filelist_filtered
 
     # Sort the file list for consistent processing order
     filelist.sort()

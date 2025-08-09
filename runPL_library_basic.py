@@ -104,12 +104,19 @@ class CouplingMap:
         self.ytri=cmap_file['TRIANGLES'].data.field('Y_TRI')
         self.Ntriangles=cmap_file['TRIANGLES'].header['NAXIS2']
 
+        # try:
+        self.xcrosses=cmap_file['CROSSES'].data.field('X_CROS')
+        self.ycrosses=cmap_file['CROSSES'].data.field('Y_CROS')
+        self.Ncrosses=cmap_file['CROSSES'].header['NAXIS2']
+        self.fluxtiptiltderiv_2_data=cmap_file['FTTDER2DATA'].data
+        self.data_2_fluxtiptiltderiv=cmap_file['DATA2FTTDER'].data
+
         self.flat = cmap_file['FLAT'].data
 
         cmap_file.close()
 
 
-def make_image_source_removal(datacube,arg_triangle,couplingMap):
+def make_image_source_removal(datacube,arg_triangle,couplingMap, mode= "triangles"):
     """
     Removes the source contribution from a datacube using a coupling map and 
     returns the residual datacube and the flux-tip-tilt (FFT) fit.
@@ -157,11 +164,23 @@ def make_image_source_removal(datacube,arg_triangle,couplingMap):
     Ncube = datacube.shape[2]
     Nmod = datacube.shape[3]
 
-    fluxtiptilt_2_data = couplingMap.fluxtiptilt_2_data
-    data_2_fluxtiptilt = couplingMap.data_2_fluxtiptilt
+    if mode == "crosses":
+        try:
+            fluxtiptilt_2_data = couplingMap.fluxtiptiltderiv_2_data
+            data_2_fluxtiptilt = couplingMap.data_2_fluxtiptiltderiv
+            print("==> Using crosses pattern for data/image cleaning")
+        except:
+            fluxtiptilt_2_data = couplingMap.fluxtiptilt_2_data
+            data_2_fluxtiptilt = couplingMap.data_2_fluxtiptilt
+    else:
+        fluxtiptilt_2_data = couplingMap.fluxtiptilt_2_data
+        data_2_fluxtiptilt = couplingMap.data_2_fluxtiptilt
+
+    
+    Nedge = data_2_fluxtiptilt.shape[2]
 
     residual = datacube.copy()
-    fft_fit = np.zeros((Nwave,3,Ncube,Nmod))
+    fft_fit = np.zeros((Nwave,Nedge,Ncube,Nmod))
     for c in range(Ncube):
         for m in range(Nmod):
             i = arg_triangle[c,m]

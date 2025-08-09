@@ -80,7 +80,7 @@ Example:
 """
 
 
-def get_filelist(file_patterns, cmap_patterns, modID, modScale, object_name, wollaston):
+def get_filelist(file_patterns, dark_patterns, cmap_patterns, modID, modScale, object_name, wollaston):
 
         fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['OBJECT','OJECT','TEST'],
@@ -99,9 +99,6 @@ def get_filelist(file_patterns, cmap_patterns, modID, modScale, object_name, wol
         print(file_patterns)
         filelist = runlib.get_filelist(file_patterns, fits_keywords)
 
-        if len(filelist) == 0:
-            raise FileNotFoundError("No files found with the specified patterns and keywords.")
-
         # Adding new constraints if not asked by user
         hd=fits.getheader(filelist[0])
         modID = hd.get('X_FIRMID', 0)
@@ -119,15 +116,16 @@ def get_filelist(file_patterns, cmap_patterns, modID, modScale, object_name, wol
 
         filelist = runlib.get_filelist(file_patterns, fits_keywords)
 
-        if len(filelist) == 0:
-            raise FileNotFoundError("No files found with the specified patterns and keywords.")
-
         fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['DARK'],
                         'X_FIRWOL': [wollaston],
                         }    
-    
-        filelist_dark = runlib.get_filelist(file_patterns, fits_keywords)
+        
+        try:
+            filelist_dark = runlib.get_filelist(dark_patterns, fits_keywords, name_search="dark")
+        except FileNotFoundError as e:
+            print(f"NO DARKS: {e}")
+            filelist_dark = []
 
         if len(filelist_dark) == 0:
             print("WARNING: No dark files found with the specified patterns and keywords.")
@@ -136,10 +134,8 @@ def get_filelist(file_patterns, cmap_patterns, modID, modScale, object_name, wol
                         'X_FIRWOL': [wollaston],
                         }    
 
-        filelist_cmap = runlib.get_filelist(cmap_patterns, fits_keywords)
-
-        if len(filelist_cmap) == 0:
-            raise FileNotFoundError("WARNING: No coupling map files found with the specified patterns and keywords.")
+        filelist_cmap = runlib.get_filelist(cmap_patterns, fits_keywords, name_search="coupling map")
+        filelist_cmap  = filter_couplingmapfile(filelist_cmap)
 
         files_with_dark = runlib.associate_dark(filelist, filelist_dark)
 
@@ -391,6 +387,8 @@ if __name__ == "__main__":
                       help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
     parser.add_option("--coupling_map", type="string", 
                     help="Force to select which coupling map file to use (default: the one in the directory)")
+    parser.add_option("--dark_files", type="string", 
+                help="Select one or more specific dark(s) files to use")
     parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,
                     help="smoothing factor for wavelength (default: %default)")
     parser.add_option("--save_individual_frames", action="store_true", default=save_individual_frames,
@@ -405,10 +403,13 @@ if __name__ == "__main__":
         modScale = None
         object_name = None
         wollaston = None
+        dark_patterns = None
 
         if getpass.getuser() == "slacour":
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/firstpl_2025-06-14T01:38*fits"
-            coupling_map = "/Users/slacour/DATA/LANTERNE/20250614/preproc/../couplingmaps/firstpl_2025-06-14T01:42:19_COUPLINGMAP.fits"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/firstpl_2025-06-14T01:38*fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc/firstpl_2025-08-08T07:16:??_HIP84212_P.fits"
+            coupling_map = "/Users/slacour/DATA/LANTERNE/20250808/preproc/../couplingmaps/firstpl_2025-08-08T07:16:09_COUPLINGMAP.fits"
+            dark_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc"
         if getpass.getuser() == "ehuby" :
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/firstpl_*.fits"
             coupling_map = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/couplingmaps_TETCRB/"
@@ -422,21 +423,23 @@ if __name__ == "__main__":
         modID=options.modID
         modScale=options.modScale
         object_name=options.object_name
+        dark_patterns = options.dark_files
+        wollaston = options.wollaston
 
         save_individual_frames=options.save_individual_frames
         save_individual_wavelength=options.save_individual_wavelength
 
-        # If the user specifies a coupling map, use it, otherwise look into the arguments
         coupling_map = options.coupling_map
-        if coupling_map is None:
-            coupling_map = file_patterns +['../couplingmaps/*.fits']
+
+    # If the user specifies a coupling map, use it, otherwise use the science file pattern 
+    if coupling_map is None:
+        coupling_map = file_patterns +['../couplingmaps/*.fits']
+    # If the user specify a dark, use it. Otherwise, use the science file pattern
+    if dark_patterns is None:
+        dark_patterns = file_patterns
 
 
-    files_with_dark, filelist_cmap = get_filelist(file_patterns, coupling_map, modID, modScale, object_name, wollaston=None)
-    filelist=runlib.get_filelist(file_patterns)
-    cmaplist=runlib.get_filelist(coupling_map)
-
-    filelist_cmap   = filter_couplingmapfile(filelist_cmap)
+    files_with_dark, filelist_cmap = get_filelist(file_patterns, dark_patterns, coupling_map, modID, modScale, object_name, wollaston)
 
     couplingMap = basic.CouplingMap(filelist_cmap[0])
 
@@ -471,14 +474,14 @@ if __name__ == "__main__":
     # Utilise pour selectionner les bonnes images 
     # ===> Pas utile pour le quick look
 
-    datacube_cleaned,arg_triangle = runlib_i.chi2_cleaning(datacube,couplingMap)
+    datacube_cleaned,arg_triangle = runlib_i.chi2_cleaning(datacube,couplingMap, mode="crosses")
 
     # getting the residual after substracting a point source
     # using the flux tip tilt matrices
     # Utilise pour soustraire une source ponctuelle 
     # ===> Pas utile pour le quick look
 
-    residual, fft_fit = basic.make_image_source_removal(datacube,arg_triangle,couplingMap)
+    residual, fft_fit = basic.make_image_source_removal(datacube,arg_triangle,couplingMap, mode="crosses")
 
     # Define the grid for interpolation
     # calcul de la grille de l'image que l'on souhaite reconstruire
@@ -493,6 +496,8 @@ if __name__ == "__main__":
     flux_maps_sum = np.nansum(flux_maps,axis=1)
     residuals_maps_sum = np.nansum(residuals_maps,axis=1)
     # Save image and residual maps to FITS files :
+
+#%%
 
     for i,d in enumerate(datalist):
         header = d.header

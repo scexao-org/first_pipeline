@@ -79,7 +79,7 @@ usage = """
     runPL_createCouplingMaps.py  *.fits
 """
 
-def get_filelist(file_patterns, flat_patterns, modID, modScale, object_name, wollaston):
+def get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, object_name, wollaston):
 
         fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['OBJECT','OJECT','TEST'],
@@ -99,9 +99,6 @@ def get_filelist(file_patterns, flat_patterns, modID, modScale, object_name, wol
         print(file_patterns)
         filelist = runlib.get_filelist(file_patterns, fits_keywords)
 
-        if len(filelist) == 0:
-            raise FileNotFoundError("No files found with the specified patterns and keywords.")
-
         # Adding new constraints if not asked by user
         hd=fits.getheader(filelist[0])
         modID = hd.get('X_FIRMID', 0)
@@ -119,28 +116,27 @@ def get_filelist(file_patterns, flat_patterns, modID, modScale, object_name, wol
 
         filelist = runlib.get_filelist(file_patterns, fits_keywords)
 
-        if len(filelist) == 0:
-            raise FileNotFoundError("No files found with the specified patterns and keywords.")
-
+        # finding darks files
         fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['DARK'],
                         'X_FIRWOL': [wollaston],
                         }    
     
-        filelist_dark = runlib.get_filelist(file_patterns, fits_keywords)
+        try:
+            filelist_dark = runlib.get_filelist(dark_patterns, fits_keywords,  name_search="dark")
+        except FileNotFoundError as e:
+            print(f"WARNING!!! {e}")
+            filelist_dark = []
 
-        if len(filelist_dark) == 0:
-            print("WARNING: No dark files found with the specified patterns and keywords.")
-
+        # finding flats files
         fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['FLAT'],
                         'X_FIRWOL': [wollaston],
                         }    
-
-        filelist_flat = runlib.get_filelist(flat_patterns, fits_keywords)
-
-        if len(filelist_flat) == 0:
-            print("WARNING: No flat files found with the specified patterns and keywords: using star for flats.")
+        try:
+            filelist_flat = runlib.get_filelist(flat_patterns, fits_keywords,  name_search="flat")
+        except FileNotFoundError as e:
+            print(f"WARNING!!! {e}")
             filelist_flat = filelist
 
         files_with_dark = runlib.associate_dark(filelist, filelist_dark)
@@ -242,18 +238,20 @@ def get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles):
     Nmod=pos_2_singular_mean.shape[1]
     Nwave=singular_2_data.shape[0]
     Noutput=singular_2_data.shape[1]
-    # Ntriangles=len(triangles)
+    Nedges=len(triangles[0])
 
     masque_positions=~np.isnan(pos_2_singular_mean[0])
-    masque_triangles=(masque_positions[triangles].sum(axis=1) ==3)
+    masque_triangles=(masque_positions[triangles].sum(axis=1) > 0.79*Nedges)
     Npositions=np.sum(masque_positions)
     Ntriangles=np.sum(masque_triangles)
 
     flux_2_data_tmp = singular_2_data.reshape((Nwave*Noutput,Nsingular)) @ pos_2_singular_mean
     flux_2_data_tmp = flux_2_data_tmp.reshape((Nwave,Noutput,Nmod))
+    flux_2_data_tmp[:,:,~masque_positions] = 0.0
     flux_2_data = flux_2_data_tmp[:,:,masque_positions]
     flux_norm_wave = flux_2_data.sum(axis=(1,2), keepdims=True)
     flux_2_data /= flux_norm_wave
+    flux_2_data_tmp /= flux_norm_wave
 
     data_2_flux = np.zeros((Nwave,Npositions,Noutput))
     print("Inverting flux_2_data to data_2_flux for each wavelength:")
@@ -261,7 +259,7 @@ def get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles):
         data_2_flux[w]=pinv(flux_2_data[w])
 
     fluxtiptilt_2_data = flux_2_data_tmp[:,:,triangles[masque_triangles]].transpose((2,0,1,3)).copy()
-    data_2_fluxtiptilt = np.zeros((Ntriangles,Nwave,3,Noutput))
+    data_2_fluxtiptilt = np.zeros((Ntriangles,Nwave,Nedges,Noutput))
     print("Inverting fluxtiptilt_2_data to data_2_fluxtiptilt:")
     for w in tqdm(range(Nwave)):
         for t in range(Ntriangles):
@@ -316,15 +314,16 @@ if __name__ == "__main__":
 
     # Default values
     wavelength_smooth = 20
-    wavelength_bin = 15
-    Nsingular=19*3 #for cmap=7, 57 is too high (34, 19 for plots is max for novemeber data in cmap=7)
-
+    wavelength_bin = 10
+    Nsingular=19*6 
 
     # Add options for these values
 
     # Add options for these values
     parser.add_option("--object_name", type="string", 
                     help="Selection of the data by the Object name (default: first target the list)")
+    parser.add_option("--dark_files", type="string", 
+                    help="Select one or more specific dark(s) files to use")
     parser.add_option("--flat_files", type="string", 
                     help="Select a specific flat file to use (default: use the flat files or if not the ones used to create the coupling maps)")
     parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,
@@ -343,13 +342,14 @@ if __name__ == "__main__":
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('SPYDER_DEBUG_FILE')):
         print("Running in compiler")
         flat_patterns = None
+        dark_patterns = None
         modID = None
         modScale = None
         object_name = None
         wollaston = None
         if getpass.getuser() == "slacour":
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/firstpl_2025-06-14T01:42*fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc/firstpl_2025-08-08T07:16:??_HIP84212_P.fits"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
@@ -369,11 +369,16 @@ if __name__ == "__main__":
         wavelength_smooth=options.wavelength_smooth
         wavelength_bin=options.wavelength_bin
         flat_patterns = options.flat_files
+        dark_patterns = options.dark_files
 
+    # If the user specifies a coupling map, use it, otherwise look into the arguments
     if flat_patterns is None:
         flat_patterns = file_patterns
+    # If the user specify a dark, use it. Otherwise, use the science file pattern
+    if dark_patterns is None:
+        dark_patterns = file_patterns
 
-    files_with_dark, flats_with_dark = get_filelist(file_patterns, flat_patterns, modID, modScale, object_name, wollaston)
+    files_with_dark, flats_with_dark = get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, object_name, wollaston)
 
     flat = compute_flat(flats_with_dark)
 
@@ -397,6 +402,7 @@ if __name__ == "__main__":
     xmod=datalist[0].xmod
     ymod=datalist[0].ymod
     triangles = datalist[0].get_triangle()
+    crosses     = datalist[0].get_crosses()
 
     # select data only above a threshold based on flux
     flux_threshold=np.percentile(datacube.mean(axis=(0,1)),80)/5
@@ -419,11 +425,11 @@ if __name__ == "__main__":
     pos_2_singular_mean = np.nanmean(pos_2_singular,axis=1)
 
     # compute the matrices to go from the projected data to the flux and tip tilt (and inverse)
-    flux_2_data,data_2_flux,fluxtiptilt_2_data,data_2_fluxtiptilt,masque_positions,masque_triangles = get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles)
+    flux_2_data,data_2_flux,fluxtiptiltderiv_2_data,data_2_fluxtiptiltderiv,masque_positions,masque_triangles = get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, crosses)
 
     #use flux tip tilt matrice to check if the observations are point like
     # To do so, fits the vector model and check if the chi2 decrease resonably
-    chi2_min,chi2_max,arg_triangle=runlib_i.get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt)
+    chi2_min,chi2_max,arg_triangle=runlib_i.get_chi2_maps(datacube,fluxtiptiltderiv_2_data,data_2_fluxtiptiltderiv)
     chi2_delta=chi2_min/chi2_max
     percents=np.nanpercentile(chi2_delta[flux_goodData],[16,50,84])
     chi2_threshold=percents[1]+(percents[2]-percents[0])*3/2
@@ -433,7 +439,8 @@ if __name__ == "__main__":
     pos_2_singular,singular_values,singular_2_data=get_projection_matrice(datacube,chi2_goodData,Nsingular)
     pos_2_singular[:,~chi2_goodData]=np.nan
     pos_2_singular_mean = np.nanmean(pos_2_singular,axis=1)
-    flux_2_data,data_2_flux,fluxtiptilt_2_data,data_2_fluxtiptilt,masque_positions,masque_triangles = get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles)
+    flux_2_data,data_2_flux,fluxtiptilt_2_data,data_2_fluxtiptilt,masque_positions, masque_triangles  = get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles)
+    flux_2_data,data_2_flux,fluxtiptiltderiv_2_data,data_2_fluxtiptiltderiv,masque_positions,masque_crosses = get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, crosses)
     
     # Flux maps for inspection
     fluxmaps = np.mean(datacube, axis=(0,1))
@@ -458,6 +465,8 @@ if __name__ == "__main__":
     hdu_2 = fits.ImageHDU(data=data_2_flux, name='DATA2F')
     hdu_3 = fits.ImageHDU(data=fluxtiptilt_2_data, name='FTT2DATA')
     hdu_4 = fits.ImageHDU(data=data_2_fluxtiptilt, name='DATA2FTT')
+    hdu_5 = fits.ImageHDU(data=fluxtiptiltderiv_2_data, name='FTTDER2DATA')
+    hdu_6 = fits.ImageHDU(data=data_2_fluxtiptiltderiv, name='DATA2FTTDER')
     hdu_fluxmap = fits.ImageHDU(data=fluxmap_interp, name='FLUXMAP')
     hdu_modes2D = fits.ImageHDU(data=modes_rect.reshape((Nsingular,gridsize*Ncube,gridsize)), name='MODES2D')
     hdu_flat = fits.ImageHDU(data=flat, name='FLAT')
@@ -467,6 +476,8 @@ if __name__ == "__main__":
     y_pos = ymod[masque_positions]
     x_triangles = xmod[triangles[masque_triangles]]
     y_triangles = ymod[triangles[masque_triangles]]
+    x_crosses = xmod[crosses[masque_crosses]]
+    y_crosses = ymod[crosses[masque_crosses]]
 
     # shifting all positions around the maximum of flux found from gaussian fitting
     fluxes = datacube.mean(axis=(0,1,2))
@@ -480,16 +491,24 @@ if __name__ == "__main__":
     y_triangles -= y_fit
     x_pos -= x_fit
     y_pos -= y_fit
+    x_crosses -= x_fit
+    y_crosses -= y_fit
 
     col_xmod = fits.Column(name='X_POS', format='E', array=x_pos, unit='mas')
     col_ymod = fits.Column(name='Y_POS', format='E', array=y_pos, unit='mas')
 
     col_xtriangles = fits.Column(name='X_TRI', format='3E', array=x_triangles, unit='mas')
     col_ytriangles = fits.Column(name='Y_TRI', format='3E', array=y_triangles, unit='mas')
+    # Dynamically set the format based on the size of x_crosses' second dimension
+    n_cross = x_crosses.shape[1] if x_crosses.ndim > 1 else 1
+    format_str = f'{n_cross}E'
+    col_xcrosses = fits.Column(name='X_CROS', format=format_str, array=x_crosses, unit='mas')
+    col_ycrosses = fits.Column(name='Y_CROS', format=format_str, array=y_crosses, unit='mas')
 
     # Create a table HDU for xmod and ymod
     hdu_table_mod = fits.BinTableHDU.from_columns([col_xmod, col_ymod], name='POSITIONS')
     hdu_table_triangle = fits.BinTableHDU.from_columns([col_xtriangles, col_ytriangles], name='TRIANGLES')
+    hdu_table_crosses = fits.BinTableHDU.from_columns([col_xcrosses, col_ycrosses], name='CROSSES')
 
     modulation_hdu = fits.open(datalist[-1].filename)['MODULATION']
 
@@ -521,8 +540,8 @@ if __name__ == "__main__":
     hdu_primary.header.extend(header, strip=True)
 
     # Combine all HDUs into an HDUList
-    hdul = fits.HDUList([hdu_primary, hdu_1, hdu_2, hdu_3, hdu_4,
-                         hdu_table_mod,hdu_table_triangle,modulation_hdu,
+    hdul = fits.HDUList([hdu_primary, hdu_1, hdu_2, hdu_3, hdu_4,hdu_5, hdu_6,
+                         hdu_table_mod,hdu_table_triangle,hdu_table_crosses,modulation_hdu,
                          hdu_fluxmap, hdu_modes2D,hdu_flat])
 
     output_filename = os.path.join(output_dir, runlib.create_output_filename(header))

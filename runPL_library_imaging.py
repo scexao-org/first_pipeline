@@ -458,6 +458,44 @@ class DataCube:
 
         return good_triangles
 
+    def get_crosses(self):
+
+        xmod=self.xmod
+        ymod=self.ymod
+
+        points = np.array([xmod, ymod]).T
+        segment_lengths = []
+        min_length = float('inf')
+
+        length = np.linalg.norm(points[:,None] - points[None],axis=2)
+        np.fill_diagonal(length, np.nan)
+
+        min_length=np.nanmin(length)
+        good_segments=length<min_length*1.1
+        branches = np.sum(good_segments,axis=0).max()
+        good_centers=np.sum(good_segments,axis=0)==branches
+        good_centers = np.where(good_centers)[0]
+
+        edges=[]
+        for g in good_segments[good_centers]:
+            edges.append(np.where(g)[0])
+        edges=np.array(edges)
+
+
+        xy_mod_centers=points[good_centers]
+        xy_mod_edges=points[edges]
+        scale_sort = xy_mod_edges[:,:,0]+xy_mod_edges[:,:,1]*1e3
+        for i,s in enumerate(scale_sort.argsort(axis=1)):
+            edges[i] = edges[i,s]
+        xy_mod_edges=points[edges]
+
+        crosses=np.append(good_centers[:,None],edges,axis=1)
+
+        print(f"Computed {len(crosses)} star-like cross features with {branches} branches.")
+
+        return crosses
+
+
 def extract_datacube(files_with_dark, Nsmooth = 1, Nbin = 1, flat = None, normalize = False):
     """
     Extracts and processes data cubes from the input files.
@@ -609,10 +647,19 @@ def get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt):
 
     return chi2_min,chi2_max,arg_triangle
 
-def chi2_cleaning(datacube,couplingMap):
+def chi2_cleaning(datacube,couplingMap, mode="triangles"):
 
-    fluxtiptilt_2_data = couplingMap.fluxtiptilt_2_data
-    data_2_fluxtiptilt = couplingMap.data_2_fluxtiptilt
+    if mode == "crosses":
+        try:
+            fluxtiptilt_2_data = couplingMap.fluxtiptiltderiv_2_data
+            data_2_fluxtiptilt = couplingMap.data_2_fluxtiptiltderiv
+            print("==> Using crosses pattern for chi2 calculation and cleaning")
+        except:
+            fluxtiptilt_2_data = couplingMap.fluxtiptilt_2_data
+            data_2_fluxtiptilt = couplingMap.data_2_fluxtiptilt
+    else:
+        fluxtiptilt_2_data = couplingMap.fluxtiptilt_2_data
+        data_2_fluxtiptilt = couplingMap.data_2_fluxtiptilt
 
     chi2_min,chi2_max,arg_triangle=get_chi2_maps(datacube,fluxtiptilt_2_data,data_2_fluxtiptilt)
 
