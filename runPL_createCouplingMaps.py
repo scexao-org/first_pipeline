@@ -15,6 +15,7 @@ from optparse import OptionParser
 import numpy as np
 from scipy.signal import correlate
 from scipy import linalg
+from scipy.linalg import solve_triangular
 
 
 import getpass
@@ -44,6 +45,9 @@ import shutil
 from scipy.interpolate import interpn
 from astropy.table import Table
 from scipy.interpolate import griddata
+import subspace_numpy as ss
+from scipy import odr
+from scipy.optimize import least_squares
 
 plt.ion()
 
@@ -108,10 +112,10 @@ def get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, o
         fits_keywords['OBJECT'] = [object_name]
         fits_keywords['X_FIRMID'] = [modID]
         fits_keywords['X_FIRMSC'] = [modScale]
-        fits_keywords['X_FIRWOL'] = [wollaston]
+        # fits_keywords['X_FIRWOL'] = [wollaston] # To add this constrain when the mode is finalized
 
         print("----------------")
-        print(f"Selected object='{object_name}' with modScale={modScale} and modID={modID}")
+        print(f"Selected object='{object_name}' with modScale={modScale}, modID={modID}, and wollaston={wollaston}")
         print("----------------")
 
         filelist = runlib.get_filelist(file_patterns, fits_keywords)
@@ -120,8 +124,8 @@ def get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, o
         fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['DARK'],
                         'X_FIRWOL': [wollaston],
-                        }    
-    
+                        }
+
         try:
             filelist_dark = runlib.get_filelist(dark_patterns, fits_keywords,  name_search="dark")
         except FileNotFoundError as e:
@@ -145,12 +149,20 @@ def get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, o
         return files_with_dark, flats_with_dark
 
 
-def compute_flat(flat_with_dark):
+def compute_flat(flats_with_dark):
     
-    datalist=runlib_i.extract_datacube(flat_with_dark)
+    datalist=runlib_i.extract_datacube(flats_with_dark, center = False)
     flats=[d.data.sum(axis=(0,1)) for d in datalist]
     flat=np.sum(flats,axis=0)
     flat/=np.mean(flat,axis=0)
+
+    Nflat_smooth = 100
+    # window = np.ones(Nflat_smooth)/Nflat_smooth
+    window = np.hanning(Nflat_smooth)
+    window /= window.sum()
+    conv_ref = np.convolve(np.ones(len(flat[0])), window, mode='same')
+    for f in flat:
+        f[:] *= conv_ref / np.convolve(f, window, mode='same') 
 
     return flat
 
@@ -180,7 +192,7 @@ def filter_data(datacube,flux_goodData,Nsingular):
 
     #pos_2_singular = Vh[:Nsingular]*s[:Nsingular,None]
     singular_2_data = U[:,:Nsingular] #(3800, 57)
-    pos_2_singular = singular_2_data.T @ datacube.reshape((Nwave*Noutput,Ncube*Nmod)) #(57, 6250)
+    pos_2_singular = singular_2_data.T @ datacube.reshape((Nwave*Noutput,Ncube,Nmod)) #(57, 6250)
     datacube_filtered = singular_2_data @ pos_2_singular
 
     datacube_filtered = datacube_filtered.reshape((Nwave,Noutput,Ncube,Nmod))
@@ -188,6 +200,64 @@ def filter_data(datacube,flux_goodData,Nsingular):
 
     return datacube_filtered
 
+def fit_QR(data,QT,R):
+
+    def phi_vec(x, y):
+        return np.array([1.0, x, y, x*y, x*x, y*y], dtype=float)
+    
+    def optimal_k(R, b, x, y):
+        v = phi_vec(x, y)
+        Rv = R @ v
+        denom = Rv @ Rv
+        if denom < 1e-14:
+            return 0.0
+        return (b @ Rv) / denom
+
+    def resid(z):
+        x, y = z
+        k = optimal_k(R, b, x, y)
+        return k * (R @ phi_vec(x, y)) - b  # 6-vector
+
+    def jac(z):
+        # analytic jacobian of residual wrt x,y
+        x, y = z
+        # first compute v and its jac
+        v = phi_vec(x, y)
+        dv_dx = np.array([0, 1, 0, y, 2*x, 0])
+        dv_dy = np.array([0, 0, 1, x, 0, 2*y])
+        Rv = R @ v
+        denom = Rv @ Rv
+        if denom < 1e-14:
+            return np.zeros((6,2))
+
+        # derivatives of k wrt x and y
+        num = b @ Rv
+        dRv_dx = R @ dv_dx
+        dRv_dy = R @ dv_dy
+        dk_dx = (b @ dRv_dx * denom - num * (2*Rv @ dRv_dx)) / (denom**2)
+        dk_dy = (b @ dRv_dy * denom - num * (2*Rv @ dRv_dy)) / (denom**2)
+
+        # residual = k Rv - b
+        dr_dx = dk_dx * Rv + optimal_k(R,b,x,y) * dRv_dx
+        dr_dy = dk_dy * Rv + optimal_k(R,b,x,y) * dRv_dy
+
+        return np.column_stack([dr_dx, dr_dy])
+
+    b = QT @ data # 6-vector
+
+    #init 
+    # cs = solve_triangular(R, b, lower=False)
+    # x0 = float(cs[1]/cs[0]) if cs[0] != 0 else 0.0
+    # y0 = float(cs[2]/cs[0]) if cs[0] != 0 else 0.0
+    # init = (x0, y0)
+    init = (0.0, 0.0)
+
+    res = least_squares(resid, x0=np.array(init), jac=jac, method="trf")
+    x_hat, y_hat = res.x
+    k_hat = optimal_k(R, b, x_hat, y_hat)
+
+    return x_hat, y_hat, k_hat, res.cost
+    
 def get_projection_matrice(datacube,flux_goodData,Nsingular):
     """
     Computes the projection matrix and singular values using Singular Value Decomposition (SVD).
@@ -211,13 +281,44 @@ def get_projection_matrice(datacube,flux_goodData,Nsingular):
 
     #pos_2_singular = Vh[:Nsingular]*s[:Nsingular,None]
     singular_2_data = U[:,:Nsingular] #(3800, 57)
-    pos_2_singular = singular_2_data.T @ datacube.reshape((Nwave*Noutput,Ncube*Nmod)) #(57, 6250)
+    pos_2_singular = singular_2_data.T @ datacube.reshape((Nwave*Noutput,Ncube,Nmod)) #(57, 6250)
 
     singular_values = s #(3017,)
     pos_2_singular = pos_2_singular.reshape((Nsingular,Ncube,Nmod)) #reshape to (57, 10, 625)
     singular_2_data = singular_2_data.reshape((Nwave,Noutput,Nsingular))
 
     return pos_2_singular,singular_values,singular_2_data
+
+def singular_value_filtering(datacube,flux_goodData,Nsingular):
+    """
+    Applies singular value filtering to the input datacube.
+
+    Args:
+        datacube (numpy.ndarray): The input datacube with dimensions (Nwave, Noutput, Ncube, Nmod).
+        flux_goodData (numpy.ndarray): A boolean mask indicating which data points have good flux.
+        Nsingular (int): The number of singular values to retain.
+
+    Returns:
+        numpy.ndarray: The filtered datacube with reduced dimensionality.
+    """
+
+    Nwave=datacube.shape[0] #100
+    Noutput=datacube.shape[1] #38
+    Ncube=datacube.shape[2] #10
+    Nmod=datacube.shape[3] #625
+    datacube=datacube.reshape((Nwave*Noutput,Ncube,Nmod)) #reshape to (3800, 10, 625)
+
+    pos_2_data = datacube[:,flux_goodData] #(3800, 3017) datacube is (3800, 10, 625), flux_good is (10, 625)
+
+    U,s,Vh=linalg.svd(pos_2_data,full_matrices=False)
+    # pos_2_singular = Vh[:Nsingular]*s[:Nsingular,None]
+    singular_2_data = U[:,:Nsingular] #(3800, 119)
+    pos_2_singular = singular_2_data.T @ datacube.reshape((Nwave*Noutput,Ncube,Nmod)) #(57, 6250)
+    datacube_filtered = singular_2_data @ pos_2_singular
+    datacube_filtered = datacube_filtered.reshape((Nwave,Noutput,Ncube,Nmod))
+    datacube = datacube.reshape((Nwave,Noutput,Ncube,Nmod))
+    return datacube_filtered,s
+
 
 def get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles):
     """
@@ -349,7 +450,9 @@ if __name__ == "__main__":
         wollaston = None
         if getpass.getuser() == "slacour":
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc/firstpl_2025-08-08T07:16:??_HIP84212_P.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc/firstpl_2025-08-08T06:4?:??_HIP84212_P.fits"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc/firstpl_2025-08-08T06:4[3-4]:??_HIP84212_P.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-3]*TETCRB_P.fits"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
@@ -389,72 +492,181 @@ if __name__ == "__main__":
 
     #Input preproc
     #clean and sum all data
-    datalist=runlib_i.extract_datacube(files_with_dark,Nsmooth=wavelength_smooth,Nbin=wavelength_bin, flat =flat, normalize=True)
-
-    filenames= [d.filename for d in datalist]
+    datalist=runlib_i.extract_datacube(files_with_dark,Nsmooth=wavelength_smooth,Nbin=wavelength_bin, flat =flat)
     
+    flux = np.concatenate([d.flux for d in datalist])
     datacube=np.concatenate([d.data for d in datalist])
     datacube_var=np.concatenate([d.variance for d in datalist])
-
-
-    datacube=datacube.transpose((3,2,0,1))
-
     xmod=datalist[0].xmod
     ymod=datalist[0].ymod
-    triangles = datalist[0].get_triangle()
-    crosses     = datalist[0].get_crosses()
+
+
+    basenames = []
+    for d in datalist:
+        n = d.data.shape[0]  # first dimension of d.data
+        basenames.extend([d.basename] * n)
+
+    filenames = [d.filename for d in datalist]
+
+    # datacube=datacube.transpose((3,2,0,1)) #to have (Nwave,Noutput,Ncube,Nmod)
 
     # select data only above a threshold based on flux
-    flux_threshold=np.percentile(datacube.mean(axis=(0,1)),80)/5
-    flux_goodData=datacube.mean(axis=(0,1)) > flux_threshold
+    flux_threshold=np.percentile(flux.mean(axis=(2)),80)/5
+    flux_goodData=flux.mean(axis=(2)) > flux_threshold
     # plt.imshow(flux_goodData)
     if np.sum(flux_goodData)<57:
         #too little good data, we need to lower the bar
-        flux_goodData=datacube.mean(axis=(0,1)) > flux_threshold/2
+        flux_goodData=flux.mean(axis=(2,3)) > flux_threshold/2
         print("Not enough good data, lowering the threshold to ",flux_threshold/2)
 
-    # get the Nsingulat highest singular values and the projection vectors into that space 
-    #VSD
-    #datacube : (100, 38, 10, 625)
-    #flux_gooddata : (10, 625)
-    #Nsingular : 57
-    pos_2_singular,singular_values,singular_2_data=get_projection_matrice(datacube,flux_goodData,Nsingular)
 
-    # average all the datacubes, do not includes the bad frames
-    pos_2_singular[:,~flux_goodData]=np.nan
-    pos_2_singular_mean = np.nanmean(pos_2_singular,axis=1)
+    runlib_i.plot_couplinng_map(flux.mean(axis=(2))[0], xmod, ymod)
+    # Remove mean per wavelength/output
+    Nwave = datacube.shape[3]
+    Noutput = datacube.shape[2]
+    Ncube = datacube.shape[0]
+    Npos = datacube.shape[1]
 
-    # compute the matrices to go from the projected data to the flux and tip tilt (and inverse)
-    flux_2_data,data_2_flux,fluxtiptiltderiv_2_data,data_2_fluxtiptiltderiv,masque_positions,masque_triangles = get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, crosses)
+    datacube_flux_goodData = datacube[flux_goodData]
+    datacube_flux_goodData = datacube_flux_goodData.reshape((datacube_flux_goodData.shape[0], -1))
+    res = ss.robust_subspace(datacube_flux_goodData, k=Nsingular, center=False, k_sigma=3.5, max_refit=1,verbose=True)
+    singular_values = res["model"]["S"][:-1]
+    data_svdfiltered, residuals, errors = ss.project(datacube.reshape((datacube.shape[0]*datacube.shape[1], -1)), res["model"])
+    data_svdfiltered = data_svdfiltered.reshape(datacube.shape)
+    fit_goodData = errors.reshape((datacube.shape[0], -1)) < res["threshold"]
+    goodData = flux_goodData & fit_goodData
+    spectra = flux[goodData].mean(axis=0)
 
-    #use flux tip tilt matrice to check if the observations are point like
-    # To do so, fits the vector model and check if the chi2 decrease resonably
-    chi2_min,chi2_max,arg_triangle=runlib_i.get_chi2_maps(datacube,fluxtiptiltderiv_2_data,data_2_fluxtiptiltderiv)
-    chi2_delta=chi2_min/chi2_max
-    percents=np.nanpercentile(chi2_delta[flux_goodData],[16,50,84])
-    chi2_threshold=percents[1]+(percents[2]-percents[0])*3/2
-    chi2_goodData = (chi2_delta < chi2_threshold)&flux_goodData
-
-    #redo most of the work above but with flagged datasets
-    pos_2_singular,singular_values,singular_2_data=get_projection_matrice(datacube,chi2_goodData,Nsingular)
-    pos_2_singular[:,~chi2_goodData]=np.nan
-    pos_2_singular_mean = np.nanmean(pos_2_singular,axis=1)
-    flux_2_data,data_2_flux,fluxtiptilt_2_data,data_2_fluxtiptilt,masque_positions, masque_triangles  = get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, triangles)
-    flux_2_data,data_2_flux,fluxtiptiltderiv_2_data,data_2_fluxtiptiltderiv,masque_positions,masque_crosses = get_fluxtiptilt_matrices(singular_2_data, pos_2_singular_mean, crosses)
     
-    # Flux maps for inspection
-    fluxmaps = np.mean(datacube, axis=(0,1))
-    fluxmap_interp = fluxmap_interpolation(fluxmaps, xmod, ymod, gridsize=50)
-    
-    # 2D-interpolation of the modes for inspection
-    gridsize=50
-    Ncube=datacube.shape[2]
-    modes_rect = np.zeros((Nsingular,Ncube,gridsize,gridsize))
-    modes_mean = np.zeros((Nsingular, gridsize, gridsize))
-    for s in range(Nsingular):
-        modes_rect[s] = fluxmap_interpolation(np.nan_to_num(np.array(pos_2_singular[s])), xmod, ymod, gridsize=gridsize)
-        modes_mean[s] = fluxmap_interpolation(np.nan_to_num(np.array(pos_2_singular_mean[s])), xmod, ymod, gridsize=gridsize)
+    index_triangles, center_triangles = datalist[0].get_pyramids()
+    goodTriangles = (goodData[:,index_triangles].mean(axis=0) > 0.3).sum(axis=1)  > 4
+    goodPositions = goodData.mean(axis=0) > 0.3
+
+
+    vectors_all_triangles = []
+    center_all_triangles = []
+    singular_all_triangles = []
+    distance_xy_fit=[]
+
+    # Ncubes = datacube.shape[0]
+
+    for i in tqdm(np.arange(len(index_triangles))[goodTriangles][:], desc="Computing triangles"):
+        t = index_triangles[i]
+        center = center_triangles[i]
+        center_all_triangles.append(center)
+
+        good_data_triangle=goodData[:,t]
+        data_triangle = data_svdfiltered[:,t][good_data_triangle]
+        data_triangle = data_triangle.reshape((data_triangle.shape[0], -1))
+        xmod_triangle = np.broadcast_to(xmod[t], good_data_triangle.shape)[good_data_triangle] - center[0]
+        ymod_triangle = np.broadcast_to(ymod[t], good_data_triangle.shape)[good_data_triangle] - center[1]
+        xymod_triangle = np.array([xmod_triangle, ymod_triangle])
+
+        svd_res = ss.robust_subspace(data_triangle, k=6, center=False, k_sigma=3.5, max_refit=1)
+        V = svd_res["model"]["V"]
+        D = data_triangle.T
+
+        def phi(xy):
+            Xv, Yv = xy[0], xy[1]
+            return np.vstack([np.ones_like(Xv), Xv, Yv, Xv*Yv, Xv**2, Yv**2 ])  # (6,)
+
+        ## on a la relation D = V.M.P
+        ## que l'on peut ecrire B = M.P
+        ## avec B = VT.D
+        B = V.T @ D
+        ## et avec P la matrice des positions (x,y,xy,x^2,y^2)
+        P = phi(xymod_triangle)
+
+        ## V la matrice des vecteurs singuliers
+        ## On cherche M (6,6) 
+        ## On pose B = VT.Y
+        B = V.T @ D
+
+        xy_new = xymod_triangle.copy()
+        xy_old = xymod_triangle.copy()
+
+        M = B @ np.linalg.pinv(P)
+
+        # Errors-in-Variables alternating minimization.
+        # B       : (6,n) observations 
+        # xymod_triangle : (n,) mesures bruitées des entrées
+        # sigma : écart-types des erreurs sur X,Y
+
+        sigma = 1
+        max_iter = 5
+        for it in range(max_iter):
+            for i in range(len(B[0])):
+                def resid(z):
+                    r_model=B[:,i] - M @ phi(z)[:,0]
+                    r_prior=(xy_old[:,i]-z)/sigma
+
+                    return np.concatenate([r_model,r_prior])    
+                z = least_squares(resid, x0=xy_new[:,i])
+                if z.success:
+                    # print("success")
+                    xy_new[:,i] = z.x
+            P = phi(xy_new)
+            M = B @ np.linalg.pinv(P)
+
+        Vectors_triangle = (V @ M) #(n,6)
+        vectors_all_triangles.append(Vectors_triangle)
+
+        singular_values = svd_res["model"]["S"]
+        singular_values /= np.linalg.norm(singular_values)
+        Nvalues = len(t)*len(data_svdfiltered)
+        if len(singular_values) < Nvalues:
+            singular_values = np.concatenate([singular_values, np.full(Nvalues - len(singular_values), np.nan)])
+        singular_all_triangles.append(singular_values)
+
+        Q, R = np.linalg.qr(Vectors_triangle, mode="reduced")
+
+
+        error_xy = np.zeros((Ncube,len(t),2))
+        for c in range(Ncube):
+            for ti in range(len(t)): 
+
+                data=datacube[c,t[ti]].ravel()
+                x_theory = xmod[t[ti]]
+                y_theory = ymod[t[ti]]
+
+
+                x_hat, y_hat, k_hat, chi2 = fit_QR(data, Q.T, R)
+
+                X_measured = x_hat + center[0]
+                Y_measured = y_hat + center[1]
+
+                error_xy[c,ti] = ((X_measured - x_theory) , (Y_measured - y_theory))
+        distance_xy_fit.append(error_xy)
         
+    distance_xy_fit = np.array(distance_xy_fit)
+    singular_all_triangles = np.array(singular_all_triangles)
+    center_all_triangles = np.array(center_all_triangles)
+    vectors_all_triangles = np.array(vectors_all_triangles)
+    Ntriangles = vectors_all_triangles.shape[0]
+    vectors_all_triangles = vectors_all_triangles.reshape((Ntriangles, Noutput, Nwave,6))
+    vectors_normalisation = np.linalg.norm(vectors_all_triangles[:,:,:,0],axis=1,keepdims=True)
+    # vectors_all_triangles_normed = vectors_all_triangles/vectors_normalisation[:,:,:,None]
+    vectors_all_triangles_normed = vectors_all_triangles/spectra[:,None]
+    flux_2_data = vectors_all_triangles_normed[:,:,:,0]
+    flux_2_data = flux_2_data.transpose((2,1,0))
+    data_2_flux = np.zeros((Nwave, Ntriangles, Noutput))
+    for w in tqdm(range(Nwave), desc="Inverting flux_2_data to data_2_flux for each wavelength"):
+        data_2_flux[w] = pinv(flux_2_data[w])
+
+
+    fluxtiptilt_2_data = vectors_all_triangles_normed
+    fluxtiptilt_2_data = fluxtiptilt_2_data.transpose((0,2,1,3))
+    QT_fluxtiptilt_2_data = np.zeros((Ntriangles,Nwave,6,Noutput))
+    R_fluxtiptilt_2_data = np.zeros((Ntriangles,Nwave,6,6))
+
+    for w in tqdm(range(Nwave), desc = "Calculating QR matrices for fluxtiptilt_2_data"):
+        for p in range(Ntriangles):
+            Q, R = np.linalg.qr(fluxtiptilt_2_data[p,w], mode="reduced")
+            QT_fluxtiptilt_2_data[p,w] = Q.T
+            R_fluxtiptilt_2_data[p,w] = R
+
+
+    ############### Save results ####################
     # Save arrays into a FITS file
 
     # Create a primary HDU with no data, just the header
@@ -464,51 +676,10 @@ if __name__ == "__main__":
     hdu_1 = fits.ImageHDU(data=flux_2_data, name='F2DATA')
     hdu_2 = fits.ImageHDU(data=data_2_flux, name='DATA2F')
     hdu_3 = fits.ImageHDU(data=fluxtiptilt_2_data, name='FTT2DATA')
-    hdu_4 = fits.ImageHDU(data=data_2_fluxtiptilt, name='DATA2FTT')
-    hdu_5 = fits.ImageHDU(data=fluxtiptiltderiv_2_data, name='FTTDER2DATA')
-    hdu_6 = fits.ImageHDU(data=data_2_fluxtiptiltderiv, name='DATA2FTTDER')
-    hdu_fluxmap = fits.ImageHDU(data=fluxmap_interp, name='FLUXMAP')
-    hdu_modes2D = fits.ImageHDU(data=modes_rect.reshape((Nsingular,gridsize*Ncube,gridsize)), name='MODES2D')
-    hdu_flat = fits.ImageHDU(data=flat, name='FLAT')
-
-    # Create columns for xmod and ymod using fits.Column
-    x_pos = xmod[masque_positions]
-    y_pos = ymod[masque_positions]
-    x_triangles = xmod[triangles[masque_triangles]]
-    y_triangles = ymod[triangles[masque_triangles]]
-    x_crosses = xmod[crosses[masque_crosses]]
-    y_crosses = ymod[crosses[masque_crosses]]
-
-    # shifting all positions around the maximum of flux found from gaussian fitting
-    fluxes = datacube.mean(axis=(0,1,2))
-    popt = basic.fit_gaussian_on_flux(fluxes, xmod, ymod)
-    x_fit=popt[1]
-    y_fit=popt[2]
-    x_fit = x_pos[((x_fit-x_pos)**2).argmin()] 
-    y_fit = y_pos[((y_fit-y_pos)**2).argmin()] 
-
-    x_triangles -= x_fit
-    y_triangles -= y_fit
-    x_pos -= x_fit
-    y_pos -= y_fit
-    x_crosses -= x_fit
-    y_crosses -= y_fit
-
-    col_xmod = fits.Column(name='X_POS', format='E', array=x_pos, unit='mas')
-    col_ymod = fits.Column(name='Y_POS', format='E', array=y_pos, unit='mas')
-
-    col_xtriangles = fits.Column(name='X_TRI', format='3E', array=x_triangles, unit='mas')
-    col_ytriangles = fits.Column(name='Y_TRI', format='3E', array=y_triangles, unit='mas')
-    # Dynamically set the format based on the size of x_crosses' second dimension
-    n_cross = x_crosses.shape[1] if x_crosses.ndim > 1 else 1
-    format_str = f'{n_cross}E'
-    col_xcrosses = fits.Column(name='X_CROS', format=format_str, array=x_crosses, unit='mas')
-    col_ycrosses = fits.Column(name='Y_CROS', format=format_str, array=y_crosses, unit='mas')
-
-    # Create a table HDU for xmod and ymod
-    hdu_table_mod = fits.BinTableHDU.from_columns([col_xmod, col_ymod], name='POSITIONS')
-    hdu_table_triangle = fits.BinTableHDU.from_columns([col_xtriangles, col_ytriangles], name='TRIANGLES')
-    hdu_table_crosses = fits.BinTableHDU.from_columns([col_xcrosses, col_ycrosses], name='CROSSES')
+    hdu_4 = fits.ImageHDU(data=QT_fluxtiptilt_2_data, name='QT_FTT2DATA')
+    hdu_5 = fits.ImageHDU(data=R_fluxtiptilt_2_data, name='R_FTT2DATA')
+    hdu_6 = fits.ImageHDU(data=center_all_triangles, name='XY_CENTER')
+    hdu_7 = fits.ImageHDU(data=flat, name='FLAT')
 
     modulation_hdu = fits.open(datalist[-1].filename)['MODULATION']
 
@@ -518,6 +689,8 @@ if __name__ == "__main__":
     output_dir = os.path.join(folder,"../couplingmaps")
 
     header['X_FIRTYP'] = 'COUPLINGMAP'
+    header['X_FIRWOL'] = header.get('X_FIRWOL', 'IN')
+
     # Add date and time to the header
     current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
     header['DATE-PRO'] = current_time
@@ -529,7 +702,7 @@ if __name__ == "__main__":
     header['WL_BIN'] = wavelength_bin
     header['NSINGUL'] = Nsingular  # Add number of singular values
     header['FLUXTHR'] = flux_threshold  # Add flux threshold
-    header['CHI2THR'] = chi2_threshold  # Add chi2 threshold
+    # header['CHI2THR'] = chi2_threshold  # Add chi2 threshold
     header['CM_CHECK'] = np.random.randint(0, 2**32, dtype=np.uint32)
     for i, filename in enumerate(filenames):
         header['FILE_%i' % i] = filename
@@ -540,9 +713,7 @@ if __name__ == "__main__":
     hdu_primary.header.extend(header, strip=True)
 
     # Combine all HDUs into an HDUList
-    hdul = fits.HDUList([hdu_primary, hdu_1, hdu_2, hdu_3, hdu_4,hdu_5, hdu_6,
-                         hdu_table_mod,hdu_table_triangle,hdu_table_crosses,modulation_hdu,
-                         hdu_fluxmap, hdu_modes2D,hdu_flat])
+    hdul = fits.HDUList([hdu_primary, hdu_1, hdu_2, hdu_3, hdu_4,  hdu_5,  hdu_6, hdu_7])
 
     output_filename = os.path.join(output_dir, runlib.create_output_filename(header))
 
@@ -551,11 +722,324 @@ if __name__ == "__main__":
     hdul.writeto(output_filename, overwrite=True)
 
 
-    runlib_i.generate_plots(filenames, datacube, xmod, ymod, masque_positions, flux_2_data, 
-                            singular_values, Nsingular, chi2_delta, flux_goodData, 
-                            modes_rect, modes_mean, 
-                            chi2_goodData, flux_threshold, chi2_threshold, output_filename)
+
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+    ###############################################
+    # Diagnostic plots
+    ###############################################
+    fig_resid, axs_resid = plt.subplots(1, Ncube, figsize=(4*Ncube, 6), num="Residuals in xy of each dataset", clear=True)
+    for c in range(Ncube):
+        ax = axs_resid[c] if Ncube > 1 else axs_resid
+        dx = distance_xy_fit[:, c, :, 0].ravel()
+        dy = distance_xy_fit[:, c, :, 1].ravel()
+        bins = np.linspace(-20, 20, 41)
+        counts_dx, _, _ = ax.hist(dx, bins=bins, alpha=0.7, color='tab:blue', edgecolor='black')
+        counts_dy, _, _ = ax.hist(dy, bins=bins, alpha=0.7, color='tab:orange', edgecolor='black')
+        # Median values
+        median_dx = np.nanmedian(dx)
+        median_dy = np.nanmedian(dy)
+        ax.axvline(median_dx, color='tab:blue', linestyle='--', linewidth=2, label=f'Median dx: {median_dx:.2f}')
+        ax.axvline(median_dy, color='tab:orange', linestyle='--', linewidth=2, label=f'Median dy: {median_dy:.2f}')
+        # 1 sigma percentiles
+        dx_p16, dx_p84 = np.nanpercentile(dx, [16, 84])
+        dy_p16, dy_p84 = np.nanpercentile(dy, [16, 84])
+        ax.axvline(dx_p16, color='tab:blue', linestyle=':', linewidth=2, label=f'dx 1σ: {dx_p16:.2f}')
+        ax.axvline(dx_p84, color='tab:blue', linestyle=':', linewidth=2)
+        ax.axvline(dy_p16, color='tab:orange', linestyle=':', linewidth=2, label=f'dy 1σ: {dy_p16:.2f}')
+        ax.axvline(dy_p84, color='tab:orange', linestyle=':', linewidth=2)
+        ax.set_title(f"{basenames[c][8:]}")
+        ax.set_xlabel("Error [mas]")
+        ax.set_ylabel("Count")
+        ax.grid(True, linestyle=':', alpha=0.5)
+        ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure("Singular Values per Triangle", figsize=(8, 6), clear=True)
+    for i, sv in enumerate(singular_all_triangles):
+        plt.plot(np.arange(1, len(sv) + 1), sv, alpha=0.3)
+    mean_singular = np.nanmean(singular_all_triangles, axis=0)
+    plt.plot(np.arange(1, len(mean_singular) + 1), mean_singular, '-o', color='k', linewidth=2, label='Mean Singular Values')
+    plt.yscale('log')
+    plt.xlim(1, len(mean_singular))
+    plt.xlabel('Singular Value Index')
+    plt.ylabel('Singular Value (log scale)')
+    plt.title('Singular Values for All Triangles')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    fig_flat, ax_flat = plt.subplots(num="Flat Field", figsize=(12, 6), clear=True)
+    im_flat = ax_flat.imshow(flat, aspect='auto', origin='lower', cmap='viridis', interpolation='none', rasterized=True)
+    ax_flat.set_title("Flat Field ")
+    ax_flat.set_xlabel("Wavelength Index")
+    ax_flat.set_ylabel("Output Index")
+    plt.colorbar(im_flat, ax=ax_flat, label="Flat Value")
+    plt.tight_layout()
+    plt.show()
+
+    fig, axs = plt.subplots(2, 2, figsize=(12, 10), num="Flux/GoodData Selection", clear=True)
+
+    # The data used to make them: mean flux per (wavelength, output)
+    mean_flux = flux.mean(axis=(2))
+    axs[0, 0].imshow(mean_flux, aspect='auto', origin='lower', cmap='viridis', interpolation='none', rasterized=True)
+    axs[0, 0].set_title("Mean Flux (per wavelength/output)")
+    axs[0, 0].set_xlabel("Output")
+    axs[0, 0].set_ylabel("files")
+    # Show the threshold as a horizontal line (if 1D), else as a contour
+    # axs[0, 0].contour(flux_goodData, levels=[0.5], colors='r', linewidths=1, linestyles='--')
+
+    # flux_goodData mask
+    axs[0, 1].imshow(flux_goodData, aspect='auto', origin='lower', cmap='Greens', interpolation='none', rasterized=True, vmin=0, vmax=1)
+    axs[0, 1].set_title("From flux, good Dataset (mask)")
+    axs[0, 1].set_xlabel("Output")
+    axs[0, 1].set_ylabel("Wavelength")
+
+    # The data used to make them: mean flux per (wavelength, output)
+    error_norm = errors.reshape((datacube.shape[0], -1))
+    axs[1, 0].imshow(error_norm, aspect='auto', origin='lower', cmap='viridis', interpolation='none', rasterized=True)
+    axs[1, 0].set_title("Amplitude of residuals after SVD filtering")
+    axs[1, 0].set_xlabel("Output")
+    axs[1, 0].set_ylabel("files")
+    # Show the threshold as a horizontal line (if 1D), else as a contour
+    # axs[1, 0].contour(fit_goodData, levels=[0.5], colors='r', linewidths=1, linestyles='--')
+
+    # flux_goodData mask
+    axs[1, 1].imshow(fit_goodData, aspect='auto', origin='lower', cmap='Greens', interpolation='none', rasterized=True, vmin=0, vmax=1)
+    axs[1, 1].set_title("From SVD fits, good Dataset (mask)")
+    axs[1, 1].set_xlabel("Output")
+    axs[1, 1].set_ylabel("Wavelength")
 
 
+    plt.tight_layout()
+    plt.show()
+
+    fig, axs = plt.subplots(1, 2, num=" Positions fiber and of triangles" , figsize=(18, 6), sharex=True, sharey=True, clear=True)
+
+    # 1. Plot positions (xmod, ymod) for all triangles
+    axs[0].set_title("Positions of Fiber")
+    axs[0].scatter(xmod, ymod, c='k', marker='.')
+    axs[0].scatter(xmod[goodPositions], ymod[goodPositions], facecolors='g', marker='o', edgecolor='k', label='Good Positions')
+    axs[0].set_xlabel("x [mas]")
+    axs[0].set_ylabel("y [mas]")
+    axs[0].set_aspect('equal')
+    axs[0].legend()
+
+    # 1. Plot positions (xmod, ymod) for all triangles
+    axs[1].set_title("Positions of Triangles")
+    axs[1].scatter(center_triangles[:, 0], center_triangles[:, 1], c='k', marker='.')
+    axs[1].scatter(center_triangles[goodTriangles, 0], center_triangles[goodTriangles, 1], facecolors='g', marker='o', edgecolor='k', label='Good Triangles')
+    axs[1].set_xlabel("x [mas]")
+    axs[1].set_ylabel("y [mas]")
+    axs[1].set_aspect('equal')
+    axs[1].legend()
+
+    datacube=np.concatenate([d.data for d in datalist])
+
+    datacube_T=datacube.transpose((3,2,0,1))
+    datacube_T=datacube_T.reshape((datacube_T.shape[0], datacube_T.shape[1], -1))
+    chi2_max = np.sum(datacube_T**2, axis=(0,1))
+
+    chi2_map = np.zeros((Ntriangles,Ncube * Npos))
+    chi2_map = np.zeros((Ntriangles, Ncube * Npos))
+    chi2_map[:] =  chi2_max
+    # gram_fluxtiptilt_inv =np.zeros_like(gram_fluxtiptilt)
+    # for t in range(Ntriangles):
+    #     for w in range(Nwave):
+    #         gram_fluxtiptilt_inv[t,w] = linalg.pinv(gram_fluxtiptilt[t,w])
+    for t in tqdm(range(Ntriangles), desc="Computing chi2 map"):
+        k= QT_fluxtiptilt_2_data[t] @ datacube_T
+        chi2_map[t,:] -= np.sum(k ** 2, axis=(0,1))
+
+    chi2_argmin = chi2_map.argmin(axis=0)
+    residuals = datacube_T.copy()
+
+    distances = np.linalg.norm((xmod- center_all_triangles[:,0,None], ymod- center_all_triangles[:,1,None]),axis=0)
+    # chi2_argmin = np.argmin(distances,axis=0)
+
+
+    # for i in tqdm(range(1 * Npos), desc="Computing residuals"):
+    #     t = chi2_argmin[i]
+    #     k= QT_fluxtiptilt_2_data[t]  @ datacube_T[:,:,i,None]
+    #     cs = solve_triangular(R, b, lower=False)
+    #     residuals[:,:,i] -= (fluxtiptilt_2_data[t] @ k)[:,:,0]
+
+
+    Xpos = np.zeros(Ncube * Npos)
+    Ypos = np.zeros(Ncube * Npos)
+    Xcen = np.zeros(Ncube * Npos)
+    Ycen = np.zeros(Ncube * Npos)
+    OK =[]
+    for i in tqdm(range(Ncube * Npos), desc="Computing XY positions"):
+        t = chi2_argmin[i]
+        center = center_all_triangles[t]
+        data = datacube_T[:,:,i]
+        QT = QT_fluxtiptilt_2_data[t]
+        R = R_fluxtiptilt_2_data[t]
+
+        res = []
+        for w in range(Nwave):
+            data_w = data[w]
+            QT_w = QT[w]
+            R_w = R[w]
+            x_hat, y_hat, k_hat, chi2 = fit_QR(data_w, QT_w, R_w)
+            res.append((x_hat, y_hat, k_hat, chi2))
+        res = np.array(res)
+
+
+        Xpos[i] = np.median(res[:,0])
+        Ypos[i] = np.median(res[:,1])
+
+        Xcen[i] = center[0]
+        Ycen[i] = center[1]
+    
+    Xpos = Xpos.reshape((Ncube, Npos))
+    Ypos = Ypos.reshape((Ncube, Npos))
+    Xcen = Xcen.reshape((Ncube, Npos))
+    Ycen = Ycen.reshape((Ncube, Npos))
+    
+    fig, axs = plt.subplots(1, Ncube, num="XY position", clear=True,sharex=True, sharey=True, figsize=(12, 6*Ncube), squeeze=False)
+    axs=axs[0]
+    for i in range(Ncube):
+        axs[i].plot(Xcen[i],Ycen[i],'.',label='Center of pyramids')
+        axs[i].set_ylim(axs[i].get_ylim()[0], axs[i].get_ylim()[1])
+        axs[i].set_xlim(axs[i].get_xlim()[0], axs[i].get_xlim()[1])
+        axs[i].plot((Xcen+Xpos)[i],(Ycen+Ypos)[i],'.-',label='Detected position')
+        axs[i].plot((Xcen[i],(Xcen+Xpos)[i]),(Ycen[i],(Ycen+Ypos)[i]),'-k',alpha=0.3,linewidth=0.5)
+        axs[i].set_title(basenames[i][8:])
+        axs[i].set_xlabel("X [mas]")
+        axs[i].set_ylabel("Y [mas]")
+        axs[i].legend()
+        for ax in axs:
+            ax.set_aspect('equal')
+    plt.tight_layout()
+
+
+
+#%% #################################
+
+
+    #     ell2dmodel = ss.Ell2DModel(V=vectors_all_triangles[t], coefs=coeffs_all_triangles[t])
+    #     bounds_max = 10
+
+    #     Y_batch = datacube[:,t].reshape((datacube.shape[0]*6, -1))
+    #     fit_output = ss.estimate_xy_from_Y_batch_lambda(
+    #         ell2dmodel, Y_batch,
+    #         bounds=((-bounds_max, bounds_max), (-bounds_max, bounds_max)),   # bornes communes
+    #         x0y0=(0.0, 0.0),                      # init (ou (M,2))
+    #         n_starts=10,
+    #         jitter=bounds_max/2,
+    #     )
+
+
+    #     k= data_2_fluxtiptilt[t] @ datacube_T[:,:,i,None]
+    #     residuals[:,:,i] -= (fluxtiptilt_2_data[t] @ k)[:,:,0]
+
+
+    # chi2_map = chi2_map.reshape((Ntriangles,Ncube,Npos))
+    # chi2_min = chi2_map.min(axis=0)
+    # chi2_argmin = chi2_map.argmin(axis=0)
+
+    # residuals = datacube_T
+
+
+
+#%%
+
+
+
+    # ###############################################
+    # # Singular values plot
+    # ###############################################
+
+    # energy_estimation = (singular_values)**2 / np.sum(singular_values**2)
+    # reverse_cumulative_energy = np.cumsum(energy_estimation[::-1])[::-1]
+
+
+    # plt.figure("Singular values", clear=True)
+    # plt.plot(1+np.arange(len(energy_estimation)), energy_estimation**.5, marker='o', label='All Singular Values')
+    # plt.plot(1+np.arange(Nsingular), energy_estimation[:Nsingular]**.5, marker='o', label='Selected Singular Values')
+    # plt.plot(1 + np.arange(len(reverse_cumulative_energy)), reverse_cumulative_energy**.5, marker='D', label='Reverse Cumulative Energy', alpha=0.5)
+    # plt.plot(1+np.arange(Nsingular), reverse_cumulative_energy[:Nsingular]**.5, marker='D', alpha=0.5)
+
+    # plt.legend()
+    # plt.xlabel('Singular Vector Index')
+    # plt.ylabel('Energy Estimation')
+    # plt.title('Amplitude of Singular Values')
+    # plt.yscale('log')
+    # plt.xscale('log')
+    # plt.grid(True)
+
+    # # Plot the list of filenames in the middle of the plot
+    # plt.gca().text(0.5, 0.5, "\n".join(filenames), fontsize=10, ha='center', va='center', wrap=True, transform=plt.gca().transAxes)
+
+    ###############################################
+    # Covariance and correlation matrix plot
+    ###############################################
+
+    cov_matrix = np.cov(flux_2_data.reshape((Nwave*Noutput,Ntriangles)).T)
+    cor_matrix = np.corrcoef(flux_2_data.reshape((Nwave*Noutput,Ntriangles)).T)
+
+    fig, ax = plt.subplots(1, 2, num='Covariance and Correlation Matrix', figsize=(12, 6), clear=True)
+    cax0 = ax[0].matshow(cov_matrix, cmap='viridis')
+    fig.colorbar(cax0, ax=ax[0])
+    cax1 = ax[1].matshow(cor_matrix, cmap='viridis')
+    fig.colorbar(cax1, ax=ax[1])
+    ax[0].set_title('Covariance Matrix of Singular Vector Models')
+    ax[1].set_title('Correlation Matrix of Singular Vector Models')
+    fig.tight_layout()
+
+
+
+    ###############################################
+    # Covariance and correlation matrix plot
+    ###############################################
+
+
+    # fig, axs = plt.subplots(1, 3, num="Amplitudes and Residuals (2D)", figsize=(18, 16), clear=True)
+
+    # # 2D plot of mean amplitudes per triangle (averaged over frames)
+    # mean_amplitudes = np.mean(amplitudes_all_triangles, axis=1)  # shape: (n_triangles, n_waves)
+    # im0 = axs[0].imshow(mean_amplitudes, aspect='auto', origin='lower', cmap='viridis', interpolation='none', rasterized=True)
+    # axs[0].set_title("Mean Amplitudes per Triangle")
+    # axs[0].set_xlabel("File")
+    # axs[0].set_ylabel("Triangle Index")
+    # plt.colorbar(im0, ax=axs[0], label="Mean Amplitude")
+    # axs[0].set_xticks(np.arange(len(unique_basenames)))
+    # axs[0].set_xticklabels(unique_basenames, rotation=90, fontsize=8)
+
+    # # 2D plot of mean fit residuals per triangle (averaged over frames)
+    # mean_fit_residuals = np.mean(fit_residual_all_triangles, axis=1)
+    # im1 = axs[1].imshow(mean_fit_residuals, aspect='auto', origin='lower', cmap='magma', interpolation='none', rasterized=True)
+    # axs[1].set_title("Fit Residuals per Triangle")
+    # axs[1].set_xlabel("File")
+    # axs[1].set_ylabel("Triangle Index")
+    # plt.colorbar(im1, ax=axs[1], label="Mean Fit Residual")
+    # axs[1].set_xticks(np.arange(len(unique_basenames)))
+    # axs[1].set_xticklabels(unique_basenames, rotation=90, fontsize=8)
+
+    # # 2D plot of mean projection residuals per triangle (averaged over frames)
+    # mean_proj_residuals = np.mean(proj_residual_all_triangles, axis=1)
+    # im2 = axs[2].imshow(mean_proj_residuals, aspect='auto', origin='lower', cmap='plasma', interpolation='none', rasterized=True)
+    # axs[2].set_title("Projection Residuals per Triangle")
+    # axs[2].set_xlabel("File")
+    # axs[2].set_ylabel("Triangle Index")
+    # plt.colorbar(im2, ax=axs[2], label="Mean Projection Residual")
+    # axs[2].set_xticks(np.arange(len(unique_basenames)))
+    # axs[2].set_xticklabels(unique_basenames, rotation=90, fontsize=8)
+
+    # plt.tight_layout()
+    # plt.show()
+
+
+
+    # Save all open figures to a PDF
+    from matplotlib.backends.backend_pdf import PdfPages
+    pdf_filename = os.path.splitext(output_filename)[0] + ".pdf"
+    with PdfPages(pdf_filename) as pdf:
+        for i in plt.get_fignums():
+            fig = plt.figure(i)
+            pdf.savefig(fig)
+    print(f"All figures saved to {pdf_filename}")
 
 # %%

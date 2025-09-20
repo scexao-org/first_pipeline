@@ -44,6 +44,14 @@ from scipy.ndimage import zoom
 from astropy.io import fits
 import shutil
 from scipy.interpolate import interpn
+from astroplan import Observer
+from astropy.time import Time
+subaru = Observer.at_site("Subaru")
+now_time = Time.now()
+if subaru.is_night(now_time):
+    print("It's night at Subaru Observatory.")
+else:
+    print("It's day at Subaru Observatory.")
 
 plt.ion()
 
@@ -108,7 +116,7 @@ def get_filelist(file_patterns, dark_patterns, cmap_patterns, modID, modScale, o
         fits_keywords['OBJECT'] = [object_name]
         fits_keywords['X_FIRMID'] = [modID]
         fits_keywords['X_FIRMSC'] = [modScale]
-        fits_keywords['X_FIRWOL'] = [wollaston]
+        # fits_keywords['X_FIRWOL'] = [wollaston] # to be added later
 
         print("----------------")
         print(f"Selected object='{object_name}' with modScale={modScale} and modID={modID}")
@@ -131,7 +139,7 @@ def get_filelist(file_patterns, dark_patterns, cmap_patterns, modID, modScale, o
             print("WARNING: No dark files found with the specified patterns and keywords.")
 
         fits_keywords = {'X_FIRTYP': ['COUPLINGMAP'],
-                        'X_FIRWOL': [wollaston],
+                         'X_FIRWOL': [wollaston],
                         }    
 
         filelist_cmap = runlib.get_filelist(cmap_patterns, fits_keywords, name_search="coupling map")
@@ -407,12 +415,14 @@ if __name__ == "__main__":
 
         if getpass.getuser() == "slacour":
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/firstpl_2025-06-14T01:38*fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc/firstpl_2025-08-08T07:16:??_HIP84212_P.fits"
-            coupling_map = "/Users/slacour/DATA/LANTERNE/20250808/preproc/../couplingmaps/firstpl_2025-08-08T07:16:09_COUPLINGMAP.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T05?5*BETACMI_P.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T05?53*BETACMI_P.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-2]*TETCRB_P.fits"
+            cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/../couplingmaps/firstpl_2025-05-10T09:23:36_COUPLINGMAP.fits"
             dark_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc"
         if getpass.getuser() == "ehuby" :
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/firstpl_*.fits"
-            coupling_map = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/couplingmaps_TETCRB/"
+            cmap_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/couplingmaps_TETCRB/"
             object_name = 'HIP81126'
     else:
 
@@ -429,19 +439,21 @@ if __name__ == "__main__":
         save_individual_frames=options.save_individual_frames
         save_individual_wavelength=options.save_individual_wavelength
 
-        coupling_map = options.coupling_map
+        cmap_patterns = options.coupling_map
 
-    # If the user specifies a coupling map, use it, otherwise use the science file pattern 
-    if coupling_map is None:
-        coupling_map = file_patterns +['../couplingmaps/*.fits']
+    # If the user specifies a coupling map, use it, otherwise use the science file pattern
+    if cmap_patterns is None:
+        cmap_patterns = file_patterns + ['../couplingmaps/*.fits']
     # If the user specify a dark, use it. Otherwise, use the science file pattern
     if dark_patterns is None:
         dark_patterns = file_patterns
 
 
-    files_with_dark, filelist_cmap = get_filelist(file_patterns, dark_patterns, coupling_map, modID, modScale, object_name, wollaston)
+    files_with_dark, filelist_cmap = get_filelist(file_patterns, dark_patterns, cmap_patterns, modID, modScale, object_name, wollaston)
 
     couplingMap = basic.CouplingMap(filelist_cmap[0])
+
+    #%%
 
     #Input preproc
     #clean and sum all data
@@ -449,16 +461,103 @@ if __name__ == "__main__":
     datalist=runlib_i.extract_datacube(files_with_dark,Nsmooth=wavelength_smooth,Nbin=couplingMap.wavelength_bin,flat = couplingMap.flat)
 
     datacube=np.concatenate([d.data for d in datalist])
-    datacube=datacube.transpose((3,2,0,1))
+    flux = np.concatenate([np.repeat(np.expand_dims(d.get_spectra(), axis=0), len(d.data), axis=0) for d in datalist])
+    # datacube=datacube.transpose((3,2,0,1))
+    xmod=datalist[0].xmod
+    ymod=datalist[0].ymod
+
+    flux_2_data = couplingMap.flux_2_data * spectra.mean(axis=(0))
+    Pos = couplingMap.Pos
+    Npos = len(Pos)
+
+
+    Ncube=datacube.shape[0]
+    Nmod=datacube.shape[1]
+    Noutput=datacube.shape[2]
+    Nwave=datacube.shape[3]
+
+    data_2_flux = linalg.pinv(flux_2_data.reshape(Npos, -1))
+    flux = np.dot(datacube.reshape(Ncube*Nmod, -1), data_2_flux)
+    residual = datacube - (flux @ flux_2_data.reshape((-1,  Noutput * Nwave))).reshape(datacube.shape)
+
+    # Define the grid for interpolation
+    # calcul de la grille de l'image que l'on souhaite reconstruire
+    # if it is for a quick look of the real time display, use xmod=ymod=0
+    Npixel = 150
+    grid_x, grid_y = basic.make_image_grid(couplingMap, Npixel, xmod, ymod)
+
+
+    xpos = couplingMap.Pos[:,0]
+    ypos = couplingMap.Pos[:,1]
+    flux = flux.reshape((Ncube,Nmod,Npos))
+
+    flux_maps = []
+    for c in range(Ncube):
+        for m in tqdm(range(Nmod), desc="Reconstruction of the 3D image"):
+            # Interpolate the fluxes onto the grid
+            flux_map = griddata((xpos-xmod[m], ypos-ymod[m]), flux[c,m,:], (grid_x, grid_y), method='cubic')
+            flux_maps += [flux_map]
+    flux_maps = np.array(flux_maps).reshape((Ncube,Nmod,Nwave,len(grid_x),len(grid_y)))
+    
+
+    # create the image maps
+
+
+    Ncube=datacube.shape[0]
+    Nmod=datacube.shape[1]
+    Noutput=datacube.shape[2]
+    Nwave=datacube.shape[3]
+
+    xpos = couplingMap.Pos[:,0]
+    ypos = couplingMap.Pos[:,1]
+
+    Npositions = couplingMap.Npositions
+
+    data_2_flux = couplingMap.data_2_flux
+
+    fluxes = np.matmul(data_2_flux, datacube.reshape((Nwave,Noutput,Ncube*Nmod)))
+    fluxes = fluxes.reshape((Nwave,Npositions,Ncube,Nmod))
+
+    # developement mode, or quick look mode :
+    if wavelength == False:
+        fluxes = fluxes.mean(axis=0, keepdims=True)
+        Nwave = 1
+
+    flux_maps = []
+    if wavelength == False:
+        for c in range(Ncube):
+            for m in range(Nmod):
+                for w in range(Nwave):
+                    # Interpolate the fluxes onto the grid
+                    flux_map = griddata((xpos-xmod[m], ypos-ymod[m]), fluxes[w,:,c,m], (grid_x, grid_y), method='cubic')
+                    flux_maps += [flux_map]
+    else:
+        for c in range(Ncube):
+            for m in tqdm(range(Nmod), desc="Reconstruction of the 3D image"):
+                for w in range(Nwave):
+                    # Interpolate the fluxes onto the grid
+                    flux_map = griddata((xpos-xmod[m], ypos-ymod[m]), fluxes[w,:,c,m], (grid_x, grid_y), method='cubic')
+                    flux_maps += [flux_map]
+    flux_maps = np.array(flux_maps).reshape((Ncube,Nmod,Nwave,len(grid_x),len(grid_y)))
+    
+
+    # create the image maps
+    flux_maps, fluxes = basic.make_image_maps(datacube_cleaned, couplingMap, grid_x, grid_y, xmod, ymod, wavelength=False)
+
+    #%%
+
+
 
     xmod=datalist[0].xmod
     ymod=datalist[0].ymod
 
-    quick_fits(datacube, 'datacube')
+    # quick_fits(datacube, 'datacube')
 
     Nwave=datalist[0].Nwave
     Noutput=datalist[0].Noutput
     Ncube=len(datalist)
+
+
 
     # Coupling maps for inspection
     Npixel = 100
@@ -474,7 +573,7 @@ if __name__ == "__main__":
     # Utilise pour selectionner les bonnes images 
     # ===> Pas utile pour le quick look
 
-    datacube_cleaned,arg_triangle = runlib_i.chi2_cleaning(datacube,couplingMap, mode="crosses")
+    datacube_cleaned,arg_triangle = runlib_i.chi2_cleaning(datacube,couplingMap)
 
     # getting the residual after substracting a point source
     # using the flux tip tilt matrices
@@ -497,7 +596,6 @@ if __name__ == "__main__":
     residuals_maps_sum = np.nansum(residuals_maps,axis=1)
     # Save image and residual maps to FITS files :
 
-#%%
 
     for i,d in enumerate(datalist):
         header = d.header

@@ -92,26 +92,14 @@ class CouplingMap:
         self.wavelength_bin = header['WL_BIN']
 
         self.flux_2_data=cmap_file['F2DATA'].data
-        self.data_2_flux=cmap_file['DATA2F'].data  # the only matrix usefull for the image reconstruction
-        self.fluxtiptilt_2_data=cmap_file['FTT2DATA'].data
-        self.data_2_fluxtiptilt=cmap_file['DATA2FTT'].data
+        self.Pos=cmap_file['POSITION'].data
+        self.vectors=cmap_file['VECTORS'].data
+        self.coeffs=cmap_file['COEFF'].data
+        self.center=cmap_file['CENTER'].data
+        self.flat=cmap_file['FLAT'].data
 
-        self.xpos=cmap_file['POSITIONS'].data.field('X_POS')
-        self.ypos=cmap_file['POSITIONS'].data.field('Y_POS')
-        self.Npositions=cmap_file['POSITIONS'].header['NAXIS2']
-
-        self.xtri=cmap_file['TRIANGLES'].data.field('X_TRI')
-        self.ytri=cmap_file['TRIANGLES'].data.field('Y_TRI')
-        self.Ntriangles=cmap_file['TRIANGLES'].header['NAXIS2']
-
-        # try:
-        self.xcrosses=cmap_file['CROSSES'].data.field('X_CROS')
-        self.ycrosses=cmap_file['CROSSES'].data.field('Y_CROS')
-        self.Ncrosses=cmap_file['CROSSES'].header['NAXIS2']
-        self.fluxtiptiltderiv_2_data=cmap_file['FTTDER2DATA'].data
-        self.data_2_fluxtiptiltderiv=cmap_file['DATA2FTTDER'].data
-
-        self.flat = cmap_file['FLAT'].data
+        self.xpos = self.Pos[:,0]
+        self.ypos = self.Pos[:,1]
 
         cmap_file.close()
 
@@ -219,8 +207,8 @@ def make_image_grid(couplingMap, Npixels, xmod=[0], ymod=[0]):
     # Define the grid for interpolation
     # calcul de la grille de l'image que l'on souhaite reconstruire
     # if it is for a quick look of the real time display, use xmod=ymod=0
-    xpos = couplingMap.xpos
-    ypos = couplingMap.ypos
+    xpos = couplingMap.Pos[:,0]
+    ypos = couplingMap.Pos[:,1]
 
     # Define the grid for interpolation
     xmin, xmax   = np.min(xpos)-np.max(xmod), np.max(xpos)-np.min(xmod)

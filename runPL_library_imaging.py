@@ -14,6 +14,7 @@ from scipy.ndimage import uniform_filter1d
 from scipy.spatial import Delaunay
 from scipy.interpolate import griddata
 from scipy.optimize import curve_fit
+from scipy.spatial import cKDTree
 
 import matplotlib.pyplot as plt
 from matplotlib import animation
@@ -22,6 +23,9 @@ from datetime import datetime
 from tqdm import tqdm
 import runPL_library_basic as basic
 import matplotlib.pyplot as plt
+from astroplan import Observer
+from astropy.time import Time
+subaru = Observer.at_site("Subaru")
 plt.ion()
 
 def create_movie_cross(datacube):
@@ -318,6 +322,7 @@ class DataCube:
         self.data = data
         self.variance = variance
         self.dirname = os.path.dirname(filename)
+        self.basename = os.path.basename(filename)
         self.filename = filename
         self.header = header
         self.Ndit = data.shape[0]
@@ -328,6 +333,34 @@ class DataCube:
         self.object_name = header.get('OBJECT', 'Unknown')
         self.wollaston = header.get('X_FIRWOL', 'IN')
         self.add_modulation()
+
+        self.target_ra = header.get('D_IMRRA', '21:15:49.440')
+        self.target_dec = header.get('D_IMRDEC', '+05:14:52.41')
+        self.pupil_PA = header.get('D_IMRPAP', -233.206)
+        self.date = header.get('DATE-OBS', '2025-07-14')
+        self.ut_str = header.get('UT-STR', "11:52:44.20")
+        self.ut_end = header.get('UT-END', "11:53:20.76")
+        self.time_start = Time(f"{self.date} {self.ut_str}")
+
+    ## get the parallactic angle at the config location for the current LST time */
+    def get_parallactic_angle(self, lst_seconds, target_ra, target_dec, location_lat):
+        H_rad = (lst_seconds/86400 - target_ra/24)*2*np.pi
+        lat_rad = location_lat / 180.0 * np.pi
+        dec_rad = target_dec / 180.0 * np.pi
+        q1 = np.sin(H_rad)
+        q2 = np.tan(lat_rad) * np.cos(dec_rad) - np.sin(dec_rad)*np.cos(H_rad)
+        q = np.arctan2(q1, q2)
+        return q/np.pi*180
+    
+
+    ## calculate the projection of the offset in the field based on the current parangle and delta-coordinates of target */
+    def project_offsets(self, dra, ddec):
+        THETA_OFFSET = 102.2  # degrees
+        proj_offsets = np.zeros(2)
+        parangle = (180.0 - THETA_OFFSET - self.get_parallactic_angle())/180*np.pi
+        proj_offsets[0] = np.sin(parangle) * ddec + np.cos(parangle) * dra
+        proj_offsets[1] = np.cos(parangle) * ddec - np.sin(parangle) * dra
+        return proj_offsets
 
     def add_modulation(self):
         """ 
@@ -356,6 +389,11 @@ class DataCube:
                 if np.isscalar(ymod):
                     ymod = np.array([ymod])
 
+            # Fix known issue with ymod[373] if necessary
+        if len(xmod) == 595:
+            if ymod[373]<1e-5:
+                ymod[373]=ymod[372]
+
         self.xmod = xmod
         self.ymod = ymod
         self.Nmod = len(xmod)
@@ -380,6 +418,15 @@ class DataCube:
             self.data = self.data.reshape(size_new)
             self.variance = self.variance.reshape(size_new)
 
+
+        # self.xmod=np.zeros((size_new[0],size_new[1]))
+        self.xmod=xmod
+
+        # self.ymod=np.zeros((size_new[0],size_new[1]))
+        self.ymod=ymod
+
+        return
+
     def normalize_with_flat(self, flat):
         """
         Normalize the data cube by a flat field.
@@ -389,14 +436,23 @@ class DataCube:
         self.data /= flat
         self.variance /= flat**2
 
-    def normalize_with_spectra(self):
+    def compute_flux(self):
         """
-        Normalize the extracted data.
+        Get the mean spectra of the 38 outputs.
+        Returns:
+            numpy.ndarray: The mean spectra of the 38 outputs.
         """
-        inv_spectra = 1/self.data.mean(axis=(0, 1, 2))
+        self.flux = self.data.mean(axis=(2))
 
-        self.data *= inv_spectra
-        self.variance *= inv_spectra**2  # Update variance based on the normalized spectra
+
+    def center_flux_outputs(self):
+        """
+        """
+        if not hasattr(self, 'flux'):
+            self.compute_flux()
+
+        self.data -= self.flux[:, :, None]
+
         
     def smooth(self, Nsmooth):
         """
@@ -453,50 +509,48 @@ class DataCube:
                 good_triangles.append(triangle)
 
         good_triangles = np.array(good_triangles)
+
         print(f"Computed {len(triangles)} triangles for the given positions.")
         print(f"Computed {len(good_triangles)} good triangles.")
 
-        return good_triangles
+        center_triangles = points[good_triangles].mean(axis=1)
 
-    def get_crosses(self):
+        return good_triangles , center_triangles
+    
+    def get_pyramids(self):
 
         xmod=self.xmod
         ymod=self.ymod
 
+        # Combine xmod and ymod into a 2D array of points
         points = np.array([xmod, ymod]).T
-        segment_lengths = []
-        min_length = float('inf')
 
-        length = np.linalg.norm(points[:,None] - points[None],axis=2)
-        np.fill_diagonal(length, np.nan)
+        good_triangles , center_triangles = self.get_triangle()
 
-        min_length=np.nanmin(length)
-        good_segments=length<min_length*1.1
-        branches = np.sum(good_segments,axis=0).max()
-        good_centers=np.sum(good_segments,axis=0)==branches
-        good_centers = np.where(good_centers)[0]
+        # Compute the center of each triangle
+        center_triangles = points[good_triangles].mean(axis=1)
 
-        edges=[]
-        for g in good_segments[good_centers]:
-            edges.append(np.where(g)[0])
-        edges=np.array(edges)
+        orders = center_triangles[:, 0] + center_triangles[:, 1] * 1e5
+        center_triangles = center_triangles[np.argsort(orders)]
 
+        # Create a KDTree for efficient nearest neighbor search
+        tree = cKDTree(points)
+        distances, indices = tree.query(center_triangles, k=6)
+        l_mean = np.mean(distances)
 
-        xy_mod_centers=points[good_centers]
-        xy_mod_edges=points[edges]
-        scale_sort = xy_mod_edges[:,:,0]+xy_mod_edges[:,:,1]*1e3
-        for i,s in enumerate(scale_sort.argsort(axis=1)):
-            edges[i] = edges[i,s]
-        xy_mod_edges=points[edges]
+        # Filter triangles based on distance criteria to the center (only keep pyramids)
+        delta_xy_triangles = (points[indices] - center_triangles[:, None, :]).mean(axis=1)
+        delta_triangles = np.sqrt((delta_xy_triangles**2).sum(axis=-1))
 
-        crosses=np.append(good_centers[:,None],edges,axis=1)
+        good_pyramids = indices[delta_triangles < l_mean / 10]
+        center_pyramids = center_triangles[delta_triangles < l_mean / 10]
 
-        print(f"Computed {len(crosses)} star-like cross features with {branches} branches.")
+        print(f"Computed {len(good_pyramids)} good pyramids.")
 
-        return crosses
+        return good_pyramids, center_pyramids
 
 
-def extract_datacube(files_with_dark, Nsmooth = 1, Nbin = 1, flat = None, normalize = False):
+def extract_datacube(files_with_dark, Nsmooth = 1, Nbin = 1, flat = None, center = True):
     """
     Extracts and processes data cubes from the input files.
     Subtracts dark files, applies wavelength smoothing, and calculates variance.
@@ -543,9 +597,10 @@ def extract_datacube(files_with_dark, Nsmooth = 1, Nbin = 1, flat = None, normal
         if Nbin > 1:
             dataCube.bin(Nbin)
 
-        # If normalization with spectra is required
-        if normalize == True:
-            dataCube.normalize_with_spectra()
+        # If centering flux is required, do it after smoothing and binning
+        dataCube.compute_flux()
+        if center == True:
+            dataCube.center_flux_outputs()
 
         datalist += [dataCube]
 

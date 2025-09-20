@@ -32,6 +32,14 @@ import runPL_library_imaging as runlib_i
 import shutil
 from collections import defaultdict
 import time
+from astroplan import Observer
+from astropy.time import Time
+subaru = Observer.at_site("Subaru")
+now_time = Time.now()
+if subaru.is_night(now_time):
+    print("It's night at Subaru Observatory.")
+else:
+    print("It's day at Subaru Observatory.")
 
 plt.ion()
 
@@ -126,7 +134,15 @@ def preprocess(files_with_pixelmap, plot_sum =False):
         header['PM_CHECK'] = pm_check
 
         date_preproc = datetime.fromtimestamp(os.path.getctime(file)).strftime('%Y-%m-%dT%H:%M:%S')
-        header['DATE'] = header.get('DATE', date_preproc)
+        date = header.get('DATE', None)
+        if date is None:
+            header['DATE'] = date_preproc
+        else:
+             date = "2025-07-14T11:20:30"
+             obs_time = Time(date)
+             #if data taken during daytime (calibration source, for exemaple) overide the OBJECT keyword
+             if not subaru.is_night(obs_time):
+                 header['OBJECT'] = "DAY"
 
 
         output_filename = runlib.create_output_filename(header)
@@ -262,8 +278,9 @@ if __name__ == "__main__":
         os.environ.get('SPYDER_DEBUG_FILE')):
         print("Running in compiler^")
         if getpass.getuser() == "slacour":
-            file_patterns = "/Users/slacour/DATA/LANTERNE/2025-05-15/firstpl/*s"
-            pixel_map = "/Users/slacour/DATA/LANTERNE/2025-05-15/pixelmaps"
+            dir_files="/Users/slacour/DATA/LANTERNE/20250808/preproc/"
+            file_patterns = dir_files+"firstpl_2025-08-08T07:17:??_HIP84212_P.fits"
+            pixel_map = dir_files + "../pixelmaps"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             pixel_map = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
