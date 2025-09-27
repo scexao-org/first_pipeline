@@ -92,14 +92,14 @@ class CouplingMap:
         self.wavelength_bin = header['WL_BIN']
 
         self.flux_2_data=cmap_file['F2DATA'].data
-        self.Pos=cmap_file['POSITION'].data
-        self.vectors=cmap_file['VECTORS'].data
-        self.coeffs=cmap_file['COEFF'].data
-        self.center=cmap_file['CENTER'].data
+        self.data_2_flux=cmap_file['DATA2F'].data
+        self.fluxtiptilt_2_data=cmap_file['FTT2DATA'].data
+        self.QT=cmap_file['QT_FTT2DATA'].data
+        self.R=cmap_file['R_FTT2DATA'].data
+        self.position=cmap_file['XY_POS'].data
         self.flat=cmap_file['FLAT'].data
 
-        self.xpos = self.Pos[:,0]
-        self.ypos = self.Pos[:,1]
+        self.Npositions=self.position.shape[0]
 
         cmap_file.close()
 
@@ -185,34 +185,23 @@ def make_image_source_removal(datacube,arg_triangle,couplingMap, mode= "triangle
     
     return residual, fft_fit
 
-def make_image_grid(couplingMap, Npixels, xmod=[0], ymod=[0]):
+def make_image_grid(ra_dec, Npixels):
     """
     Generate a grid for image reconstruction based on the coupling map positions.
     This function creates a 2D grid for interpolation, which can be used to reconstruct
     an image from the coupling map data. The grid is defined based on the x and y 
     positions of the coupling map, with optional modifications using `xmod` and `ymod`.
     Parameters:
-        couplingMap (object): An object containing `xpos` and `ypos` attributes, which 
-                                represent the x and y positions of the coupling map.
+        ra_dec (numpy.ndarray): Array of shape (..., 2) containing x and y positions.
         Npixels (int): The number of pixels along each dimension of the grid.
-        xmod (float or array-like, optional): Modifications to apply to the x positions. 
-                                                Defaults to 0.
-        ymod (float or array-like, optional): Modifications to apply to the y positions. 
-                                                Defaults to 0.
     Returns:
         tuple: A tuple containing two 2D arrays (`grid_x`, `grid_y`) representing the 
                 x and y coordinates of the grid.
     """
 
-    # Define the grid for interpolation
-    # calcul de la grille de l'image que l'on souhaite reconstruire
-    # if it is for a quick look of the real time display, use xmod=ymod=0
-    xpos = couplingMap.Pos[:,0]
-    ypos = couplingMap.Pos[:,1]
 
-    # Define the grid for interpolation
-    xmin, xmax   = np.min(xpos)-np.max(xmod), np.max(xpos)-np.min(xmod)
-    ymin, ymax   = np.min(ypos)-np.max(ymod), np.max(ypos)-np.min(ymod)
+    xmin, xmax   = np.min(ra_dec[..., 0]), np.max(ra_dec[..., 0])
+    ymin, ymax   = np.min(ra_dec[..., 1]), np.max(ra_dec[..., 1])
     grid_x, grid_y = np.mgrid[xmin:xmax:Npixels*1j, ymin:ymax:Npixels*1j]
 
     return grid_x, grid_y

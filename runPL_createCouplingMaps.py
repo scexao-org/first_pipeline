@@ -108,11 +108,12 @@ def get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, o
         modID = hd.get('X_FIRMID', 0)
         modScale = hd.get('X_FIRMSC', 0)
         object_name = hd.get('OBJECT', 'NONE')
-        wollaston = hd.get('X_FIRWOL', 'IN')
+        wollaston = hd.get('X_FIRWOL', None)
         fits_keywords['OBJECT'] = [object_name]
         fits_keywords['X_FIRMID'] = [modID]
         fits_keywords['X_FIRMSC'] = [modScale]
-        # fits_keywords['X_FIRWOL'] = [wollaston] # To add this constrain when the mode is finalized
+        if wollaston is not None:
+            fits_keywords['X_FIRWOL'] = [wollaston]
 
         print("----------------")
         print(f"Selected object='{object_name}' with modScale={modScale}, modID={modID}, and wollaston={wollaston}")
@@ -123,8 +124,9 @@ def get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, o
         # finding darks files
         fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['DARK'],
-                        'X_FIRWOL': [wollaston],
                         }
+        if wollaston is not None:
+            fits_keywords['X_FIRWOL'] = [wollaston]
 
         try:
             filelist_dark = runlib.get_filelist(dark_patterns, fits_keywords,  name_search="dark")
@@ -135,8 +137,10 @@ def get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, o
         # finding flats files
         fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['FLAT'],
-                        'X_FIRWOL': [wollaston],
                         }    
+        if wollaston is not None:
+            fits_keywords['X_FIRWOL'] = [wollaston]
+            
         try:
             filelist_flat = runlib.get_filelist(flat_patterns, fits_keywords,  name_search="flat")
         except FileNotFoundError as e:
@@ -439,6 +443,8 @@ if __name__ == "__main__":
                       help="Selection of the modulation pattern by user (default: first in the list)")
     parser.add_option("--wollaston", type="string", 
                       help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
+    parser.add_option("--compute_position", action="store_true", default=False,
+                    help="Compute position of individual DITs (slow) (default: %default)")
     
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('SPYDER_DEBUG_FILE')):
         print("Running in compiler")
@@ -448,11 +454,14 @@ if __name__ == "__main__":
         modScale = None
         object_name = None
         wollaston = None
+        compute_position = True
         if getpass.getuser() == "slacour":
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*fits"
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc/firstpl_2025-08-08T06:4?:??_HIP84212_P.fits"
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc/firstpl_2025-08-08T06:4[3-4]:??_HIP84212_P.fits"
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-3]*TETCRB_P.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*s"
+            dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
@@ -473,6 +482,7 @@ if __name__ == "__main__":
         wavelength_bin=options.wavelength_bin
         flat_patterns = options.flat_files
         dark_patterns = options.dark_files
+        compute_position = options.compute_position
 
     # If the user specifies a coupling map, use it, otherwise look into the arguments
     if flat_patterns is None:
@@ -497,8 +507,8 @@ if __name__ == "__main__":
     flux = np.concatenate([d.flux for d in datalist])
     datacube=np.concatenate([d.data for d in datalist])
     datacube_var=np.concatenate([d.variance for d in datalist])
-    xmod=datalist[0].xmod
-    ymod=datalist[0].ymod
+    xmod=datalist[0].xmod[0]
+    ymod=datalist[0].ymod[0]
 
 
     basenames = []
@@ -525,11 +535,11 @@ if __name__ == "__main__":
     Nwave = datacube.shape[3]
     Noutput = datacube.shape[2]
     Ncube = datacube.shape[0]
-    Npos = datacube.shape[1]
+    Nmod = datacube.shape[1]
 
     datacube_flux_goodData = datacube[flux_goodData]
     datacube_flux_goodData = datacube_flux_goodData.reshape((datacube_flux_goodData.shape[0], -1))
-    res = ss.robust_subspace(datacube_flux_goodData, k=Nsingular, center=False, k_sigma=3.5, max_refit=1,verbose=True)
+    res = ss.robust_subspace(datacube_flux_goodData, k=Nsingular, center=False, k_sigma=2.5, max_refit=1,verbose=True)
     singular_values = res["model"]["S"][:-1]
     data_svdfiltered, residuals, errors = ss.project(datacube.reshape((datacube.shape[0]*datacube.shape[1], -1)), res["model"])
     data_svdfiltered = data_svdfiltered.reshape(datacube.shape)
@@ -678,7 +688,7 @@ if __name__ == "__main__":
     hdu_3 = fits.ImageHDU(data=fluxtiptilt_2_data, name='FTT2DATA')
     hdu_4 = fits.ImageHDU(data=QT_fluxtiptilt_2_data, name='QT_FTT2DATA')
     hdu_5 = fits.ImageHDU(data=R_fluxtiptilt_2_data, name='R_FTT2DATA')
-    hdu_6 = fits.ImageHDU(data=center_all_triangles, name='XY_CENTER')
+    hdu_6 = fits.ImageHDU(data=center_all_triangles, name='XY_POS')
     hdu_7 = fits.ImageHDU(data=flat, name='FLAT')
 
     modulation_hdu = fits.open(datalist[-1].filename)['MODULATION']
@@ -834,144 +844,6 @@ if __name__ == "__main__":
     axs[1].set_aspect('equal')
     axs[1].legend()
 
-    datacube=np.concatenate([d.data for d in datalist])
-
-    datacube_T=datacube.transpose((3,2,0,1))
-    datacube_T=datacube_T.reshape((datacube_T.shape[0], datacube_T.shape[1], -1))
-    chi2_max = np.sum(datacube_T**2, axis=(0,1))
-
-    chi2_map = np.zeros((Ntriangles,Ncube * Npos))
-    chi2_map = np.zeros((Ntriangles, Ncube * Npos))
-    chi2_map[:] =  chi2_max
-    # gram_fluxtiptilt_inv =np.zeros_like(gram_fluxtiptilt)
-    # for t in range(Ntriangles):
-    #     for w in range(Nwave):
-    #         gram_fluxtiptilt_inv[t,w] = linalg.pinv(gram_fluxtiptilt[t,w])
-    for t in tqdm(range(Ntriangles), desc="Computing chi2 map"):
-        k= QT_fluxtiptilt_2_data[t] @ datacube_T
-        chi2_map[t,:] -= np.sum(k ** 2, axis=(0,1))
-
-    chi2_argmin = chi2_map.argmin(axis=0)
-    residuals = datacube_T.copy()
-
-    distances = np.linalg.norm((xmod- center_all_triangles[:,0,None], ymod- center_all_triangles[:,1,None]),axis=0)
-    # chi2_argmin = np.argmin(distances,axis=0)
-
-
-    # for i in tqdm(range(1 * Npos), desc="Computing residuals"):
-    #     t = chi2_argmin[i]
-    #     k= QT_fluxtiptilt_2_data[t]  @ datacube_T[:,:,i,None]
-    #     cs = solve_triangular(R, b, lower=False)
-    #     residuals[:,:,i] -= (fluxtiptilt_2_data[t] @ k)[:,:,0]
-
-
-    Xpos = np.zeros(Ncube * Npos)
-    Ypos = np.zeros(Ncube * Npos)
-    Xcen = np.zeros(Ncube * Npos)
-    Ycen = np.zeros(Ncube * Npos)
-    OK =[]
-    for i in tqdm(range(Ncube * Npos), desc="Computing XY positions"):
-        t = chi2_argmin[i]
-        center = center_all_triangles[t]
-        data = datacube_T[:,:,i]
-        QT = QT_fluxtiptilt_2_data[t]
-        R = R_fluxtiptilt_2_data[t]
-
-        res = []
-        for w in range(Nwave):
-            data_w = data[w]
-            QT_w = QT[w]
-            R_w = R[w]
-            x_hat, y_hat, k_hat, chi2 = fit_QR(data_w, QT_w, R_w)
-            res.append((x_hat, y_hat, k_hat, chi2))
-        res = np.array(res)
-
-
-        Xpos[i] = np.median(res[:,0])
-        Ypos[i] = np.median(res[:,1])
-
-        Xcen[i] = center[0]
-        Ycen[i] = center[1]
-    
-    Xpos = Xpos.reshape((Ncube, Npos))
-    Ypos = Ypos.reshape((Ncube, Npos))
-    Xcen = Xcen.reshape((Ncube, Npos))
-    Ycen = Ycen.reshape((Ncube, Npos))
-    
-    fig, axs = plt.subplots(1, Ncube, num="XY position", clear=True,sharex=True, sharey=True, figsize=(12, 6*Ncube), squeeze=False)
-    axs=axs[0]
-    for i in range(Ncube):
-        axs[i].plot(Xcen[i],Ycen[i],'.',label='Center of pyramids')
-        axs[i].set_ylim(axs[i].get_ylim()[0], axs[i].get_ylim()[1])
-        axs[i].set_xlim(axs[i].get_xlim()[0], axs[i].get_xlim()[1])
-        axs[i].plot((Xcen+Xpos)[i],(Ycen+Ypos)[i],'.-',label='Detected position')
-        axs[i].plot((Xcen[i],(Xcen+Xpos)[i]),(Ycen[i],(Ycen+Ypos)[i]),'-k',alpha=0.3,linewidth=0.5)
-        axs[i].set_title(basenames[i][8:])
-        axs[i].set_xlabel("X [mas]")
-        axs[i].set_ylabel("Y [mas]")
-        axs[i].legend()
-        for ax in axs:
-            ax.set_aspect('equal')
-    plt.tight_layout()
-
-
-
-#%% #################################
-
-
-    #     ell2dmodel = ss.Ell2DModel(V=vectors_all_triangles[t], coefs=coeffs_all_triangles[t])
-    #     bounds_max = 10
-
-    #     Y_batch = datacube[:,t].reshape((datacube.shape[0]*6, -1))
-    #     fit_output = ss.estimate_xy_from_Y_batch_lambda(
-    #         ell2dmodel, Y_batch,
-    #         bounds=((-bounds_max, bounds_max), (-bounds_max, bounds_max)),   # bornes communes
-    #         x0y0=(0.0, 0.0),                      # init (ou (M,2))
-    #         n_starts=10,
-    #         jitter=bounds_max/2,
-    #     )
-
-
-    #     k= data_2_fluxtiptilt[t] @ datacube_T[:,:,i,None]
-    #     residuals[:,:,i] -= (fluxtiptilt_2_data[t] @ k)[:,:,0]
-
-
-    # chi2_map = chi2_map.reshape((Ntriangles,Ncube,Npos))
-    # chi2_min = chi2_map.min(axis=0)
-    # chi2_argmin = chi2_map.argmin(axis=0)
-
-    # residuals = datacube_T
-
-
-
-#%%
-
-
-
-    # ###############################################
-    # # Singular values plot
-    # ###############################################
-
-    # energy_estimation = (singular_values)**2 / np.sum(singular_values**2)
-    # reverse_cumulative_energy = np.cumsum(energy_estimation[::-1])[::-1]
-
-
-    # plt.figure("Singular values", clear=True)
-    # plt.plot(1+np.arange(len(energy_estimation)), energy_estimation**.5, marker='o', label='All Singular Values')
-    # plt.plot(1+np.arange(Nsingular), energy_estimation[:Nsingular]**.5, marker='o', label='Selected Singular Values')
-    # plt.plot(1 + np.arange(len(reverse_cumulative_energy)), reverse_cumulative_energy**.5, marker='D', label='Reverse Cumulative Energy', alpha=0.5)
-    # plt.plot(1+np.arange(Nsingular), reverse_cumulative_energy[:Nsingular]**.5, marker='D', alpha=0.5)
-
-    # plt.legend()
-    # plt.xlabel('Singular Vector Index')
-    # plt.ylabel('Energy Estimation')
-    # plt.title('Amplitude of Singular Values')
-    # plt.yscale('log')
-    # plt.xscale('log')
-    # plt.grid(True)
-
-    # # Plot the list of filenames in the middle of the plot
-    # plt.gca().text(0.5, 0.5, "\n".join(filenames), fontsize=10, ha='center', va='center', wrap=True, transform=plt.gca().transAxes)
 
     ###############################################
     # Covariance and correlation matrix plot
@@ -990,46 +862,78 @@ if __name__ == "__main__":
     fig.tight_layout()
 
 
+    if compute_position:
+        datacube=np.concatenate([d.data for d in datalist])
 
-    ###############################################
-    # Covariance and correlation matrix plot
-    ###############################################
+        datacube_T=datacube.transpose((3,2,0,1))
+        datacube_T=datacube_T.reshape((datacube_T.shape[0], datacube_T.shape[1], -1))
+        chi2_max = np.sum(datacube_T**2, axis=(0,1))
+
+        chi2_map = np.zeros((Ntriangles,Ncube * Nmod))
+        chi2_map = np.zeros((Ntriangles, Ncube * Nmod))
+        chi2_map[:] =  chi2_max
+        # gram_fluxtiptilt_inv =np.zeros_like(gram_fluxtiptilt)
+        # for t in range(Ntriangles):
+        #     for w in range(Nwave):
+        #         gram_fluxtiptilt_inv[t,w] = linalg.pinv(gram_fluxtiptilt[t,w])
+        for t in tqdm(range(Ntriangles), desc="Computing chi2 map"):
+            k= QT_fluxtiptilt_2_data[t] @ datacube_T
+            chi2_map[t,:] -= np.sum(k ** 2, axis=(0,1))
+
+        chi2_argmin = chi2_map.argmin(axis=0)
+        residuals = datacube_T.copy()
+
+        distances = np.linalg.norm((xmod- center_all_triangles[:,0,None], ymod- center_all_triangles[:,1,None]),axis=0)
+        # chi2_argmin = np.argmin(distances,axis=0)
+
+        Xpos = np.zeros(Ncube * Nmod)
+        Ypos = np.zeros(Ncube * Nmod)
+        Xcen = np.zeros(Ncube * Nmod)
+        Ycen = np.zeros(Ncube * Nmod)
+        OK =[]
+        for i in tqdm(range(Ncube * Nmod), desc="Computing XY positions"):
+            t = chi2_argmin[i]
+            center = center_all_triangles[t]
+            data = datacube_T[:,:,i]
+            QT = QT_fluxtiptilt_2_data[t]
+            R = R_fluxtiptilt_2_data[t]
+
+            res = []
+            for w in range(Nwave):
+                data_w = data[w]
+                QT_w = QT[w]
+                R_w = R[w]
+                x_hat, y_hat, k_hat, chi2 = fit_QR(data_w, QT_w, R_w)
+                res.append((x_hat, y_hat, k_hat, chi2))
+            res = np.array(res)
 
 
-    # fig, axs = plt.subplots(1, 3, num="Amplitudes and Residuals (2D)", figsize=(18, 16), clear=True)
+            Xpos[i] = np.median(res[:,0])
+            Ypos[i] = np.median(res[:,1])
 
-    # # 2D plot of mean amplitudes per triangle (averaged over frames)
-    # mean_amplitudes = np.mean(amplitudes_all_triangles, axis=1)  # shape: (n_triangles, n_waves)
-    # im0 = axs[0].imshow(mean_amplitudes, aspect='auto', origin='lower', cmap='viridis', interpolation='none', rasterized=True)
-    # axs[0].set_title("Mean Amplitudes per Triangle")
-    # axs[0].set_xlabel("File")
-    # axs[0].set_ylabel("Triangle Index")
-    # plt.colorbar(im0, ax=axs[0], label="Mean Amplitude")
-    # axs[0].set_xticks(np.arange(len(unique_basenames)))
-    # axs[0].set_xticklabels(unique_basenames, rotation=90, fontsize=8)
-
-    # # 2D plot of mean fit residuals per triangle (averaged over frames)
-    # mean_fit_residuals = np.mean(fit_residual_all_triangles, axis=1)
-    # im1 = axs[1].imshow(mean_fit_residuals, aspect='auto', origin='lower', cmap='magma', interpolation='none', rasterized=True)
-    # axs[1].set_title("Fit Residuals per Triangle")
-    # axs[1].set_xlabel("File")
-    # axs[1].set_ylabel("Triangle Index")
-    # plt.colorbar(im1, ax=axs[1], label="Mean Fit Residual")
-    # axs[1].set_xticks(np.arange(len(unique_basenames)))
-    # axs[1].set_xticklabels(unique_basenames, rotation=90, fontsize=8)
-
-    # # 2D plot of mean projection residuals per triangle (averaged over frames)
-    # mean_proj_residuals = np.mean(proj_residual_all_triangles, axis=1)
-    # im2 = axs[2].imshow(mean_proj_residuals, aspect='auto', origin='lower', cmap='plasma', interpolation='none', rasterized=True)
-    # axs[2].set_title("Projection Residuals per Triangle")
-    # axs[2].set_xlabel("File")
-    # axs[2].set_ylabel("Triangle Index")
-    # plt.colorbar(im2, ax=axs[2], label="Mean Projection Residual")
-    # axs[2].set_xticks(np.arange(len(unique_basenames)))
-    # axs[2].set_xticklabels(unique_basenames, rotation=90, fontsize=8)
-
-    # plt.tight_layout()
-    # plt.show()
+            Xcen[i] = center[0]
+            Ycen[i] = center[1]
+        
+        Xpos = Xpos.reshape((Ncube, Nmod))
+        Ypos = Ypos.reshape((Ncube, Nmod))
+        Xcen = Xcen.reshape((Ncube, Nmod))
+        Ycen = Ycen.reshape((Ncube, Nmod))
+        
+        fig, axs = plt.subplots(1, Ncube, num="XY position", clear=True,sharex=True, sharey=True, figsize=(7*Ncube,6), squeeze=False)
+        axs=axs[0]
+        for i in range(Ncube):
+            axs[i].plot(Xcen[i],Ycen[i],'.',label='Center of pyramids')
+            axs[i].set_ylim(axs[i].get_ylim()[0], axs[i].get_ylim()[1])
+            axs[i].set_xlim(axs[i].get_xlim()[0], axs[i].get_xlim()[1])
+            axs[i].plot((Xcen+Xpos)[i],(Ycen+Ypos)[i],'.-',label='Detected position')
+            axs[i].plot((Xcen[i],(Xcen+Xpos)[i]),(Ycen[i],(Ycen+Ypos)[i]),'-k',alpha=0.3,linewidth=0.5)
+            axs[i].set_title(basenames[i][8:])
+            axs[i].set_xlabel("X [mas]")
+            axs[i].set_ylabel("Y [mas]")
+            axs[i].legend()
+            for ax in axs:
+                ax.set_aspect('equal')
+        plt.tight_layout()
 
 
 

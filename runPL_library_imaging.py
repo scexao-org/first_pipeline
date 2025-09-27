@@ -24,7 +24,9 @@ from tqdm import tqdm
 import runPL_library_basic as basic
 import matplotlib.pyplot as plt
 from astroplan import Observer
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
+from astropy.coordinates import SkyCoord
+import astropy.units as u
 subaru = Observer.at_site("Subaru")
 plt.ion()
 
@@ -325,6 +327,8 @@ class DataCube:
         self.basename = os.path.basename(filename)
         self.filename = filename
         self.header = header
+        self.dit = header.get('EXPTIME', 0.0)
+        self.gain = header.get('GAIN', 1.0)
         self.Ndit = data.shape[0]
         self.Noutput = data.shape[1]
         self.Nwave = data.shape[2]
@@ -334,33 +338,20 @@ class DataCube:
         self.wollaston = header.get('X_FIRWOL', 'IN')
         self.add_modulation()
 
+        self.x_object = header.get('X_FIROBX', 0.0)
+        self.y_object = header.get('X_FIROBY', 0.0)
+
         self.target_ra = header.get('D_IMRRA', '21:15:49.440')
         self.target_dec = header.get('D_IMRDEC', '+05:14:52.41')
-        self.pupil_PA = header.get('D_IMRPAP', -233.206)
+        self.pupil_PA = header.get('D_IMRPAD', -233.206)
         self.date = header.get('DATE-OBS', '2025-07-14')
         self.ut_str = header.get('UT-STR', "11:52:44.20")
         self.ut_end = header.get('UT-END', "11:53:20.76")
         self.time_start = Time(f"{self.date} {self.ut_str}")
-
-    ## get the parallactic angle at the config location for the current LST time */
-    def get_parallactic_angle(self, lst_seconds, target_ra, target_dec, location_lat):
-        H_rad = (lst_seconds/86400 - target_ra/24)*2*np.pi
-        lat_rad = location_lat / 180.0 * np.pi
-        dec_rad = target_dec / 180.0 * np.pi
-        q1 = np.sin(H_rad)
-        q2 = np.tan(lat_rad) * np.cos(dec_rad) - np.sin(dec_rad)*np.cos(H_rad)
-        q = np.arctan2(q1, q2)
-        return q/np.pi*180
-    
-
-    ## calculate the projection of the offset in the field based on the current parangle and delta-coordinates of target */
-    def project_offsets(self, dra, ddec):
-        THETA_OFFSET = 102.2  # degrees
-        proj_offsets = np.zeros(2)
-        parangle = (180.0 - THETA_OFFSET - self.get_parallactic_angle())/180*np.pi
-        proj_offsets[0] = np.sin(parangle) * ddec + np.cos(parangle) * dra
-        proj_offsets[1] = np.cos(parangle) * ddec - np.sin(parangle) * dra
-        return proj_offsets
+        self.time_end = Time(f"{self.date} {self.ut_end}")
+        # Handle case where time_end is before time_start (observation crosses midnight)
+        if self.time_end < self.time_start:
+            self.time_end += TimeDelta(1, format='jd')
 
     def add_modulation(self):
         """ 
@@ -419,13 +410,57 @@ class DataCube:
             self.variance = self.variance.reshape(size_new)
 
 
-        # self.xmod=np.zeros((size_new[0],size_new[1]))
-        self.xmod=xmod
+        self.xmod=np.zeros((size_new[0],size_new[1]))
+        self.xmod[:]=xmod
 
-        # self.ymod=np.zeros((size_new[0],size_new[1]))
-        self.ymod=ymod
+        self.ymod=np.zeros((size_new[0],size_new[1]))
+        self.ymod[:]=ymod
 
         return
+    
+    def get_parallactic_angle(self):
+        """
+        Calculate the parallactic angle using the Subaru observer from astroplan.
+        Returns:
+            float: Parallactic angle in degrees.
+        """
+        target = SkyCoord(self.target_ra, self.target_dec, unit=('hourangle', 'deg'))
+        # we could aslo use FRATE, but I am not sure it is better in triggered mode
+        frame_sampling = (self.time_end - self.time_start).sec / self.Ndit
+
+        times = self.time_start + (frame_sampling/2 + np.linspace(0, frame_sampling * self.Ncube * self.Nmod, self.Ncube * self.Nmod) ) * u.s
+        par_angles = subaru.parallactic_angle(times, target).deg
+        if True:
+            par_angle = subaru.parallactic_angle(self.time_start, target).deg
+            from_header = self.pupil_PA
+            print("Difference between computed and header parangle: ", par_angle - from_header)
+
+        return par_angles.reshape(self.Ncube, self.Nmod)
+
+    ## calculate the projection of the offset in the field based on the current parangle and delta-coordinates of target */
+    def project_offsets(self, x_sky, y_sky):
+        THETA_OFFSET = 102.2  # degrees
+        proj_offsets = np.zeros((*x_sky.shape, 2))
+        parangle = (180.0 - THETA_OFFSET - self.get_parallactic_angle())[:,:,None]/180*np.pi
+
+        print(f"Image-rotation angle range: {parangle.min()*180/np.pi} to {parangle.max()*180/np.pi} degrees")
+        parangle*=-1
+        proj_offsets[..., 0] = np.sin(parangle) * y_sky + np.cos(parangle) * x_sky
+        proj_offsets[..., 1] = np.cos(parangle) * y_sky - np.sin(parangle) * x_sky
+        proj_offsets[..., 0] += self.x_object
+        proj_offsets[..., 1] += self.y_object
+
+        return proj_offsets
+
+    def compute_xy_sky(self,couplingMap):
+        """
+            usa PA to project on sky the modulation
+        """
+        x_sky = self.xmod[:,:,None] - couplingMap.position[:,0]
+        y_sky = self.ymod[:,:,None] - couplingMap.position[:,1]
+        self.ra_dec = self.project_offsets(x_sky,y_sky)
+
+        return self.ra_dec
 
     def normalize_with_flat(self, flat):
         """
@@ -478,8 +513,8 @@ class DataCube:
 
     def get_triangle(self):
     
-        xmod=self.xmod
-        ymod=self.ymod
+        xmod=self.xmod[0]
+        ymod=self.ymod[0]
 
         # Combine xmod and ymod into a 2D array of points
         points = np.array([xmod, ymod]).T
@@ -519,8 +554,8 @@ class DataCube:
     
     def get_pyramids(self):
 
-        xmod=self.xmod
-        ymod=self.ymod
+        xmod=self.xmod[0]
+        ymod=self.ymod[0]
 
         # Combine xmod and ymod into a 2D array of points
         points = np.array([xmod, ymod]).T

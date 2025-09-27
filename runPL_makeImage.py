@@ -46,6 +46,9 @@ import shutil
 from scipy.interpolate import interpn
 from astroplan import Observer
 from astropy.time import Time
+from scipy.interpolate import SmoothBivariateSpline
+from matplotlib import cm
+
 subaru = Observer.at_site("Subaru")
 now_time = Time.now()
 if subaru.is_night(now_time):
@@ -88,19 +91,13 @@ Example:
 """
 
 
-def get_filelist(file_patterns, dark_patterns, cmap_patterns, modID, modScale, object_name, wollaston):
+def get_filelist(file_patterns, dark_patterns, cmap_patterns, wollaston):
 
         fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['OBJECT','OJECT','TEST'],
                         }    
         
         # Adding other constraints if asked by user
-        if modID is not None:
-            fits_keywords['X_FIRMID'] = [modID]
-        if modScale is not None:
-            fits_keywords['X_FIRMSC'] = [modScale]
-        if object_name is not None:
-            fits_keywords['OBJECT'] = [object_name]
         if wollaston is not None:
             fits_keywords['X_FIRWOL'] = [wollaston]
         
@@ -109,25 +106,21 @@ def get_filelist(file_patterns, dark_patterns, cmap_patterns, modID, modScale, o
 
         # Adding new constraints if not asked by user
         hd=fits.getheader(filelist[0])
-        modID = hd.get('X_FIRMID', 0)
-        modScale = hd.get('X_FIRMSC', 0)
-        object_name = hd.get('OBJECT', 'NONE')
-        wollaston = hd.get('X_FIRWOL', 'IN')
-        fits_keywords['OBJECT'] = [object_name]
-        fits_keywords['X_FIRMID'] = [modID]
-        fits_keywords['X_FIRMSC'] = [modScale]
-        # fits_keywords['X_FIRWOL'] = [wollaston] # to be added later
+        wollaston = hd.get('X_FIRWOL', None)
+        if wollaston is not None:
+            fits_keywords['X_FIRWOL'] = [wollaston]
 
         print("----------------")
-        print(f"Selected object='{object_name}' with modScale={modScale} and modID={modID}")
+        print(f"Selected object with wollaston = {wollaston}")
         print("----------------")
 
         filelist = runlib.get_filelist(file_patterns, fits_keywords)
 
         fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['DARK'],
-                        'X_FIRWOL': [wollaston],
                         }    
+        if wollaston is not None:
+            fits_keywords['X_FIRWOL'] = [wollaston]
         
         try:
             filelist_dark = runlib.get_filelist(dark_patterns, fits_keywords, name_search="dark")
@@ -139,8 +132,9 @@ def get_filelist(file_patterns, dark_patterns, cmap_patterns, modID, modScale, o
             print("WARNING: No dark files found with the specified patterns and keywords.")
 
         fits_keywords = {'X_FIRTYP': ['COUPLINGMAP'],
-                         'X_FIRWOL': [wollaston],
                         }    
+        if wollaston is not None:
+            fits_keywords['X_FIRWOL'] = [wollaston]
 
         filelist_cmap = runlib.get_filelist(cmap_patterns, fits_keywords, name_search="coupling map")
         filelist_cmap  = filter_couplingmapfile(filelist_cmap)
@@ -385,12 +379,6 @@ if __name__ == "__main__":
     save_individual_wavelength = False
 
     # Add options for these values
-    parser.add_option("--object_name", type="string", 
-                    help="Selection of the data by the Object name (default: %default -- no selection)")
-    parser.add_option("--modID", type="int", 
-                      help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
-    parser.add_option("--modScale", type="int", 
-                      help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
     parser.add_option("--wollaston", type="string", 
                       help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
     parser.add_option("--coupling_map", type="string", 
@@ -407,9 +395,6 @@ if __name__ == "__main__":
 
     if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or os.environ.get('SPYDER_DEBUG_FILEfile =')):
         print("Running in compiler")
-        modID = None
-        modScale = None
-        object_name = None
         wollaston = None
         dark_patterns = None
 
@@ -419,20 +404,22 @@ if __name__ == "__main__":
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T05?53*BETACMI_P.fits"
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-2]*TETCRB_P.fits"
             cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/../couplingmaps/firstpl_2025-05-10T09:23:36_COUPLINGMAP.fits"
-            dark_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc"
+            dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*s"
+            # Mathias Binary
+            cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250514/couplingmaps/firstpl_2025-05-14T11:39:58_COUPLINGMAP.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T10:10?4*s"
+            dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
+
         if getpass.getuser() == "ehuby" :
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/firstpl_*.fits"
             cmap_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/couplingmaps_TETCRB/"
-            object_name = 'HIP81126'
     else:
 
         (options, args) = parser.parse_args()
         file_patterns=args if args else ['*.fits']
 
         wavelength_smooth=options.wavelength_smooth
-        modID=options.modID
-        modScale=options.modScale
-        object_name=options.object_name
         dark_patterns = options.dark_files
         wollaston = options.wollaston
 
@@ -449,183 +436,158 @@ if __name__ == "__main__":
         dark_patterns = file_patterns
 
 
-    files_with_dark, filelist_cmap = get_filelist(file_patterns, dark_patterns, cmap_patterns, modID, modScale, object_name, wollaston)
+    files_with_dark, filelist_cmap = get_filelist(file_patterns, dark_patterns, cmap_patterns, wollaston)
 
     couplingMap = basic.CouplingMap(filelist_cmap[0])
+    Npos = couplingMap.Npositions
 
     #%%
 
     #Input preproc
     #clean and sum all data
 
+
     datalist=runlib_i.extract_datacube(files_with_dark,Nsmooth=wavelength_smooth,Nbin=couplingMap.wavelength_bin,flat = couplingMap.flat)
 
-    datacube=np.concatenate([d.data for d in datalist])
-    flux = np.concatenate([np.repeat(np.expand_dims(d.get_spectra(), axis=0), len(d.data), axis=0) for d in datalist])
-    # datacube=datacube.transpose((3,2,0,1))
-    xmod=datalist[0].xmod
-    ymod=datalist[0].ymod
-
-    flux_2_data = couplingMap.flux_2_data * spectra.mean(axis=(0))
-    Pos = couplingMap.Pos
-    Npos = len(Pos)
-
-
-    Ncube=datacube.shape[0]
-    Nmod=datacube.shape[1]
-    Noutput=datacube.shape[2]
-    Nwave=datacube.shape[3]
-
-    data_2_flux = linalg.pinv(flux_2_data.reshape(Npos, -1))
-    flux = np.dot(datacube.reshape(Ncube*Nmod, -1), data_2_flux)
-    residual = datacube - (flux @ flux_2_data.reshape((-1,  Noutput * Nwave))).reshape(datacube.shape)
-
-    # Define the grid for interpolation
-    # calcul de la grille de l'image que l'on souhaite reconstruire
-    # if it is for a quick look of the real time display, use xmod=ymod=0
-    Npixel = 150
-    grid_x, grid_y = basic.make_image_grid(couplingMap, Npixel, xmod, ymod)
-
-
-    xpos = couplingMap.Pos[:,0]
-    ypos = couplingMap.Pos[:,1]
-    flux = flux.reshape((Ncube,Nmod,Npos))
-
-    flux_maps = []
-    for c in range(Ncube):
-        for m in tqdm(range(Nmod), desc="Reconstruction of the 3D image"):
-            # Interpolate the fluxes onto the grid
-            flux_map = griddata((xpos-xmod[m], ypos-ymod[m]), flux[c,m,:], (grid_x, grid_y), method='cubic')
-            flux_maps += [flux_map]
-    flux_maps = np.array(flux_maps).reshape((Ncube,Nmod,Nwave,len(grid_x),len(grid_y)))
-    
-
-    # create the image maps
-
-
-    Ncube=datacube.shape[0]
-    Nmod=datacube.shape[1]
-    Noutput=datacube.shape[2]
-    Nwave=datacube.shape[3]
-
-    xpos = couplingMap.Pos[:,0]
-    ypos = couplingMap.Pos[:,1]
-
-    Npositions = couplingMap.Npositions
-
-    data_2_flux = couplingMap.data_2_flux
-
-    fluxes = np.matmul(data_2_flux, datacube.reshape((Nwave,Noutput,Ncube*Nmod)))
-    fluxes = fluxes.reshape((Nwave,Npositions,Ncube,Nmod))
-
-    # developement mode, or quick look mode :
-    if wavelength == False:
-        fluxes = fluxes.mean(axis=0, keepdims=True)
-        Nwave = 1
-
-    flux_maps = []
-    if wavelength == False:
-        for c in range(Ncube):
-            for m in range(Nmod):
-                for w in range(Nwave):
-                    # Interpolate the fluxes onto the grid
-                    flux_map = griddata((xpos-xmod[m], ypos-ymod[m]), fluxes[w,:,c,m], (grid_x, grid_y), method='cubic')
-                    flux_maps += [flux_map]
-    else:
-        for c in range(Ncube):
-            for m in tqdm(range(Nmod), desc="Reconstruction of the 3D image"):
-                for w in range(Nwave):
-                    # Interpolate the fluxes onto the grid
-                    flux_map = griddata((xpos-xmod[m], ypos-ymod[m]), fluxes[w,:,c,m], (grid_x, grid_y), method='cubic')
-                    flux_maps += [flux_map]
-    flux_maps = np.array(flux_maps).reshape((Ncube,Nmod,Nwave,len(grid_x),len(grid_y)))
-    
-
-    # create the image maps
-    flux_maps, fluxes = basic.make_image_maps(datacube_cleaned, couplingMap, grid_x, grid_y, xmod, ymod, wavelength=False)
-
-    #%%
-
-
-
-    xmod=datalist[0].xmod
-    ymod=datalist[0].ymod
-
-    # quick_fits(datacube, 'datacube')
-
-    Nwave=datalist[0].Nwave
-    Noutput=datalist[0].Noutput
-    Ncube=len(datalist)
-
-
-
-    # Coupling maps for inspection
-    Npixel = 100
-    couplingmaps = np.mean(datacube, axis=(0,1))
-    # Define the grid for interpolation
-    grid_x, grid_y = np.mgrid[np.min(xmod):np.max(xmod):Npixel*1j, np.min(ymod):np.max(ymod):Npixel*1j]  # 500x500 grid
-    # Interpolate the fluxes onto the grid
-    couplingmaps_interp= np.zeros((len(couplingmaps), Npixel, Npixel))
-    for i,fm in enumerate(couplingmaps):
-        couplingmaps_interp[i] = griddata((xmod, ymod), fm, (grid_x, grid_y), method='cubic').T
-    
-    # Convert arg_model values into 2D indices of size cmap_size
-    # Utilise pour selectionner les bonnes images 
-    # ===> Pas utile pour le quick look
-
-    datacube_cleaned,arg_triangle = runlib_i.chi2_cleaning(datacube,couplingMap)
-
-    # getting the residual after substracting a point source
-    # using the flux tip tilt matrices
-    # Utilise pour soustraire une source ponctuelle 
-    # ===> Pas utile pour le quick look
-
-    residual, fft_fit = basic.make_image_source_removal(datacube,arg_triangle,couplingMap, mode="crosses")
-
-    # Define the grid for interpolation
-    # calcul de la grille de l'image que l'on souhaite reconstruire
-    # if it is for a quick look of the real time display, use xmod=ymod=0
-    Npixel = 150
-    grid_x, grid_y = basic.make_image_grid(couplingMap, Npixel, xmod, ymod)
-
-    # create the image maps
-    flux_maps, fluxes = basic.make_image_maps(datacube_cleaned, couplingMap, grid_x, grid_y, xmod, ymod, wavelength=False)
-    residuals_maps, fluxes_residuals = basic.make_image_maps(residual, couplingMap, grid_x, grid_y, xmod, ymod, wavelength=False)
-
-    flux_maps_sum = np.nansum(flux_maps,axis=1)
-    residuals_maps_sum = np.nansum(residuals_maps,axis=1)
-    # Save image and residual maps to FITS files :
-
-
+   
     for i,d in enumerate(datalist):
+
+        flux = d.flux
+        datacube= d.data 
+        datacube_var= d.variance 
+        ra_dec = d.compute_xy_sky(couplingMap) 
+        # xmod=datalist[0].xmod
+        # ymod=datalist[0].ymod
+        Ncube = ra_dec.shape[0]  # number of cubes
+        Nmod = ra_dec.shape[1]  # number of modulation positions
+        Npos = ra_dec.shape[2]  # Positions on sky
+        Nwave = datacube.shape[3]  # number of wavelength channels
+        Noutput = datacube.shape[2]  # number of outputs
+        Nimages = Ncube * Nmod
+
+
+        filename = d.filename
+        print( f"---->  Filename : {filename}")
+
+
+        datacube_T=datacube.transpose((3,2,0,1))
+        datacube_T=datacube_T.reshape((datacube_T.shape[0], datacube_T.shape[1], Nimages))
+        ra_dec = ra_dec.reshape((Nimages, Npos, 2))
+
+        chi2_max = np.sum(datacube_T**2, axis=(0,1))
+
+        chi2_map = np.zeros((Npos, Nimages))
+        chi2_map = np.zeros((Npos, Nimages))
+        chi2_map[:] =  chi2_max
+        # gram_fluxtiptilt_inv =np.zeros_like(gram_fluxtiptilt)
+        # for t in range(Ntriangles):
+        #     for w in range(Nwave):
+        #         gram_fluxtiptilt_inv[t,w] = linalg.pinv(gram_fluxtiptilt[t,w])
+        for t in tqdm(range(Npos), desc="Computing chi2 map"):
+            k= couplingMap.QT[t] @ datacube_T
+            chi2_map[t,:] -= np.sum(k ** 2, axis=(0,1))
+        
+        Npixel = 150
+        grid_x, grid_y = basic.make_image_grid(ra_dec, Npixel)
+
+        chi2_images = []
+        for i in tqdm(range(Nimages), desc="Calculating chi2 images"):
+                # Interpolate the fluxes onto the grid
+            chi2_image = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), chi2_map[:,i], (grid_x, grid_y), method='nearest')
+            chi2_images.append(chi2_image)
+            
+
+        chi2_images = np.array(chi2_images)
+
+        chi2_images_argmin = np.nansum(chi2_images,axis=0).argmin()
+        star_positions = np.array((grid_x.ravel()[chi2_images_argmin], grid_y.ravel()[chi2_images_argmin]))
+        star_indices = np.linalg.norm(ra_dec - star_positions, axis=-1) < 10
+        chi2_map[~star_indices.T] = np.nan
+        chi2_map_argmin = np.zeros(Nimages, dtype=int)
+        star_close = np.zeros(Nimages, dtype=bool)
+        for i in range(Nimages):
+            try:
+                chi2_map_argmin[i] = np.nanargmin(chi2_map[:,i], axis=0)
+                star_close[i] = True
+            except:
+                star_close[i] = False
+
+        residuals = datacube_T.copy()
+
+        for i in tqdm(range(Nimages), desc="Calculating residuals of the 3D image"):
+            if star_close[i]:
+                t = chi2_map_argmin[i]
+                k = couplingMap.QT[t] @ residuals[:,:,i,None]
+                residuals[:,:,i] -=  (couplingMap.QT[t].transpose((0,2,1)) @ k)[:,:,0]
+
+        
+        fluxes = np.matmul(couplingMap.data_2_flux, datacube_T)/d.dit*d.gain
+        fluxes_residuals = np.matmul(couplingMap.data_2_flux, residuals)/d.dit*d.gain
+
+
+        # Define the grid for interpolation
+        # calcul de la grille de l'image que l'on souhaite reconstruire
+        # if it is for a quick look of the real time display, use xmod=ymod=0
+
+        def make_image_using_grid(ra_dec, fluxes, Npixels=150, desc = None):
+
+            Npixel = 150
+            grid_x, grid_y = basic.make_image_grid(ra_dec, Npixel)
+
+            flux_maps = []
+            if desc is None:
+                for i in range(Nimages):
+                        # Interpolate the fluxes onto the grid
+                        flux_map = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), fluxes[:,:,i].sum(axis=0), (grid_x, grid_y), method='cubic')
+                        flux_maps += [flux_map]
+            else:
+                for i in tqdm(range(Nimages), desc=desc):
+                        # Interpolate the fluxes onto the grid
+                        flux_map = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), fluxes[:,:,i].sum(axis=0), (grid_x, grid_y), method='cubic')
+                        flux_maps += [flux_map]
+            flux_maps = np.array(flux_maps)
+        
+            return flux_maps
+        
+
+        flux_maps = make_image_using_grid(ra_dec, fluxes, desc="Creating flux maps")
+        flux_maps_residuals = make_image_using_grid(ra_dec, fluxes_residuals, desc="Creating flux residuals")
+        flux_maps_sum = np.nanmean(flux_maps, axis=0)
+        flux_maps_residuals_sum = np.nanmean(flux_maps_residuals, axis=0)
+
         header = d.header
         header['X_FIRTYP'] = 'IMAGE'
 
         list_of_hdus = []
         # Create a primary HDU with the data
-        hdu_primary = fits.PrimaryHDU(flux_maps_sum[i,0])
-        hdu_residual = fits.ImageHDU(residuals_maps_sum[i,0], name="RESIDUAL")
+        hdu_primary = fits.PrimaryHDU(flux_maps_sum)
+        hdu_residual = fits.ImageHDU(flux_maps_residuals_sum, name="RESIDUAL")
         list_of_hdus += [hdu_primary, hdu_residual]
 
         # Create a primary HDU with no data, just the header
         if save_individual_frames:
-            hdu_frame = fits.ImageHDU(flux_maps[i,:,0], name="FRAMES")
-            hdu_frame_residual = fits.ImageHDU(residuals_maps[i,:,0], name="FRAMES_RESIDUAL")
+            hdu_frame = fits.ImageHDU(flux_maps, name="FRAMES")
+            hdu_frame_residual = fits.ImageHDU(flux_maps_residuals, name="FRAMES_RESIDUAL")
             list_of_hdus += [hdu_frame, hdu_frame_residual]
 
         if save_individual_wavelength:
-            flux_maps_wave, fluxes = basic.make_image_maps(datacube_cleaned[:,:,i,None], couplingMap, grid_x, grid_y, xmod, ymod, wavelength=True)
-            flux_maps_wave = np.nansum(flux_maps_wave[0],axis=0)
-            residuals_maps_wave, fluxes_residuals = basic.make_image_maps(residual[:,:,i,None], couplingMap, grid_x, grid_y, xmod, ymod, wavelength=True)
-            residuals_maps_wave = np.nansum(residuals_maps_wave[0],axis=0)
+            flux_maps_wave = []
+            residuals_maps_wave = []
+
+            for w in tqdm(range(Nwave), desc="Creating wavelength slices"):
+                flux_maps_tmp = make_image_using_grid(ra_dec, fluxes[w,None])
+                flux_maps_residuals_tmp = make_image_using_grid(ra_dec, fluxes_residuals[w,None])
+                flux_maps_sum = np.nanmean(flux_maps_tmp, axis=0)
+                flux_maps_residuals_sum = np.nanmean(flux_maps_residuals_tmp, axis=0)
+
+                flux_maps_wave.append(flux_maps_sum)
+                residuals_maps_wave.append(flux_maps_residuals_sum)
 
             hdu_wave = fits.ImageHDU(flux_maps_wave, name="3D_IMAGE")
             hdu_wave_residual = fits.ImageHDU(residuals_maps_wave, name="3D_IMAGE_RESIDUAL")
             list_of_hdus += [hdu_wave, hdu_wave_residual]
             header['X_FIRTYP'] = 'WDIMAGE'
 
-        hdu_coupling = fits.ImageHDU(couplingmaps_interp[i], name="COUPLING")
-        list_of_hdus += [hdu_coupling]
 
         # Add date and time to the header
         current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
@@ -654,5 +616,99 @@ if __name__ == "__main__":
         hdul.writeto(output_filename, overwrite=True)
         print(f"Image saved to {output_filename}")
 
+        # Plot flux_maps_sum and flux_maps_residuals_sum side by side
+        fig, axes = plt.subplots(1, 2, num="Flux Maps", figsize=(12, 5.6), clear=True)
+        im0 = axes[0].imshow(flux_maps_sum[::-1].T, origin='lower', aspect='auto',
+                     extent=[grid_x.max(), grid_x.min(), grid_y.min(), grid_y.max()],vmin=0)
+        axes[0].set_title('Flux Map')
+        axes[0].set_xlabel('RA (mas)')
+        axes[0].set_ylabel('Dec (mas)')
+        fig.colorbar(im0, ax=axes[0], orientation='vertical', label='Flux (e-/s)')
+
+        im1 = axes[1].imshow(flux_maps_residuals_sum[::-1].T, origin='lower', aspect='auto',
+                     extent=[grid_x.max(), grid_x.min(), grid_y.min(), grid_y.max()],vmin=0)
+        axes[1].set_title('Flux Residuals')
+        axes[1].set_xlabel('RA (mas)')
+        axes[1].set_ylabel('Dec (mas)')
+        fig.colorbar(im1, ax=axes[1], orientation='vertical', label='Residual Flux (e-/s)')
+
+
+        N_middle=np.linalg.norm((d.xmod,d.ymod),axis=0).argmin()
+        for i in range(2):
+            axes[i].plot(star_positions[0], star_positions[1], 'rx', markersize=10, label='Star Position')
+            axes[i].plot(d.x_object, d.y_object, 'kx', markersize=5, label='PL center position',alpha=0.5)
+
+            fov_large = np.isnan(flux_maps_sum)
+            fov_small = np.isnan(flux_maps[N_middle])
+            # Overlay contours for the two FOVs
+            # Overlay contours for the two FOVs
+            axes[i].contour(grid_x, grid_y, fov_large, levels=[0.5], colors='k', linewidths=1)
+            axes[i].contour(grid_x, grid_y, fov_small, levels=[0.5], colors='w', linewidths=0.1, linestyles='solid', label='FOV')
+
+        axes[i].legend()
+        fig.suptitle(f"{d.basename} : {Ncube} x {Nmod} x {d.dit:.3f}s - RA = {d.x_object:.2f}, Dec = {d.y_object:.2f}", fontsize=16)
+        axes[0].set_aspect('equal')
+        axes[1].set_aspect('equal')
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        png_filename = os.path.join(output_dir, runlib.create_output_filename(header).replace('.fits', '.png'))
+        plt.savefig(png_filename, dpi=150)
+        print(f"PNG image saved to {png_filename}")
+        # plt.close(fig)
+# %%
+        separation = np.linalg.norm(ra_dec,axis=2).ravel()
+        we = fluxes.mean(axis=0).T.ravel()
+        we2 = fluxes_residuals.mean(axis=0).T.ravel()
+
+        # Smooth 'we' as a function of 'separation' using a moving average
+        window_size = 100  # Adjust window size for smoothing
+        sort_idx = np.argsort(separation)
+        separation_sorted = separation[sort_idx]
+        we_sorted = we[sort_idx]
+        we2_sorted = we2[sort_idx]
+
+        # Apply moving average
+        def moving_average(x, y, window):
+            y_smooth = np.convolve(y, np.ones(window)/window, mode='same')
+            return x, y_smooth
+
+        sep_smooth, we_smooth = moving_average(separation_sorted, we_sorted, window_size)
+        sep2_smooth, we2_smooth = moving_average(separation_sorted, we2_sorted, window_size)
+
+
+        we_sorted/=we_sorted.max()
+        we2_smooth/=we_smooth.max()
+        we_smooth/=we_smooth.max()
+
+        plt.figure("Flux vs separation", figsize=(8, 5),clear=True)
+        plt.plot(separation_sorted, we_sorted, '.', alpha=0.3, label='Raw')
+        plt.plot(sep_smooth, we_smooth, '-', color='r', linewidth=2, label='Smoothed')
+        plt.plot(sep_smooth, we2_smooth, '-', color='g', linewidth=2, label='Smoothed Residuals',alpha=0.5)
+        plt.xlabel('Separation')
+        plt.ylabel('Contrast ratio')
+        plt.title('Flux vs separation (HIP81126), 22s exposure')
+        plt.yscale("log")
+        # plt.xscale("log")
+        plt.ylim(1e-2, 1)
+        plt.xlim(10, 160)
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+        # Add a vertical arrow at 70 mas separation and label it "HIP81126B"
+        arrow_x = 70
+        arrow_y_start = 0.5
+        arrow_y_end = 0.1
+        plt.annotate(
+            'HIP81126B',
+            xy=(arrow_x, arrow_y_end),
+            xytext=(arrow_x, arrow_y_start),
+            arrowprops=dict(facecolor='black', shrink=0.05, width=2, headwidth=8),
+            ha='center',
+            va='bottom',
+            fontsize=12,
+            color='black'
+        )
+
+        plt.savefig("flux_vs_separation_HIP81126.pdf")
 
 # %%

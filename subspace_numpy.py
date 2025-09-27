@@ -259,14 +259,14 @@ def robust_subspace(X, k=6, center=True, k_sigma=3.5, max_refit=1, verbose=False
 
     refits = 0
     while refits < max_refit and inliers_idx.size >= k:
-        if verbose:
-            print(f"Refit {refits+1}: {inliers_idx.size} inliers")
         model, _ = svd_subspace(X[inliers_idx], k=k, center=center)
         X_proj, residuals, errors = project(X, model)
         thr, mask_in = mad_threshold(errors, k_sigma=k_sigma)
         inliers_idx = np.where(mask_in)[0]
         outliers_idx = np.where(~mask_in)[0]
         refits += 1
+        if verbose:
+            print(f"Refit {refits}: threshold: {thr:.4f}, {inliers_idx.size} / {X.shape[0]} inliers")
 
     return {
         "model": model,
