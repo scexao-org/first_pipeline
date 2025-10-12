@@ -165,14 +165,14 @@ def create_output_filename(header):
     cat = header.get('X_FIRTYP',None)
 
     name_extension = object
-    data_type_extension = ["DARK", "WAVE", "WAVEMAP", "SKY"]
+    data_type_extension = ["DARK", "WAVE", "WAVELENGTHMAP", "SKY"]
 
-    processing_extension = {"PIXELMAP": "PM", "COUPLINGMAP": "CM", "WAVEMAP": "WM", "PREPROC": "P", "SPECTRA": "S", "IMAGE": "I", "ASTROMETRY": "A"}
+    processing_extension = {"PIXELMAP": "PM", "COUPLINGMAP": "CM", "WAVELENGTHMAP": "WM", "PREPROC": "P", "SPECTRA": "S", "IMAGE": "I", "ASTROMETRY": "A"}
 
     if type in data_type_extension:
         name_extension = type
     if cat in processing_extension.keys():
-        name_extension = name_extension + processing_extension[cat]
+        name_extension = name_extension + "_" + processing_extension[cat]
 
     output_filename = 'firstpl_' + date + '_' + name_extension + '.fits'
     return output_filename
@@ -377,3 +377,4 @@ def find_closest_dark(cmap_file, dark_files):
         return find_closest_in_time_dark(cmap_file, same_dir_darks)  # Return the first match in the same directory    
     else:
         return find_closest_in_time_dark(cmap_file, dark_samegain) 
+

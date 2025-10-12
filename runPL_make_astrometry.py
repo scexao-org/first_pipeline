@@ -30,14 +30,14 @@ from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
 from tqdm import tqdm
 import runPL_library_io as runlib
-import runPL_library_imaging as runlib_i
+import runPL_library_plots as runlib_plots
 import runPL_library_basic as basic
-from runPL_class_datacube import DataCube
+from runPL_class_datacube import DataCube, extract_datalist
 from runPL_class_couplingmap import CouplingMap
 from astropy.io import fits
 from astroplan import Observer
 from astropy.time import Time
-from fit_QR import fit_QR
+from runPL_library_linalg import fit_QR
 
 from scipy.optimize import least_squares
 
@@ -271,13 +271,13 @@ if __name__ == "__main__":
 
     files_with_dark, filelist_cmap = get_filelist(file_patterns, dark_patterns, cmap_patterns, wollaston)
 
-    couplingMap = basic.CouplingMap(filelist_cmap[0], pyramids = False)
+    couplingMap = CouplingMap(filelist_cmap[0], pyramids = False)
     Npos = couplingMap.Npositions
 
     #Input preproc
     #clean and sum all data
 
-    datalist=runlib_i.extract_datacube(files_with_dark,Nsmooth=wavelength_smooth,Nbin=couplingMap.wavelength_bin,flat = couplingMap.flat)
+    datalist : list[DataCube]=extract_datalist(files_with_dark,Nsmooth=wavelength_smooth,Nbin=couplingMap.wavelength_bin,flat = couplingMap.flat)
 
    
     for i,d in enumerate(datalist):
@@ -321,7 +321,7 @@ if __name__ == "__main__":
             chi2_map[t,:] -= np.sum(k ** 2, axis=(0,1))
         
         Npixel = 150
-        grid_x, grid_y = basic.make_image_grid(ra_dec, Npixel)
+        grid_x, grid_y = make_image_grid(ra_dec, Npixel)
 
         chi2_images = []
         for i in tqdm(range(Nimages), desc="Calculating chi2 images"):

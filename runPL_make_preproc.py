@@ -26,14 +26,15 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
 from tqdm import tqdm
-import runPL_library_io as runlib
-import runPL_library_basic as basic
-import runPL_library_imaging as runlib_i
+import runPL_library_io as runlib_io
+import runPL_library_plots as runlib_plots
 import shutil
 from collections import defaultdict
 import time
 from astroplan import Observer
 from astropy.time import Time
+from runPL_class_pixelmap import PixelMap
+
 subaru = Observer.at_site("Subaru")
 now_time = Time.now()
 if subaru.is_night(now_time):
@@ -98,7 +99,7 @@ def preprocess(files_with_pixelmap, plot_sum =False):
     # Process each directory separately 
     for file, pixelmap in tqdm(files_with_pixelmap.items(), desc=f"Pre-processing of files in {dir_path_0}"):
 
-        pixelMap=basic.PixelMap(pixelmap)
+        pixelMap=PixelMap(pixelmap)
         pixel_min = pixelMap.pixel_min
         pixel_max = pixelMap.pixel_max
         pixel_wide = pixelMap.pixel_wide
@@ -145,7 +146,7 @@ def preprocess(files_with_pixelmap, plot_sum =False):
                  header['OBJECT'] = "DAY"
 
 
-        output_filename = runlib.create_output_filename(header)
+        output_filename = runlib_io.create_output_filename(header)
         output_filename_full = os.path.join(preproc_dir_path, output_filename)
 
         # Check if the file already exists
@@ -169,10 +170,10 @@ def preprocess(files_with_pixelmap, plot_sum =False):
         raw_image = data.sum(axis=0)
 
         # Generate and save the figure for the directory
-        fig,ax = runlib.make_figure_of_trace(raw_image, traces_loc, pixel_wide, pixel_min, pixel_max)
-        fig.savefig(output_filename_full[:-5]+"I.png", dpi=300)
+        fig,ax = runlib_io.make_figure_of_trace(raw_image, traces_loc, pixel_wide, pixel_min, pixel_max)
+        fig.savefig(output_filename_full[:-5]+"_1.png", dpi=300)
         
-        data_cut_pixels, data_dark_pixels = basic.preprocess_cutData(data, pixelMap, True)
+        data_cut_pixels, data_dark_pixels = pixelMap.preprocess_cutData(data, True)
 
         perc_background=np.percentile(data_dark_pixels.ravel(),[50-34.1,50,50+34.1],axis=0)
         data_mean= np.percentile(np.mean(data_cut_pixels,axis=(1,2)),90,axis=0)
@@ -214,17 +215,17 @@ def preprocess(files_with_pixelmap, plot_sum =False):
                 ymod = fits.getdata(file,'MODULATION')['YMOD']
                 if len(xmod) > 9:
                     fluxes = data_cut_pixels.mean(axis=(1,2,3))
-                    fig= runlib_i.plot_couplinng_map(fluxes, xmod, ymod)
+                    fig= runlib_plots.plot_flux_map(fluxes, xmod, ymod)
                     fig.suptitle(hd['OBJECT']+" - "+hd['DATA-TYP']+" - "+str(hd['EXPTIME'])+'s')
-                    fig.savefig(output_filename_full[:-5]+"M.png", dpi=300)
+                    fig.savefig(output_filename_full[:-5]+"_2.png", dpi=300)
 
         files_out += [output_filename]
         comp_hdu.writeto(output_filename_full, overwrite=True, output_verify='fix', checksum=True)
 
         # copy the pixelmap to the preproc directory
-        dest_pixelmap = os.path.join(preproc_dir_path, os.path.basename(pixelmap))
-        if not os.path.exists(dest_pixelmap):
-            shutil.copy(pixelmap, preproc_dir_path)
+        # dest_pixelmap = os.path.join(preproc_dir_path, os.path.basename(pixelmap))
+        # if not os.path.exists(dest_pixelmap):
+        #     shutil.copy(pixelmap, preproc_dir_path)
             
     if len(files_out) == 0:
         print(f"No files to process in {dir_path}.")
@@ -254,13 +255,13 @@ def preprocess(files_with_pixelmap, plot_sum =False):
 
 def run_preprocess(folder = ".",pixel_map_file = None):
     # Default values
-    filelist = runlib.get_filelist(folder, {'X_FIRTYP': ['RAW']})
+    filelist = runlib_io.get_filelist(folder, {'X_FIRTYP': ['RAW']})
     if pixel_map_file==None :
         pixel_map_file = folder + "pixelmaps"
 
-    pixel_map_file = runlib.get_filelist(pixel_map_file, {'X_FIRTYP': ['PIXELMAP']})
+    pixel_map_file = runlib_io.get_filelist(pixel_map_file, {'X_FIRTYP': ['PIXELMAP']})
 
-    files_with_pixelmap = runlib.associate_pixelmap(filelist, pixel_map_file)
+    files_with_pixelmap = runlib_io.associate_pixelmap(filelist, pixel_map_file)
     preprocess(files_with_pixelmap)
 
 
@@ -311,24 +312,24 @@ if __name__ == "__main__":
     time_start = time.time()
     time_wait = 30 # in seconds
 
-    filelist = runlib.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']})
+    filelist = runlib_io.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']})
     print(f"Found {len(filelist)} files to process in {file_patterns}")
     # print(filelist)
-    filelist_pixelmap = runlib.get_filelist( pixel_map , {'X_FIRTYP': ['PIXELMAP']},  name_search="pixel map")
+    filelist_pixelmap = runlib_io.get_filelist( pixel_map , {'X_FIRTYP': ['PIXELMAP']},  name_search="pixel map")
     print(f"Found {len(filelist_pixelmap)} pixel map files in {pixel_map}")
     # print(filelist_pixelmap)
-    files_with_pixelmap = runlib.associate_pixelmap(filelist , filelist_pixelmap)
+    files_with_pixelmap = runlib_io.associate_pixelmap(filelist , filelist_pixelmap)
     preprocess(files_with_pixelmap, plot_sum = plot_sum)
     
     while time.time()+time_wait < loop+time_start:
         time.sleep(time_wait)
-        filelist_new=runlib.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']})
+        filelist_new=runlib_io.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']})
         # Check for new files in filelist
         new_files = [file for file in filelist_new if file not in filelist]
         if new_files:
             print(f"New files detected: {new_files}")
             filelist.extend(new_files)
-            filelist_pixelmap,files_by_dir = runlib.associate_pixelmap(new_files , filelist_pixelmap, plot_sum= False)
+            filelist_pixelmap,files_by_dir = runlib_io.associate_pixelmap(new_files , filelist_pixelmap, plot_sum= False)
             preprocess(files_with_pixelmap)
         else:
             print("Waiting for new files for the next %i seconds"%(int(loop+time_start-time.time())), end="\r")

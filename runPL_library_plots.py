@@ -190,3 +190,12 @@ def plot_covariance(flux_2_data_triangles,centers,name):
     ax[2].legend()
     fig.tight_layout()
 
+
+def plot_detector_field(flat, title="Flat Field"):
+    fig, ax_flat = plt.subplots(num=title, figsize=(12, 6), clear=True)
+    im_flat = ax_flat.imshow(flat, aspect='auto', origin='lower', cmap='viridis', interpolation='none', rasterized=True)
+    ax_flat.set_title(title)
+    ax_flat.set_xlabel("Wavelength Index (pixels)")
+    ax_flat.set_ylabel("Output Index (pixels)")
+    fig.colorbar(im_flat, ax=ax_flat, label="Field Value")
+    fig.tight_layout()

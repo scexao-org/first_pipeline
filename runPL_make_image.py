@@ -30,8 +30,10 @@ from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
 from tqdm import tqdm
 import runPL_library_io as runlib
-import runPL_library_imaging as runlib_i
-import runPL_library_basic as basic
+import runPL_library_plots as runlib_i
+from runPL_class_datacube import DataCube
+from runPL_class_couplingmap import CouplingMap
+
 from astropy.io import fits
 from astroplan import Observer
 from astropy.time import Time
@@ -130,9 +132,6 @@ def get_filelist(file_patterns, dark_patterns, cmap_patterns, wollaston):
 
         return files_with_dark, filelist_cmap
 
-
-
-
 def filter_couplingmapfile(filelist_cmap):
     """
     Filters the input file list to separate coupling map files and dark files based on FITS keywords.
@@ -166,6 +165,27 @@ def filter_couplingmapfile(filelist_cmap):
     # files_with_dark = {cmap: runlib.find_closest_dark(cmap, filelist_dark) for cmap in filelist_data}
 
     return filelist_cmap
+
+def make_image_grid(ra_dec, Npixels):
+    """
+    Generate a grid for image reconstruction based on the coupling map positions.
+    This function creates a 2D grid for interpolation, which can be used to reconstruct
+    an image from the coupling map data. The grid is defined based on the x and y 
+    positions of the coupling map, with optional modifications using `xmod` and `ymod`.
+    Parameters:
+        ra_dec (numpy.ndarray): Array of shape (..., 2) containing x and y positions.
+        Npixels (int): The number of pixels along each dimension of the grid.
+    Returns:
+        tuple: A tuple containing two 2D arrays (`grid_x`, `grid_y`) representing the 
+                x and y coordinates of the grid.
+    """
+
+
+    xmin, xmax   = np.min(ra_dec[..., 0]), np.max(ra_dec[..., 0])
+    ymin, ymax   = np.min(ra_dec[..., 1]), np.max(ra_dec[..., 1])
+    grid_x, grid_y = np.mgrid[xmin:xmax:Npixels*1j, ymin:ymax:Npixels*1j]
+
+    return grid_x, grid_y
 
 
 
@@ -264,7 +284,7 @@ if __name__ == "__main__":
 
     files_with_dark, filelist_cmap = get_filelist(file_patterns, dark_patterns, cmap_patterns, wollaston)
 
-    couplingMap = basic.CouplingMap(filelist_cmap[0])
+    couplingMap = CouplingMap(filelist_cmap[0])
     Npos = couplingMap.Npositions
 
     #%%
@@ -314,7 +334,7 @@ if __name__ == "__main__":
             chi2_map[t,:] -= np.sum(k ** 2, axis=(0,1))
         
         Npixel = 150
-        grid_x, grid_y = basic.make_image_grid(ra_dec, Npixel)
+        grid_x, grid_y = make_image_grid(ra_dec, Npixel)
 
         chi2_images = []
         for i in tqdm(range(Nimages), desc="Calculating chi2 images"):
@@ -358,7 +378,7 @@ if __name__ == "__main__":
         def make_image_using_grid(ra_dec, fluxes, Npixels=150, desc = None):
 
             Npixel = 150
-            grid_x, grid_y = basic.make_image_grid(ra_dec, Npixel)
+            grid_x, grid_y = make_image_grid(ra_dec, Npixel)
 
             flux_maps = []
             if desc is None:

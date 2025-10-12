@@ -16,7 +16,7 @@ import numpy as np
 from scipy.signal import correlate
 from scipy import linalg
 from scipy.linalg import solve_triangular
-
+from typing import List
 
 import getpass
 import matplotlib
@@ -36,23 +36,24 @@ from scipy import linalg
 from matplotlib import animation
 from itertools import product
 from scipy.linalg import pinv
-import runPL_library_io as runlib
-import runPL_library_imaging as runlib_i
-import runPL_library_basic as basic
+from runPL_class_couplingmap import CouplingMap
+from runPL_class_datacube import DataCube, extract_datalist 
+import runPL_library_io as runlib_io
+import runPL_library_plots as runlib_plots
+import runPL_library_linalg as runlib_linalg
+
 from scipy.ndimage import zoom
 from astropy.io import fits
 import shutil
 from scipy.interpolate import interpn
 from astropy.table import Table
 from scipy.interpolate import griddata
-import subspace_numpy as ss
 from scipy import odr
 from scipy.optimize import least_squares
 from scipy.ndimage import uniform_filter1d
 
 from scipy.spatial.distance import pdist, squareform
 from scipy.optimize import curve_fit
-from fit_QR import compute_broadband_QR,solve_QR_2,solve_QR_3,fit_QR_6
 
 plt.ion()
 
@@ -106,7 +107,7 @@ def get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, o
             fits_keywords['X_FIRWOL'] = [wollaston]
         
         print(file_patterns)
-        filelist = runlib.get_filelist(file_patterns, fits_keywords)
+        filelist = runlib_io.get_filelist(file_patterns, fits_keywords)
 
         # Adding new constraints if not asked by user
         hd=fits.getheader(filelist[0])
@@ -123,7 +124,7 @@ def get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, o
         print("----------------")
         print(f"Selected object='{object_name}' with modScale={modScale}, modID={modID}, and wollaston={wollaston}")
 
-        filelist = runlib.get_filelist(file_patterns, fits_keywords)
+        filelist = runlib_io.get_filelist(file_patterns, fits_keywords)
 
         print(f"Found {len(filelist)} files matching criteria.")
         print("----------------")
@@ -136,7 +137,7 @@ def get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, o
             fits_keywords['X_FIRWOL'] = [wollaston]
 
         try:
-            filelist_dark = runlib.get_filelist(dark_patterns, fits_keywords,  name_search="dark")
+            filelist_dark = runlib_io.get_filelist(dark_patterns, fits_keywords,  name_search="dark")
         except FileNotFoundError as e:
             print(f"WARNING!!! {e}")
             filelist_dark = []
@@ -149,20 +150,20 @@ def get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, o
             fits_keywords['X_FIRWOL'] = [wollaston]
 
         try:
-            filelist_flat = runlib.get_filelist(flat_patterns, fits_keywords,  name_search="flat")
+            filelist_flat = runlib_io.get_filelist(flat_patterns, fits_keywords,  name_search="flat")
         except FileNotFoundError as e:
             print(f"WARNING!!! {e}")
             filelist_flat = filelist
 
-        files_with_dark = runlib.associate_dark(filelist, filelist_dark)
-        flats_with_dark = runlib.associate_dark(filelist_flat, filelist_dark)
+        files_with_dark = runlib_io.associate_dark(filelist, filelist_dark)
+        flats_with_dark = runlib_io.associate_dark(filelist_flat, filelist_dark)
 
         return files_with_dark, flats_with_dark
 
 
 def compute_flat(flats_with_dark):
     
-    datalist=runlib_i.extract_datacube(flats_with_dark, center = False)
+    datalist : List[DataCube] = extract_datalist(flats_with_dark, center = False)
     flats=[d.data.sum(axis=(0,1)) for d in datalist]
     flat=np.sum(flats,axis=0)
     flat/=np.mean(flat,axis=0)
@@ -176,6 +177,35 @@ def compute_flat(flats_with_dark):
         f[:] *= conv_ref / np.convolve(f, window, mode='same') 
 
     return flat
+
+def flux_filtering(flux):
+    
+    # select data only above a threshold based on flux
+    flux_threshold=np.percentile(flux.mean(axis=(2)),80)/5
+    flux_goodData=flux.mean(axis=(2)) > flux_threshold
+    # plt.imshow(flux_goodData)
+    if np.sum(flux_goodData)<57:
+        #too little good data, we need to lower the bar
+        flux_goodData=flux.mean(axis=(2,3)) > flux_threshold/2
+        print("Not enough good data, lowering the threshold to ",flux_threshold/2)
+        flux_goodData=flux.mean(axis=(2)) > flux_threshold
+
+    return flux_goodData,flux_threshold
+
+
+def svd_filtering(datacube,flux_goodData,Nsingular):
+
+    datacube_flux_goodData = datacube[flux_goodData]
+    datacube_flux_goodData = datacube_flux_goodData.reshape((datacube_flux_goodData.shape[0], -1))
+    res = runlib_linalg.robust_subspace(datacube_flux_goodData, k=Nsingular, center=False, k_sigma=2.5, max_refit=1,verbose=True)
+    singular_values = res["model"]["S"][:-1]
+    data_svdfiltered, residuals, errors = runlib_linalg.project(datacube.reshape((datacube.shape[0]*datacube.shape[1], -1)), res["model"])
+    data_svdfiltered = data_svdfiltered.reshape(datacube.shape)
+    fit_goodData = errors.reshape((datacube.shape[0], -1)) < res["threshold"]
+    
+
+    return data_svdfiltered,fit_goodData,errors
+
 
 def singular_vector_basis(data_svdfiltered,goodData,indexes, centers, xmod, ymod):
 
@@ -202,7 +232,7 @@ def singular_vector_basis(data_svdfiltered,goodData,indexes, centers, xmod, ymod
         ymod_triangle = ymod[:,t][good_data_triangle] - center[1]
         xymod_triangle = np.array([xmod_triangle, ymod_triangle])
 
-        svd_res = ss.robust_subspace(data_triangle, k=Nqr, center=False, k_sigma=3.5, max_refit=1)
+        svd_res = runlib_linalg.robust_subspace(data_triangle, k=Nqr, center=False, k_sigma=3.5, max_refit=1)
         V = svd_res["model"]["V"]
 
         # as a second step
@@ -315,23 +345,13 @@ def Q_and_R_matrices(singular_vectors):
 
     return QT_singular_vectors,R_singular_vectors
 
-def save_allfig_pdf(output_filename):
-    # Save all open figures to a PDF
-    from matplotlib.backends.backend_pdf import PdfPages
-    pdf_filename = os.path.splitext(output_filename)[0] + ".pdf"
-    with PdfPages(pdf_filename) as pdf:
-        for i in plt.get_fignums():
-            fig = plt.figure(i)
-            pdf.savefig(fig)
-    print(f"All figures saved to {pdf_filename}")
-
 def quick_fits(data, title=""):
     if DEBUG:
         #For debugging purpose
         now = datetime.now()
         date_time_str = now.strftime("%Y_%m_%d_%H_%M_%S")
         if getpass.getuser() == "jsarrazin":
-            runlib.save_fits_file(data, "/home/jsarrazin/Bureau/test zone/coupling_maps/"+title+"_"+date_time_str+".fits")
+            runlib_io.save_fits_file(data, "/home/jsarrazin/Bureau/test zone/coupling_maps/"+title+"_"+date_time_str+".fits")
         print("Done")   
 
 def quick_imshow(data, title=""):
@@ -431,21 +451,19 @@ if __name__ == "__main__":
 
     flat = compute_flat(flats_with_dark)
 
-
     ### run_create_coupling_maps function
     
     plt.close("all")
 
     #Input preproc
     #clean and sum all data
-    datalist=runlib_i.extract_datacube(files_with_dark,Nsmooth=wavelength_smooth,Nbin=wavelength_bin, flat =flat)
+    datalist: List[DataCube] = extract_datalist(files_with_dark, Nsmooth=wavelength_smooth, Nbin=wavelength_bin, flat=flat)  # List of DataCube objects
     
     flux = np.concatenate([d.flux for d in datalist])
     datacube=np.concatenate([d.data for d in datalist])
     datacube_var=np.concatenate([d.variance for d in datalist])
     xmod=np.concatenate([d.xmod for d in datalist])
     ymod=np.concatenate([d.ymod for d in datalist])
-
 
     basenames = []
     for d in datalist:
@@ -454,40 +472,13 @@ if __name__ == "__main__":
 
     filenames = [d.filename for d in datalist]
 
-
-    def flux_filtering(flux):
-        
-        # select data only above a threshold based on flux
-        flux_threshold=np.percentile(flux.mean(axis=(2)),80)/5
-        flux_goodData=flux.mean(axis=(2)) > flux_threshold
-        # plt.imshow(flux_goodData)
-        if np.sum(flux_goodData)<57:
-            #too little good data, we need to lower the bar
-            flux_goodData=flux.mean(axis=(2,3)) > flux_threshold/2
-            print("Not enough good data, lowering the threshold to ",flux_threshold/2)
-            flux_goodData=flux.mean(axis=(2)) > flux_threshold
-
-        return flux_goodData,flux_threshold
-
     flux_goodData,flux_threshold = flux_filtering(flux)
 
-    def svd_filtering(datacube,flux_goodData,Nsingular):
+    data_svdfiltered,fit_goodData,errors = svd_filtering(datacube,flux_goodData,Nsingular)
+    goodData = flux_goodData & fit_goodData
 
-        datacube_flux_goodData = datacube[flux_goodData]
-        datacube_flux_goodData = datacube_flux_goodData.reshape((datacube_flux_goodData.shape[0], -1))
-        res = ss.robust_subspace(datacube_flux_goodData, k=Nsingular, center=False, k_sigma=2.5, max_refit=1,verbose=True)
-        singular_values = res["model"]["S"][:-1]
-        data_svdfiltered, residuals, errors = ss.project(datacube.reshape((datacube.shape[0]*datacube.shape[1], -1)), res["model"])
-        data_svdfiltered = data_svdfiltered.reshape(datacube.shape)
-        fit_goodData = errors.reshape((datacube.shape[0], -1)) < res["threshold"]
-        goodData = flux_goodData & fit_goodData
-        
 
-        return data_svdfiltered,goodData,errors
-
-    data_svdfiltered,goodData,errors = svd_filtering(datacube,flux_goodData,Nsingular)
-
-    runlib_i.plot_couplinng_map(flux.mean(axis=(2))[0], xmod[0], ymod[0])
+    runlib_plots.plot_flux_map(flux.mean(axis=(2))[0], xmod[0], ymod[0])
 
     goodPositions = goodData.mean(axis=0) > 0.3
     index_triangles , center_triangles = datalist[0].get_triangles()
@@ -569,7 +560,7 @@ if __name__ == "__main__":
     for i, filename in enumerate(filenames):
         header['P_CM_F%i' % i] = filename
 
-    header['P_CMNAME'] = runlib.create_output_filename(header)
+    header['P_CMNAME'] = runlib_io.create_output_filename(header)
 
     # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
     os.makedirs(output_dir, exist_ok=True)
@@ -579,7 +570,7 @@ if __name__ == "__main__":
     # Combine all HDUs into an HDUList
     hdul = fits.HDUList([hdu_primary, *hdu, modulation_hdu])
 
-    output_filename = os.path.join(output_dir, runlib.create_output_filename(header))
+    output_filename = os.path.join(output_dir, runlib_io.create_output_filename(header))
 
     # Write to a FITS file
     print(f"Saving data to {output_filename}")
@@ -591,29 +582,15 @@ if __name__ == "__main__":
     # Diagnostic plots
     ###############################################
 
-    fig_flat, ax_flat = plt.subplots(num="Flat Field", figsize=(12, 6), clear=True)
-    im_flat = ax_flat.imshow(flat, aspect='auto', origin='lower', cmap='viridis', interpolation='none', rasterized=True)
-    ax_flat.set_title("Flat Field ")
-    ax_flat.set_xlabel("Wavelength Index")
-    ax_flat.set_ylabel("Output Index")
-    plt.colorbar(im_flat, ax=ax_flat, label="Flat Value")
-    plt.tight_layout()
-    plt.show()
-
     dark = np.array([d.dark for d in datalist]).mean(axis=0)
     if dark.ndim == 0 or dark.shape == ():
         dark = np.full_like(flat, dark)
     elif dark.ndim == 1:
         dark = np.tile(dark, (flat.shape[0], 1))
 
-    fig_dark, ax_dark = plt.subplots(num="Dark Field", figsize=(12, 6), clear=True)
-    im_dark = ax_dark.imshow(dark, aspect='auto', origin='lower', cmap='viridis', interpolation='none', rasterized=True)
-    ax_dark.set_title("Dark Field ")
-    ax_dark.set_xlabel("Wavelength Index")
-    ax_dark.set_ylabel("Output Index")
-    plt.colorbar(im_dark, ax=ax_dark, label="Dark Value")
-    plt.tight_layout()
-    plt.show()
+    runlib_plots.plot_detector_field(flat, title="Flat Field")
+    runlib_plots.plot_detector_field(dark, title="Dark Field")
+
 
     fig, axs = plt.subplots(2, 2, figsize=(12, 10), num="Flux/GoodData Selection", clear=True)
 
@@ -642,16 +619,14 @@ if __name__ == "__main__":
     # axs[1, 0].contour(fit_goodData, levels=[0.5], colors='r', linewidths=1, linestyles='--')
 
     # flux_goodData mask
-    axs[1, 1].imshow(goodData, aspect='auto', origin='lower', cmap='Greens', interpolation='none', rasterized=True, vmin=0, vmax=1)
+    axs[1, 1].imshow(fit_goodData, aspect='auto', origin='lower', cmap='Greens', interpolation='none', rasterized=True, vmin=0, vmax=1)
     axs[1, 1].set_title("From SVD fits, good Dataset (mask)")
     axs[1, 1].set_xlabel("Output")
     axs[1, 1].set_ylabel("Wavelength")
 
+    fig.tight_layout()
 
-    plt.tight_layout()
-    plt.show()
-
-    fig, axs = plt.subplots(1, 2, num=" Positions fiber and of triangles" , figsize=(18, 6), sharex=True, sharey=True, clear=True)
+    fig, axs = plt.subplots(1, 2, num=" Positions fiber and of triangles" , figsize=(16, 6), sharex=True, sharey=True, clear=True)
 
     # 1. Plot positions (xmod, ymod) for all triangles
     axs[0].set_title("Positions of Fiber")
@@ -671,69 +646,29 @@ if __name__ == "__main__":
     axs[1].set_aspect('equal')
     axs[1].legend()
 
+    fig.tight_layout()
 
     ###############################################
     # Covariance and correlation matrix plot
     ###############################################
 
-
-    def plot_covariance(flux_2_data_triangles,centers,name):
-        Ntriangles = flux_2_data_triangles.shape[2]
-        cov_matrix = np.cov(flux_2_data_triangles.reshape((-1,Ntriangles)).T)
-        cor_matrix = np.corrcoef(flux_2_data_triangles.reshape((-1,Ntriangles)).T)
-
-        fig, ax = plt.subplots(1, 3, num='Covariance and Correlation Matrix for '+name, figsize=(16, 6), clear=True)
-        fig.suptitle(name)
-        cax0 = ax[0].matshow(cov_matrix, cmap='viridis')
-        fig.colorbar(cax0, ax=ax[0])
-        cax1 = ax[1].matshow(cor_matrix, cmap='viridis')
-        fig.colorbar(cax1, ax=ax[1])
-        ax[0].set_title('Covariance Matrix of Singular Vector Models')
-        ax[1].set_title('Correlation Matrix of Singular Vector Models')
-        # Compute pairwise distances between centers
-        distances = np.linalg.norm((centers-centers[:,None]),axis=2).ravel()
-        correlations = cor_matrix.ravel()
-
-        # Scatter plot: correlation vs distance
-        ax[2].plot(distances, correlations,'.', alpha=0.1,  label='Pairs')
-        ax[2].set_xlabel('Distance between vectors')
-        ax[2].set_ylabel('Correlation')
-        ax[2].set_title('Correlation vs Distance')
-        # Smooth correlation vs distance using a moving average
-
-        # Sort by distance for smoothing
-        sort_idx = np.argsort(distances)
-        distances_sorted = distances[sort_idx]
-        correlations_sorted = correlations[sort_idx]
-
-        window_size = max(10, len(cor_matrix))
-        if window_size % 2 == 0:
-            window_size += 1  # Ensure odd window size
-
-        # Moving average smoothing
-        correlations_smoothed = uniform_filter1d(correlations_sorted, size=window_size, mode='nearest')
-
-        ax[2].plot(distances_sorted, correlations_smoothed, 'r-', label=f'Moving avg (window={window_size})')
-
-        ax[2].legend()
-        fig.tight_layout()
-
-    plot_covariance(flux_2_data_triangles,center_triangles,"Triangles")
-    plot_covariance(flux_2_data_pyramids,center_pyramids,"Pyramids")
-
+    runlib_plots.plot_covariance(flux_2_data_triangles,center_triangles,"Triangles")
+    runlib_plots.plot_covariance(flux_2_data_pyramids,center_pyramids,"Pyramids")
 
     ###############################################
-    save_allfig_pdf(output_filename)
+    runlib_plots.save_pdf_in_file(output_filename)
 
+    print("----------------------------------------------------")
     print("Coupling Map stored. You can quit by ctrlC")
+    print("----------------------------------------------------")
     print("Computing now additional health check plots.")
 
     for coupling in ["triangles","pyramids"]:
 
         if coupling == "triangles": 
-            couplingMap = basic.CouplingMap(output_filename,pyramids = True)
+            couplingMap = CouplingMap(output_filename,pyramids = False)
         else:
-            couplingMap = basic.CouplingMap(output_filename,pyramids = False)
+            couplingMap = CouplingMap(output_filename,pyramids = True)
 
         QT= couplingMap.QT
         R= couplingMap.R * spectra[:,None,None]
@@ -745,7 +680,7 @@ if __name__ == "__main__":
 
         wmin = QT.shape[1] // 4
         wmax = 3 * QT.shape[1] // 4
-        QT_broadband, R_broadband = compute_broadband_QR(R, wmin, wmax)
+        QT_broadband, R_broadband = couplingMap.compute_broadband_QR(wmin, wmax)
         
 
         datacube=np.concatenate([d.data for d in datalist])
@@ -801,9 +736,9 @@ if __name__ == "__main__":
             QTdata_broadband = QT_broadband[t] @ QTdata[wmin:wmax,:,i].ravel()
             
             if Nqr == 6:
-                x_hat_broadband, y_hat_broadband, k_hat_broadband, chi2_broadband, _ = fit_QR_6(QTdata_broadband, R_broadband[t])
+                x_hat_broadband, y_hat_broadband, k_hat_broadband, chi2_broadband, _ = runlib_linalg.fit_QR_6(QTdata_broadband, R_broadband[t])
             else:
-                x_hat_broadband, y_hat_broadband, k_hat_broadband, chi2_broadband, _ = solve_QR_3(QTdata_broadband, R_broadband[t])
+                x_hat_broadband, y_hat_broadband, k_hat_broadband, chi2_broadband, _ = runlib_linalg.solve_QR_3(QTdata_broadband, R_broadband[t])
 
             if Nqr == 6:
                 v = np.array([1.0, x_hat_broadband, y_hat_broadband, x_hat_broadband*y_hat_broadband, x_hat_broadband**2, y_hat_broadband**2])
@@ -839,9 +774,9 @@ if __name__ == "__main__":
         xy_dev = xy_dev[...,0]
 
         
-        fig, axs = plt.subplots(2, Ncube, num="XY position -- using "+coupling, clear=True, figsize=(7*Ncube,10), squeeze=False)
+        fig, axs = plt.subplots(2, Ncube, num="XY position -- using "+coupling, clear=True, figsize=(7*Ncube,12), squeeze=False)
         for i in range(Ncube):
-            axs[0,i].plot(Xcen[i],Ycen[i],'.',label='Center of pyramids')
+            axs[0,i].plot(Xcen[i],Ycen[i],'.',label='Center of '+coupling)
             axs[0,i].set_ylim(axs[0,i].get_ylim()[0], axs[0,i].get_ylim()[1])
             axs[0,i].set_xlim(axs[0,i].get_xlim()[0], axs[0,i].get_xlim()[1])
             axs[0,i].plot((Xcen+Xpos)[i],(Ycen+Ypos)[i],'.-',label='Detected position')
@@ -874,7 +809,7 @@ if __name__ == "__main__":
         
         plt.tight_layout()
 
-        save_allfig_pdf(output_filename)
+        runlib_plots.save_pdf_in_file(output_filename)
 
 
 # %%

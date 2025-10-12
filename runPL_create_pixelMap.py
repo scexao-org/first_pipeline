@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
 from tqdm import tqdm
-import runPL_library_io as runlib
+import runPL_library_io as runlib_io
 import shutil
 
 
@@ -100,7 +100,7 @@ def raw_image_clean(filelist):
         fits_keywords = {'X_FIRTYP': ['RAW'], }
             
         # Use the function to clean the filelist
-        filelist_cleaned = runlib.clean_filelist(fits_keywords, filelist)
+        filelist_cleaned = runlib_io.clean_filelist(fits_keywords, filelist)
 
         wollaston = fits.getheader(filelist_cleaned[0]).get('X_FIRWOL', 'IN')
 
@@ -131,7 +131,7 @@ def quick_fits(data, title=""):
     #For debugging purpose
     now = datetime.now()
     date_time_str = now.strftime("%Y_%m_%d_%H_%M_%S")
-    runlib.save_fits_file(data, "/home/jsarrazin/Bureau/test zone/coupling_maps/"+title+"_"+date_time_str+".fits")
+    runlib_io.save_fits_file(data, "/home/jsarrazin/Bureau/test zone/coupling_maps/"+title+"_"+date_time_str+".fits")
     print("check")
 
 def loop_lowering_my_treshold( sampling, peaks_number, raw_image, peaks, output_channels, filelist, start = 0.01, stop = 0.1, num = 50, instance=0):
@@ -281,7 +281,7 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
     header['P_PMWIDE'] = pixel_wide
     header['P_PMCHAN'] = output_channels
     header['P_PM_CK'] = np.random.randint(0, 2**32, dtype=np.uint32)
-    basename = runlib.create_output_filename(header)
+    basename = runlib_io.create_output_filename(header)
     header['P_PMNAME'] = basename
 
     # Définir le chemin complet du sous-dossier
@@ -300,7 +300,7 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
     hdul.close()
 
 
-    fig,ax=runlib.make_figure_of_trace(raw_image,traces_loc,pixel_wide,pixel_min,pixel_max)
+    fig,ax=runlib_io.make_figure_of_trace(raw_image,traces_loc,pixel_wide,pixel_min,pixel_max)
 
     
     annotation = False
@@ -343,7 +343,7 @@ def quick_fits(data, title=""):
     #For debugging purpose
     now = datetime.now()
     date_time_str = now.strftime("%Y_%m_%d_%H_%M_%S")
-    runlib.save_fits_file(data, "/home/jsarrazin/Bureau/test zone/coupling_maps/"+title+"_"+date_time_str+".fits")
+    runlib_io.save_fits_file(data, "/home/jsarrazin/Bureau/test zone/coupling_maps/"+title+"_"+date_time_str+".fits")
     print("check")
 
 def run_createPixelMap(folder, destination, pixel_min=20, pixel_max=1600, pixel_wide=3, output_channels=38, file_patterns=["**/*.fits"]):
@@ -446,7 +446,7 @@ if __name__ == "__main__":
     file_patterns=args if args else ['*.fits']
     filter_files=options.filter_files
     
-    filelist=runlib.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']})
+    filelist=runlib_io.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']})
 
     if filter_files==True: 
         filelist = filter_only_good_files(filelist, True)
