@@ -320,9 +320,11 @@ class DataCube:
         header (astropy.io.fits.Header): The header information.
     """
 
-    def __init__(self, data, variance, filename, header):
+    def __init__(self, data, variance, dark, dark_variance, filename, header):
         self.data = data
         self.variance = variance
+        self.dark = dark
+        self.dark_variance = dark_variance
         self.dirname = os.path.dirname(filename)
         self.basename = os.path.basename(filename)
         self.filename = filename
@@ -340,7 +342,6 @@ class DataCube:
 
         self.x_object = header.get('X_FIROBX', 0.0)
         self.y_object = header.get('X_FIROBY', 0.0)
-
         self.target_ra = header.get('D_IMRRA', '21:15:49.440')
         self.target_dec = header.get('D_IMRDEC', '+05:14:52.41')
         self.pupil_PA = header.get('D_IMRPAD', -233.206)
@@ -352,6 +353,11 @@ class DataCube:
         # Handle case where time_end is before time_start (observation crosses midnight)
         if self.time_end < self.time_start:
             self.time_end += TimeDelta(1, format='jd')
+
+        # computing the position angle (PA) of each frame
+        THETA_OFFSET = 102.2  # degrees
+        self.PAangle = -1 * (180.0 - THETA_OFFSET - self.get_parallactic_angle())[:,:,None]/180*np.pi
+        print(f"Image-rotation angle range: {self.PAangle.min()*180/np.pi} to {self.PAangle.max()*180/np.pi} degrees")
 
     def add_modulation(self):
         """ 
@@ -439,14 +445,9 @@ class DataCube:
 
     ## calculate the projection of the offset in the field based on the current parangle and delta-coordinates of target */
     def project_offsets(self, x_sky, y_sky):
-        THETA_OFFSET = 102.2  # degrees
         proj_offsets = np.zeros((*x_sky.shape, 2))
-        parangle = (180.0 - THETA_OFFSET - self.get_parallactic_angle())[:,:,None]/180*np.pi
-
-        print(f"Image-rotation angle range: {parangle.min()*180/np.pi} to {parangle.max()*180/np.pi} degrees")
-        parangle*=-1
-        proj_offsets[..., 0] = np.sin(parangle) * y_sky + np.cos(parangle) * x_sky
-        proj_offsets[..., 1] = np.cos(parangle) * y_sky - np.sin(parangle) * x_sky
+        proj_offsets[..., 0] = np.sin(self.PAangle) * y_sky + np.cos(self.PAangle) * x_sky
+        proj_offsets[..., 1] = np.cos(self.PAangle) * y_sky - np.sin(self.PAangle) * x_sky
         proj_offsets[..., 0] += self.x_object
         proj_offsets[..., 1] += self.y_object
 
@@ -511,7 +512,7 @@ class DataCube:
         
         self.Nwave = self.data.shape[3]
 
-    def get_triangle(self):
+    def get_triangles(self,quiet=False):
     
         xmod=self.xmod[0]
         ymod=self.ymod[0]
@@ -543,14 +544,18 @@ class DataCube:
             if l_max/l_min < 1.8:
                 good_triangles.append(triangle)
 
-        good_triangles = np.array(good_triangles)
+        indexes = np.array(good_triangles)
 
-        print(f"Computed {len(triangles)} triangles for the given positions.")
-        print(f"Computed {len(good_triangles)} good triangles.")
+        if not quiet:
+            print(f"Computed {len(triangles)} triangles for the given positions, with {len(good_triangles)} good triangles.")
 
-        center_triangles = points[good_triangles].mean(axis=1)
+        center_triangles = points[indexes].mean(axis=1)
 
-        return good_triangles , center_triangles
+        orders = center_triangles[:, 0] + center_triangles[:, 1] * 1e5
+        indexes = indexes[np.argsort(orders)]
+        center_triangles = points[indexes].mean(axis=1)
+
+        return indexes , center_triangles
     
     def get_pyramids(self):
 
@@ -560,13 +565,10 @@ class DataCube:
         # Combine xmod and ymod into a 2D array of points
         points = np.array([xmod, ymod]).T
 
-        good_triangles , center_triangles = self.get_triangle()
+        indexes_triangles , center_triangles = self.get_triangles(quiet=True)
 
         # Compute the center of each triangle
-        center_triangles = points[good_triangles].mean(axis=1)
-
-        orders = center_triangles[:, 0] + center_triangles[:, 1] * 1e5
-        center_triangles = center_triangles[np.argsort(orders)]
+        center_triangles = points[indexes_triangles].mean(axis=1)
 
         # Create a KDTree for efficient nearest neighbor search
         tree = cKDTree(points)
@@ -618,9 +620,10 @@ def extract_datacube(files_with_dark, Nsmooth = 1, Nbin = 1, flat = None, center
 
         data-=data_dark
         gain=header['GAIN']
-        data_var=data_dark_std**2+gain*np.abs(data)
+        data_dark_var=data_dark_std**2
+        data_var=data_dark_var+gain*np.abs(data)
 
-        dataCube = DataCube(data, data_var, data_file, header)
+        dataCube = DataCube(data, data_var, data_dark, data_dark_var, data_file, header)
 
         # Normalize the data cube by the flat field if provided
         if flat is not None:

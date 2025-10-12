@@ -32,9 +32,14 @@ from tqdm import tqdm
 import runPL_library_io as runlib
 import runPL_library_imaging as runlib_i
 import runPL_library_basic as basic
+from runPL_class_datacube import DataCube
+from runPL_class_couplingmap import CouplingMap
 from astropy.io import fits
 from astroplan import Observer
 from astropy.time import Time
+from fit_QR import fit_QR
+
+from scipy.optimize import least_squares
 
 subaru = Observer.at_site("Subaru")
 now_time = Time.now()
@@ -168,7 +173,6 @@ def filter_couplingmapfile(filelist_cmap):
     return filelist_cmap
 
 
-
 def quick_fits(data, title=""):
     if DEBUG:
         #For debugging purpose
@@ -193,14 +197,12 @@ def quick_plot(data,title =""):
     plt.title(title)
     print("Done")
 
-    
-
 
 if __name__ == "__main__":
     parser = OptionParser(usage)
 
     # default values
-    wavelength_smooth = 1
+    wavelength_smooth = 20 #1
     save_individual_frames = True
     save_individual_wavelength = False
 
@@ -228,14 +230,19 @@ if __name__ == "__main__":
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/firstpl_2025-06-14T01:38*fits"
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T05?5*BETACMI_P.fits"
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T05?53*BETACMI_P.fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-2]*TETCRB_P.fits"
-            cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/../couplingmaps/firstpl_2025-05-10T09:23:36_COUPLINGMAP.fits"
-            dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*s"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-2]*TETCRB_P.fits"
+            # cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/../couplingmaps/firstpl_2025-05-10T09:23:36_COUPLINGMAP.fits"
+            # dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*s"
             # Mathias Binary
             cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250514/couplingmaps/firstpl_2025-05-14T11:39:58_COUPLINGMAP.fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T10:10?4*s"
-            dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T10:10?4*s"
+            # dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
+            cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/../couplingmaps/firstpl_2025-05-10T09:23:36_TETCRBCM.fits"
+            # cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/../couplingmaps/firstpl_2025-05-10T09:21:23_TETCRBCM.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-3]*TETCRB_P.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?21*TETCRB_P.fits"
+
 
         if getpass.getuser() == "ehuby" :
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/firstpl_*.fits"
@@ -264,19 +271,19 @@ if __name__ == "__main__":
 
     files_with_dark, filelist_cmap = get_filelist(file_patterns, dark_patterns, cmap_patterns, wollaston)
 
-    couplingMap = basic.CouplingMap(filelist_cmap[0])
+    couplingMap = basic.CouplingMap(filelist_cmap[0], pyramids = False)
     Npos = couplingMap.Npositions
-
-    #%%
 
     #Input preproc
     #clean and sum all data
-
 
     datalist=runlib_i.extract_datacube(files_with_dark,Nsmooth=wavelength_smooth,Nbin=couplingMap.wavelength_bin,flat = couplingMap.flat)
 
    
     for i,d in enumerate(datalist):
+        pass
+
+    if True:
 
         flux = d.flux
         datacube= d.data 
@@ -338,18 +345,27 @@ if __name__ == "__main__":
             except:
                 star_close[i] = False
 
-        residuals = datacube_T.copy()
 
+#%%
         for i in tqdm(range(Nimages), desc="Calculating residuals of the 3D image"):
             if star_close[i]:
                 t = chi2_map_argmin[i]
-                k = couplingMap.QT[t] @ residuals[:,:,i,None]
-                residuals[:,:,i] -=  (couplingMap.QT[t].transpose((0,2,1)) @ k)[:,:,0]
+                data = datacube_T[:, :, i]
+                QT = couplingMap.QT[t]
+                R = couplingMap.R[t]
+                res = np.zeros((Nwave, 4))
+                for w in range(Nwave):
+                    res[w] = fit_QR(datacube_T[w,:,i], QT[w], R[w],init=(-1.5,-3.9))
+                center = couplingMap.position[t]
+
+                res[:,0] += center[0]
+                res[:,1] += center[1]
 
         
         fluxes = np.matmul(couplingMap.data_2_flux, datacube_T)/d.dit*d.gain
         fluxes_residuals = np.matmul(couplingMap.data_2_flux, residuals)/d.dit*d.gain
 
+    #%%
 
         # Define the grid for interpolation
         # calcul de la grille de l'image que l'on souhaite reconstruire

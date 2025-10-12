@@ -189,11 +189,17 @@ def preprocess(files_with_pixelmap, plot_sum =False):
         comp_hdu = fits.PrimaryHDU(data_cut, header=header)
 
         # Add quality control values to header with the values read in the header above
-        comp_hdu.header['QC_SHIFT'] = centered
-        comp_hdu.header['QC_BACK'] = perc_background[1]
-        comp_hdu.header['QC_BACKR'] = (perc_background[2]-perc_background[0])/2*np.sqrt(2)
-        comp_hdu.header['QC_FLUX'] = flux_mean
+        comp_hdu.header['P_P_CENT'] = centered
+        comp_hdu.header['P_P_BACK'] = perc_background[1]
+        comp_hdu.header['P_P_BACN'] = (perc_background[2]-perc_background[0])/2*np.sqrt(2)
+        comp_hdu.header['P_P_FLUX'] = flux_mean
+        comp_hdu.header['P_P_NAME'] = output_filename
 
+        pmhd= pixelMap.header
+        #add all headers keywords from pmhd that starts with P_PM to comp_hdu.header
+        for key in pmhd.keys():
+            if key.startswith('P_PM'):
+                comp_hdu.header[key] = pmhd[key]
 
         # Add the MODULATION extension from the original file to the new FITS file
         if comp_hdu.header.get('X_FIRMID', 0) > 1:

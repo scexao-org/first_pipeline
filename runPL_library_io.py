@@ -165,14 +165,14 @@ def create_output_filename(header):
     cat = header.get('X_FIRTYP',None)
 
     name_extension = object
-    special_extension = ["DARK", "SKY", "WAVE", "PIXELMAP", "WAVEMAP", "COUPLINGMAP"]
-    special_extension2 = ["IMAGE","PREPROC","WDIMAGE"]
-    if type in special_extension:
+    data_type_extension = ["DARK", "WAVE", "WAVEMAP", "SKY"]
+
+    processing_extension = {"PIXELMAP": "PM", "COUPLINGMAP": "CM", "WAVEMAP": "WM", "PREPROC": "P", "SPECTRA": "S", "IMAGE": "I", "ASTROMETRY": "A"}
+
+    if type in data_type_extension:
         name_extension = type
-    if cat in special_extension:
-        name_extension = cat
-    if cat in special_extension2:
-        name_extension = name_extension + "_" + cat[0]
+    if cat in processing_extension.keys():
+        name_extension = name_extension + processing_extension[cat]
 
     output_filename = 'firstpl_' + date + '_' + name_extension + '.fits'
     return output_filename

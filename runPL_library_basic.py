@@ -85,19 +85,23 @@ def preprocess_cutData(data, pixelMap, dark_calculation=False):
 
 
 class CouplingMap:
-    def __init__(self, file):
+    def __init__(self, file, pyramids = False):
 
         cmap_file=fits.open(file)
         header = cmap_file[0].header
-        self.wavelength_bin = header['WL_BIN']
+        self.wavelength_bin = header['P_CMWBIN']
+        if pyramids:
+            add_key = "_P"
+        else:
+            add_key =  "_T"
 
-        self.flux_2_data=cmap_file['F2DATA'].data
-        self.data_2_flux=cmap_file['DATA2F'].data
-        self.fluxtiptilt_2_data=cmap_file['FTT2DATA'].data
-        self.QT=cmap_file['QT_FTT2DATA'].data
-        self.R=cmap_file['R_FTT2DATA'].data
-        self.position=cmap_file['XY_POS'].data
+        self.flux_2_data=cmap_file['F2DATA'+add_key].data
+        self.data_2_flux=cmap_file['DATA2F'+add_key].data
+        self.QT=cmap_file['QT'+add_key].data
+        self.R=cmap_file['R'+add_key].data
+        self.position=cmap_file['XY'+add_key].data
         self.flat=cmap_file['FLAT'].data
+        self.ref_spectra=cmap_file['SPECTRA'].data
 
         self.Npositions=self.position.shape[0]
 

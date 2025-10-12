@@ -276,11 +276,13 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
         header['DATE'] = current_time
 
     # Add input parameters to the header
-    header['PIX_MIN'] = pixel_min
-    header['PIX_MAX'] = pixel_max
-    header['PIX_WIDE'] = pixel_wide
-    header['OUT_CHAN'] = output_channels
-    header['PM_CHECK'] = np.random.randint(0, 2**32, dtype=np.uint32)
+    header['P_PMXMIN'] = pixel_min
+    header['P_PMXMAX'] = pixel_max
+    header['P_PMWIDE'] = pixel_wide
+    header['P_PMCHAN'] = output_channels
+    header['P_PM_CK'] = np.random.randint(0, 2**32, dtype=np.uint32)
+    basename = runlib.create_output_filename(header)
+    header['P_PMNAME'] = basename
 
     # Définir le chemin complet du sous-dossier
     if folder.endswith("*fits"):
@@ -292,7 +294,7 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
 
     hdu.header.extend(header, strip=True)
     hdul = fits.HDUList([hdu])
-    filename_out = os.path.join(output_dir, runlib.create_output_filename(header))
+    filename_out = os.path.join(output_dir, basename)
 
     hdul.writeto(filename_out, overwrite=True)
     hdul.close()
