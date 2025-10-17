@@ -31,13 +31,13 @@ from datetime import datetime
 from tqdm import tqdm
 import runPL_library_io as runlib
 import runPL_library_plots as runlib_plots
-import runPL_library_basic as basic
-from runPL_class_datacube import DataCube, extract_datalist
-from runPL_class_couplingmap import CouplingMap
+import runPL_library_basic as runlib_basic
+import runPL_library_linalg as runlib_linalg
+from runPL_class_dataCube import DataCube, extract_datalist
+from runPL_class_couplingMap import CouplingMap
 from astropy.io import fits
 from astroplan import Observer
 from astropy.time import Time
-from runPL_library_linalg import fit_QR
 
 from scipy.optimize import least_squares
 
@@ -202,9 +202,10 @@ if __name__ == "__main__":
     parser = OptionParser(usage)
 
     # default values
-    wavelength_smooth = 20 #1
+    wavelength_smooth = 1
     save_individual_frames = True
     save_individual_wavelength = False
+    pyramids = False
 
     # Add options for these values
     parser.add_option("--wollaston", type="string", 
@@ -219,7 +220,8 @@ if __name__ == "__main__":
                     help="Save individual frames (default: %default)")
     parser.add_option("--save_individual_wavelength", action="store_true", default=save_individual_wavelength,
                     help="Save individual wavelength (default: %default)")
-    
+    parser.add_option("--pyramids", action="store_true", default=pyramids,
+                    help="Use pyramids for data fitting by coupling map (default: %default)")
 
     if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or os.environ.get('SPYDER_DEBUG_FILEfile =')):
         print("Running in compiler")
@@ -240,8 +242,8 @@ if __name__ == "__main__":
             # dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
             cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/../couplingmaps/firstpl_2025-05-10T09:23:36_TETCRBCM.fits"
             # cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/../couplingmaps/firstpl_2025-05-10T09:21:23_TETCRBCM.fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-3]*TETCRB_P.fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?21*TETCRB_P.fits"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-3]*TETCRB_P.fits"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?21*TETCRB_P.fits"
 
 
         if getpass.getuser() == "ehuby" :
@@ -271,15 +273,15 @@ if __name__ == "__main__":
 
     files_with_dark, filelist_cmap = get_filelist(file_patterns, dark_patterns, cmap_patterns, wollaston)
 
-    couplingMap = CouplingMap(filelist_cmap[0], pyramids = False)
+    couplingMap = CouplingMap(filelist_cmap[0], pyramids = pyramids)
     Npos = couplingMap.Npositions
+        
 
     #Input preproc
     #clean and sum all data
 
     datalist : list[DataCube]=extract_datalist(files_with_dark,Nsmooth=wavelength_smooth,Nbin=couplingMap.wavelength_bin,flat = couplingMap.flat)
 
-   
     for i,d in enumerate(datalist):
         pass
 
@@ -298,55 +300,98 @@ if __name__ == "__main__":
         Noutput = datacube.shape[2]  # number of outputs
         Nimages = Ncube * Nmod
 
-
         filename = d.filename
         print( f"---->  Filename : {filename}")
 
+        flux_goodData,flux_threshold = runlib_basic.flux_filtering(flux)
+        print(f"* Percentage of good data: {np.sum(flux_goodData)/Nimages*100:.1f} % (flux threshold)")
+        data_svdfiltered,fit_goodData,errors = runlib_basic.svd_filtering(datacube,flux_goodData)
+        goodData = flux_goodData & fit_goodData
+        print(f"* Percentage of good data: {np.sum(goodData)/Nimages*100:.1f} % (flux and svd threshold)")
 
-        datacube_T=datacube.transpose((3,2,0,1))
-        datacube_T=datacube_T.reshape((datacube_T.shape[0], datacube_T.shape[1], Nimages))
-        ra_dec = ra_dec.reshape((Nimages, Npos, 2))
+        #select data based on filtering data
+        datacube_T=datacube[goodData].transpose((2,1,0))
+        ra_dec=ra_dec[goodData]
+        flux=flux[goodData]
 
-        chi2_max = np.sum(datacube_T**2, axis=(0,1))
+        star_detected, star_index, star_radec = couplingMap.chi2_filtering(datacube_T, ra_dec)
+        print(f"* Percentage of good data: {np.sum(star_detected)/Nimages*100:.1f} % (flux, svd and chi2 threshold)")
 
-        chi2_map = np.zeros((Npos, Nimages))
-        chi2_map = np.zeros((Npos, Nimages))
-        chi2_map[:] =  chi2_max
-        # gram_fluxtiptilt_inv =np.zeros_like(gram_fluxtiptilt)
-        # for t in range(Ntriangles):
-        #     for w in range(Nwave):
-        #         gram_fluxtiptilt_inv[t,w] = linalg.pinv(gram_fluxtiptilt[t,w])
-        for t in tqdm(range(Npos), desc="Computing chi2 map"):
-            k= couplingMap.QT[t] @ datacube_T
-            chi2_map[t,:] -= np.sum(k ** 2, axis=(0,1))
-        
-        Npixel = 150
-        grid_x, grid_y = make_image_grid(ra_dec, Npixel)
 
-        chi2_images = []
-        for i in tqdm(range(Nimages), desc="Calculating chi2 images"):
-                # Interpolate the fluxes onto the grid
-            chi2_image = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), chi2_map[:,i], (grid_x, grid_y), method='nearest')
-            chi2_images.append(chi2_image)
-            
+        #select data based on wheter the star is detected on our data or not
+        datacube_T = datacube_T[:,:,star_detected]
+        ra_dec = ra_dec[star_detected]
+        flux = flux[star_detected]
+        spectra = flux.mean(axis=0)
 
-        chi2_images = np.array(chi2_images)
 
-        chi2_images_argmin = np.nansum(chi2_images,axis=0).argmin()
-        star_positions = np.array((grid_x.ravel()[chi2_images_argmin], grid_y.ravel()[chi2_images_argmin]))
-        star_indices = np.linalg.norm(ra_dec - star_positions, axis=-1) < 10
-        chi2_map[~star_indices.T] = np.nan
-        chi2_map_argmin = np.zeros(Nimages, dtype=int)
-        star_close = np.zeros(Nimages, dtype=bool)
-        for i in range(Nimages):
-            try:
-                chi2_map_argmin[i] = np.nanargmin(chi2_map[:,i], axis=0)
-                star_close[i] = True
-            except:
-                star_close[i] = False
+        wmin = len(spectra) // 4
+        wmax = 3 * len(spectra) // 4
+        QT_broadband, R_broadband = couplingMap.compute_broadband_QR(wmin, wmax, spectra)
 
+        QTdata = couplingMap.QT_dot_data(star_index, datacube_T)
 
 #%%
+
+        Nimages = QTdata.shape[2]
+        Nqr = couplingMap.Nqr
+        QTdata_star_removed = np.zeros_like(QTdata)
+        R = couplingMap.R * spectra[None,:,None,None]
+        R_dxy = np.zeros((Nwave, Nqr, Nimages, 2))
+
+
+        for i in tqdm(range(Nimages), desc="Computing XY positions"):
+            t = star_index[i]
+            center = couplingMap.position[t]
+
+            QTdata_broadband = QT_broadband[t] @ QTdata[wmin:wmax,:,i].ravel()
+            
+            if Nqr == 6:
+                x_hat_broadband, y_hat_broadband, k_hat_broadband, chi2_broadband, _ = runlib_linalg.fit_QR_6(QTdata_broadband, R_broadband[t])
+            else:
+                x_hat_broadband, y_hat_broadband, k_hat_broadband, chi2_broadband, _ = runlib_linalg.solve_QR_3(QTdata_broadband, R_broadband[t])
+
+            if Nqr == 6:
+                v = np.array([1.0, x_hat_broadband, y_hat_broadband, x_hat_broadband*y_hat_broadband, x_hat_broadband**2, y_hat_broadband**2])
+                dv_dx = np.array([0.0, 1.0, 0.0, y_hat_broadband, 2.0*x_hat_broadband, 0.0])
+                dv_dy = np.array([0.0, 0.0, 1.0, x_hat_broadband, 0.0, 2.0*y_hat_broadband])
+            else:
+                v = np.array([1.0, x_hat_broadband, y_hat_broadband])
+                dv_dx = np.array([0.0, 1.0, 0.0])
+                dv_dy = np.array([0.0, 0.0, 1.0])
+
+            r = R[t] @ v
+            Kernel_v = np.identity(len(v)) - (r[:,:,None] @ r[:,None]) / (r[:,None] @ r[:,:,None])
+            QTdata_star_removed[:,:,i] = (Kernel_v @ QTdata[:,:,i,None])[...,0]
+
+            dev_phi = np.array((dv_dx,dv_dy)).T
+            R_dxy[:,:,i] = Kernel_v @ (R[t] @ dev_phi)
+
+
+        data_star_removed = couplingMap.Q_dot_QTdata(star_index, QTdata_star_removed)
+
+        xy_dev = np.linalg.pinv(R_dxy.reshape((Nwave,-1,2))) @ QTdata_star_removed.reshape((Nwave,-1,1))
+        xy_dev = xy_dev[...,0]
+
+#%%
+            xy_dev = (np.linalg.pinv(R_dxy[:,:,i]) @ QTdata_dxy[:,:,i,None])[...,0]
+
+            X_wave[:,i] = xy_dev[:,0]
+            Y_wave[:,i] = xy_dev[:,1]
+
+            Xpos.ravel()[i] = x_hat_broadband
+            Ypos.ravel()[i] = y_hat_broadband
+
+            Xcen.ravel()[i] = center[0]
+            Ycen.ravel()[i] = center[1]
+
+            Xdiff.ravel()[i] = x_hat_broadband + center[0] - xmod.ravel()[i]
+            Ydiff.ravel()[i] = y_hat_broadband + center[1] - ymod.ravel()[i]
+
+#%%
+
+
+
         for i in tqdm(range(Nimages), desc="Calculating residuals of the 3D image"):
             if star_close[i]:
                 t = chi2_map_argmin[i]

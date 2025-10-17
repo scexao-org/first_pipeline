@@ -15,7 +15,7 @@ def svd_subspace(X, k, center=True):
     V = Vt[:k].T
     var = S**2
     explained = var / var.sum() if var.sum() > 0 else np.zeros_like(var)
-    model = {"mu": mu, "V": V, "S": S, "explained_var_ratio": explained, "k": int(k), "center": bool(center)}
+    model = {"mu": mu, "U": U ,"V": V, "S": S, "explained_var_ratio": explained, "k": int(k), "center": bool(center)}
     return model, Xc
 
 def project(X, model):

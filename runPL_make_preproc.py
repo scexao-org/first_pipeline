@@ -33,7 +33,7 @@ from collections import defaultdict
 import time
 from astroplan import Observer
 from astropy.time import Time
-from runPL_class_pixelmap import PixelMap
+from runPL_class_pixelMap import PixelMap
 
 subaru = Observer.at_site("Subaru")
 now_time = Time.now()

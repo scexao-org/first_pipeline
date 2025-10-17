@@ -30,6 +30,28 @@ subaru = Observer.at_site("Subaru")
 plt.ion()
 
 
+def make_image_grid(ra_dec, Npixels):
+    """
+    Generate a grid for image reconstruction based on the coupling map positions.
+    This function creates a 2D grid for interpolation, which can be used to reconstruct
+    an image from the coupling map data. The grid is defined based on the x and y 
+    positions of the coupling map, with optional modifications using `xmod` and `ymod`.
+    Parameters:
+        ra_dec (numpy.ndarray): Array of shape (..., 2) containing x and y positions.
+        Npixels (int): The number of pixels along each dimension of the grid.
+    Returns:
+        tuple: A tuple containing two 2D arrays (`grid_x`, `grid_y`) representing the 
+                x and y coordinates of the grid.
+    """
+
+
+    xmin, xmax   = np.min(ra_dec[..., 0]), np.max(ra_dec[..., 0])
+    ymin, ymax   = np.min(ra_dec[..., 1]), np.max(ra_dec[..., 1])
+    grid_x, grid_y = np.mgrid[xmin:xmax:Npixels*1j, ymin:ymax:Npixels*1j]
+
+    return grid_x, grid_y
+
+
 # Define a 2D Gaussian function
 def gaussian_2d(xy, amplitude, xo, yo, sigma, offset):
     x, y = xy
@@ -167,7 +189,7 @@ def plot_covariance(flux_2_data_triangles,centers,name):
     correlations = cor_matrix.ravel()
 
     # Scatter plot: correlation vs distance
-    ax[2].plot(distances, correlations,'.', alpha=0.1,  label='Pairs')
+    ax[2].plot(distances[::len(cor_matrix)], correlations[::len(cor_matrix)],'.', alpha=0.3,  label='Pairs')
     ax[2].set_xlabel('Distance between vectors')
     ax[2].set_ylabel('Correlation')
     ax[2].set_title('Correlation vs Distance')
@@ -189,6 +211,23 @@ def plot_covariance(flux_2_data_triangles,centers,name):
 
     ax[2].legend()
     fig.tight_layout()
+
+def plot_R_amplitude(R_triangles,name="triangles"):
+
+    R_amplitude = np.linalg.norm(R_triangles,axis=2)
+    Nxy =  R_amplitude.shape[2] 
+
+    label = ["1","x","y","xy","x2","y2"]
+
+    fig,axs = plt.subplots(Nxy,figsize=(12,6),num="R matrix amplitude "+name,clear=True)
+    fig.suptitle(fig.get_label())
+    for i in range(Nxy):
+        ax=axs[i]
+        im=ax.imshow(R_amplitude[:,:,i],aspect='auto',origin='lower',cmap='viridis',interpolation='none',rasterized=True)
+        if i == Nxy//2:
+            ax.set_ylabel(name+ " number")
+        ax.set_xlabel("Wavelength")
+        fig.colorbar(im,ax=ax,label=label[i])
 
 
 def plot_detector_field(flat, title="Flat Field"):

@@ -158,8 +158,8 @@ class DataCube:
         """
             usa PA to project on sky the modulation
         """
-        x_sky = self.xmod[:,:,None] - couplingMap.position[:,0]
-        y_sky = self.ymod[:,:,None] - couplingMap.position[:,1]
+        x_sky = couplingMap.position[:,0] - self.xmod[:,:,None]
+        y_sky = couplingMap.position[:,1] - self.ymod[:,:,None]
         self.ra_dec = self.project_offsets(x_sky,y_sky)
 
         return self.ra_dec

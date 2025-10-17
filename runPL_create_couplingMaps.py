@@ -36,8 +36,9 @@ from scipy import linalg
 from matplotlib import animation
 from itertools import product
 from scipy.linalg import pinv
-from runPL_class_couplingmap import CouplingMap
-from runPL_class_datacube import DataCube, extract_datalist 
+from runPL_class_couplingMap import CouplingMap
+from runPL_class_dataCube import DataCube, extract_datalist 
+import runPL_library_basic as runlib_basic
 import runPL_library_io as runlib_io
 import runPL_library_plots as runlib_plots
 import runPL_library_linalg as runlib_linalg
@@ -54,6 +55,7 @@ from scipy.ndimage import uniform_filter1d
 
 from scipy.spatial.distance import pdist, squareform
 from scipy.optimize import curve_fit
+import signal
 
 plt.ion()
 
@@ -177,34 +179,6 @@ def compute_flat(flats_with_dark):
         f[:] *= conv_ref / np.convolve(f, window, mode='same') 
 
     return flat
-
-def flux_filtering(flux):
-    
-    # select data only above a threshold based on flux
-    flux_threshold=np.percentile(flux.mean(axis=(2)),80)/5
-    flux_goodData=flux.mean(axis=(2)) > flux_threshold
-    # plt.imshow(flux_goodData)
-    if np.sum(flux_goodData)<57:
-        #too little good data, we need to lower the bar
-        flux_goodData=flux.mean(axis=(2,3)) > flux_threshold/2
-        print("Not enough good data, lowering the threshold to ",flux_threshold/2)
-        flux_goodData=flux.mean(axis=(2)) > flux_threshold
-
-    return flux_goodData,flux_threshold
-
-
-def svd_filtering(datacube,flux_goodData,Nsingular):
-
-    datacube_flux_goodData = datacube[flux_goodData]
-    datacube_flux_goodData = datacube_flux_goodData.reshape((datacube_flux_goodData.shape[0], -1))
-    res = runlib_linalg.robust_subspace(datacube_flux_goodData, k=Nsingular, center=False, k_sigma=2.5, max_refit=1,verbose=True)
-    singular_values = res["model"]["S"][:-1]
-    data_svdfiltered, residuals, errors = runlib_linalg.project(datacube.reshape((datacube.shape[0]*datacube.shape[1], -1)), res["model"])
-    data_svdfiltered = data_svdfiltered.reshape(datacube.shape)
-    fit_goodData = errors.reshape((datacube.shape[0], -1)) < res["threshold"]
-    
-
-    return data_svdfiltered,fit_goodData,errors
 
 
 def singular_vector_basis(data_svdfiltered,goodData,indexes, centers, xmod, ymod):
@@ -375,7 +349,7 @@ if __name__ == "__main__":
 
     # Default values
     wavelength_smooth = 20
-    wavelength_bin = 1
+    wavelength_bin = 10
     Nsingular=19*6 
 
 
@@ -415,7 +389,7 @@ if __name__ == "__main__":
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc/firstpl_2025-08-08T06:4?:??_HIP84212_P.fits"
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc/firstpl_2025-08-08T06:4[3-4]:??_HIP84212_P.fits"
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-3]*TETCRB_P.fits"
-            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?21*TETCRB_P.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?21*TETCRB_P.fits"
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*s"
             # dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
         if getpass.getuser() == "jsarrazin":
@@ -472,9 +446,9 @@ if __name__ == "__main__":
 
     filenames = [d.filename for d in datalist]
 
-    flux_goodData,flux_threshold = flux_filtering(flux)
+    flux_goodData,flux_threshold = runlib_basic.flux_filtering(flux)
 
-    data_svdfiltered,fit_goodData,errors = svd_filtering(datacube,flux_goodData,Nsingular)
+    data_svdfiltered,fit_goodData,errors = runlib_basic.svd_filtering(datacube,flux_goodData,Nsingular)
     goodData = flux_goodData & fit_goodData
 
 
@@ -655,14 +629,25 @@ if __name__ == "__main__":
     runlib_plots.plot_covariance(flux_2_data_triangles,center_triangles,"Triangles")
     runlib_plots.plot_covariance(flux_2_data_pyramids,center_pyramids,"Pyramids")
 
+    R_amplitude = np.linalg.norm(R_pyramids,axis=2)
+
+    label = ["1","x","y","xy","x2","y2"]
+
+    runlib_plots.plot_R_amplitude(R_triangles,name="triangle")
+    runlib_plots.plot_R_amplitude(R_pyramids,name="pyramids")
+
     ###############################################
-    runlib_plots.save_pdf_in_file(output_filename)
 
     print("----------------------------------------------------")
-    print("Coupling Map stored. You can quit by ctrlC")
+    print("Coupling Map stored. You can quit by ctrl+C")
     print("----------------------------------------------------")
     print("Computing now additional health check plots.")
+    def handle_sigint(signum, frame):
+        print("\nCtrl+C detected. Exiting gracefully... after saving plots.")
+        runlib_plots.save_pdf_in_file(output_filename)
+        sys.exit(0)
 
+    signal.signal(signal.SIGINT, handle_sigint)
     for coupling in ["triangles","pyramids"]:
 
         if coupling == "triangles": 
@@ -674,13 +659,9 @@ if __name__ == "__main__":
         R= couplingMap.R * spectra[:,None,None]
         centers = couplingMap.position
 
-        # QT= QT_pyramids
-        # R= R_pyramids * spectra[:,None,None]
-        # centers = center_pyramids   
-
         wmin = QT.shape[1] // 4
         wmax = 3 * QT.shape[1] // 4
-        QT_broadband, R_broadband = couplingMap.compute_broadband_QR(wmin, wmax)
+        QT_broadband, R_broadband = couplingMap.compute_broadband_QR(wmin, wmax, spectra)
         
 
         datacube=np.concatenate([d.data for d in datalist])
@@ -809,7 +790,7 @@ if __name__ == "__main__":
         
         plt.tight_layout()
 
-        runlib_plots.save_pdf_in_file(output_filename)
+    runlib_plots.save_pdf_in_file(output_filename)
 
 
 # %%

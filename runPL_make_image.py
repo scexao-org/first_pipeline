@@ -30,9 +30,9 @@ from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
 from tqdm import tqdm
 import runPL_library_io as runlib
-import runPL_library_plots as runlib_i
-from runPL_class_datacube import DataCube
-from runPL_class_couplingmap import CouplingMap
+import runPL_library_plots as runlib_plots
+from runPL_class_dataCube import DataCube, extract_datalist
+from runPL_class_couplingMap import CouplingMap
 
 from astropy.io import fits
 from astroplan import Observer
@@ -166,28 +166,6 @@ def filter_couplingmapfile(filelist_cmap):
 
     return filelist_cmap
 
-def make_image_grid(ra_dec, Npixels):
-    """
-    Generate a grid for image reconstruction based on the coupling map positions.
-    This function creates a 2D grid for interpolation, which can be used to reconstruct
-    an image from the coupling map data. The grid is defined based on the x and y 
-    positions of the coupling map, with optional modifications using `xmod` and `ymod`.
-    Parameters:
-        ra_dec (numpy.ndarray): Array of shape (..., 2) containing x and y positions.
-        Npixels (int): The number of pixels along each dimension of the grid.
-    Returns:
-        tuple: A tuple containing two 2D arrays (`grid_x`, `grid_y`) representing the 
-                x and y coordinates of the grid.
-    """
-
-
-    xmin, xmax   = np.min(ra_dec[..., 0]), np.max(ra_dec[..., 0])
-    ymin, ymax   = np.min(ra_dec[..., 1]), np.max(ra_dec[..., 1])
-    grid_x, grid_y = np.mgrid[xmin:xmax:Npixels*1j, ymin:ymax:Npixels*1j]
-
-    return grid_x, grid_y
-
-
 
 def quick_fits(data, title=""):
     if DEBUG:
@@ -293,7 +271,7 @@ if __name__ == "__main__":
     #clean and sum all data
 
 
-    datalist=runlib_i.extract_datacube(files_with_dark,Nsmooth=wavelength_smooth,Nbin=couplingMap.wavelength_bin,flat = couplingMap.flat)
+    datalist : list[DataCube]=extract_datalist(files_with_dark,Nsmooth=wavelength_smooth,Nbin=couplingMap.wavelength_bin,flat = couplingMap.flat)
 
    
     for i,d in enumerate(datalist):
@@ -323,7 +301,6 @@ if __name__ == "__main__":
         chi2_max = np.sum(datacube_T**2, axis=(0,1))
 
         chi2_map = np.zeros((Npos, Nimages))
-        chi2_map = np.zeros((Npos, Nimages))
         chi2_map[:] =  chi2_max
         # gram_fluxtiptilt_inv =np.zeros_like(gram_fluxtiptilt)
         # for t in range(Ntriangles):
@@ -334,7 +311,7 @@ if __name__ == "__main__":
             chi2_map[t,:] -= np.sum(k ** 2, axis=(0,1))
         
         Npixel = 150
-        grid_x, grid_y = make_image_grid(ra_dec, Npixel)
+        grid_x, grid_y = runlib_plots.make_image_grid(ra_dec, Npixel)
 
         chi2_images = []
         for i in tqdm(range(Nimages), desc="Calculating chi2 images"):
@@ -378,7 +355,7 @@ if __name__ == "__main__":
         def make_image_using_grid(ra_dec, fluxes, Npixels=150, desc = None):
 
             Npixel = 150
-            grid_x, grid_y = make_image_grid(ra_dec, Npixel)
+            grid_x, grid_y = runlib_plots.make_image_grid(ra_dec, Npixel)
 
             flux_maps = []
             if desc is None:
