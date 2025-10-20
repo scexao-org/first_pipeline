@@ -449,7 +449,7 @@ if __name__ == "__main__":
         # Add labels on the contours
         axes[1,1].clabel(CS, fmt=fmt, inline=True, fontsize=10, colors='white')
 
-        fig.colorbar(im3, ax=axes[1,1], orientation='vertical', label='5 sigma Contrast (e-/s)')
+        fig.colorbar(im3, ax=axes[1,1], orientation='vertical', label='5 sigma Contrast ratio')
 
         # Overlay decade contours for contrast (0.1, 0.01, 0.001, ...)
 
