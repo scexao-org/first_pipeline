@@ -238,3 +238,25 @@ def plot_detector_field(flat, title="Flat Field"):
     ax_flat.set_ylabel("Output Index (pixels)")
     fig.colorbar(im_flat, ax=ax_flat, label="Field Value")
     fig.tight_layout()
+
+
+def make_image_using_grid(ra_dec, fluxes, Npixels=150, desc = None):
+
+    Nimages = fluxes.shape[2]
+    grid_x, grid_y = make_image_grid(ra_dec, Npixels)
+
+    flux_maps = []
+    if desc is None:
+        for i in range(Nimages):
+                # Interpolate the fluxes onto the grid
+                flux_map = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), fluxes[:,:,i].sum(axis=0), (grid_x, grid_y), method='cubic')
+                flux_maps += [flux_map]
+    else:
+        for i in tqdm(range(Nimages), desc=desc):
+                # Interpolate the fluxes onto the grid
+                flux_map = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), fluxes[:,:,i].sum(axis=0), (grid_x, grid_y), method='cubic')
+                flux_maps += [flux_map]
+    flux_maps = np.array(flux_maps)
+
+    return flux_maps
+        

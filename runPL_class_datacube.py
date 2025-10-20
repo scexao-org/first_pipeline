@@ -158,8 +158,8 @@ class DataCube:
         """
             usa PA to project on sky the modulation
         """
-        x_sky = couplingMap.position[:,0] - self.xmod[:,:,None]
-        y_sky = couplingMap.position[:,1] - self.ymod[:,:,None]
+        x_sky = self.xmod[:,:,None] - couplingMap.position[:,0]
+        y_sky = self.ymod[:,:,None] - couplingMap.position[:,1]
         self.ra_dec = self.project_offsets(x_sky,y_sky)
 
         return self.ra_dec
@@ -322,7 +322,7 @@ def extract_datalist(files_with_dark, Nsmooth = 1, Nbin = 1, flat = None, center
         data-=data_dark
         gain=header['GAIN']
         data_dark_var=data_dark_std**2
-        data_var=data_dark_var+gain*np.abs(data)
+        data_var=data_dark_var+gain*np.abs(data)+0.05*np.abs(data)**2
 
         dataCube = DataCube(data, data_var, data_dark, data_dark_var, data_file, header)
 

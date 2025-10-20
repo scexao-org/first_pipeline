@@ -111,10 +111,16 @@ class CouplingMap:
         chi2_images = []
         for i in tqdm(range(Nimages), desc="Calculating chi2 images"):
                 # Interpolate the fluxes onto the grid
-            chi2_image = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), chi2_map[:,i], (grid_x, grid_y), method='nearest')
+            # chi2_image = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), chi2_map[:,i], (grid_x, grid_y), method='nearest')
+            chi2_image = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), chi2_map[:,i], (grid_x, grid_y), method='cubic')
             chi2_images.append(chi2_image)
 
         chi2_images = np.array(chi2_images)
+
+
+        for i in range(Nimages):
+            point_nan = np.isnan(chi2_images[i])
+            chi2_images[i,point_nan]=np.nanmax(chi2_images[i])
 
         chi2_images_argmin = np.nansum(chi2_images,axis=0).argmin()
         star_radec = np.array((grid_x.ravel()[chi2_images_argmin], grid_y.ravel()[chi2_images_argmin]))
@@ -139,6 +145,6 @@ class CouplingMap:
 
         chi2_goodData &= (chi2_min < chi2_min_threshold) & (chi2_ratio < chi2_ratio_threshold)
 
-        star_index = chi2_map_argmin
         star_detected = chi2_goodData
-        return star_detected, star_index, star_radec
+        star_index = chi2_map_argmin
+        return star_detected, star_index, star_radec, chi2_images

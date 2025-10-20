@@ -244,6 +244,10 @@ if __name__ == "__main__":
             # cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/../couplingmaps/firstpl_2025-05-10T09:21:23_TETCRBCM.fits"
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-3]*TETCRB_P.fits"
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?21*TETCRB_P.fits"
+            # Mathias Binary
+            cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/../couplingmaps/firstpl_2025-05-14T11:39:58_HIP85819_CM.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T10:10?*s"
+            dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
 
 
         if getpass.getuser() == "ehuby" :
@@ -283,9 +287,9 @@ if __name__ == "__main__":
     datalist : list[DataCube]=extract_datalist(files_with_dark,Nsmooth=wavelength_smooth,Nbin=couplingMap.wavelength_bin,flat = couplingMap.flat)
 
     for i,d in enumerate(datalist):
-        pass
+    #     pass
 
-    if True:
+    # if True:
 
         flux = d.flux
         datacube= d.data 
@@ -314,7 +318,7 @@ if __name__ == "__main__":
         ra_dec=ra_dec[goodData]
         flux=flux[goodData]
 
-        star_detected, star_index, star_radec = couplingMap.chi2_filtering(datacube_T, ra_dec)
+        star_detected, star_index, star_radec, _ = couplingMap.chi2_filtering(datacube_T, ra_dec)
         print(f"* Percentage of good data: {np.sum(star_detected)/Nimages*100:.1f} % (flux, svd and chi2 threshold)")
 
 
@@ -330,8 +334,6 @@ if __name__ == "__main__":
         QT_broadband, R_broadband = couplingMap.compute_broadband_QR(wmin, wmax, spectra)
 
         QTdata = couplingMap.QT_dot_data(star_index, datacube_T)
-
-#%%
 
         Nimages = QTdata.shape[2]
         Nqr = couplingMap.Nqr
@@ -373,107 +375,14 @@ if __name__ == "__main__":
         xy_dev = np.linalg.pinv(R_dxy.reshape((Nwave,-1,2))) @ QTdata_star_removed.reshape((Nwave,-1,1))
         xy_dev = xy_dev[...,0]
 
-#%%
-            xy_dev = (np.linalg.pinv(R_dxy[:,:,i]) @ QTdata_dxy[:,:,i,None])[...,0]
-
-            X_wave[:,i] = xy_dev[:,0]
-            Y_wave[:,i] = xy_dev[:,1]
-
-            Xpos.ravel()[i] = x_hat_broadband
-            Ypos.ravel()[i] = y_hat_broadband
-
-            Xcen.ravel()[i] = center[0]
-            Ycen.ravel()[i] = center[1]
-
-            Xdiff.ravel()[i] = x_hat_broadband + center[0] - xmod.ravel()[i]
-            Ydiff.ravel()[i] = y_hat_broadband + center[1] - ymod.ravel()[i]
-
-#%%
-
-
-
-        for i in tqdm(range(Nimages), desc="Calculating residuals of the 3D image"):
-            if star_close[i]:
-                t = chi2_map_argmin[i]
-                data = datacube_T[:, :, i]
-                QT = couplingMap.QT[t]
-                R = couplingMap.R[t]
-                res = np.zeros((Nwave, 4))
-                for w in range(Nwave):
-                    res[w] = fit_QR(datacube_T[w,:,i], QT[w], R[w],init=(-1.5,-3.9))
-                center = couplingMap.position[t]
-
-                res[:,0] += center[0]
-                res[:,1] += center[1]
-
-        
-        fluxes = np.matmul(couplingMap.data_2_flux, datacube_T)/d.dit*d.gain
-        fluxes_residuals = np.matmul(couplingMap.data_2_flux, residuals)/d.dit*d.gain
-
-    #%%
-
-        # Define the grid for interpolation
-        # calcul de la grille de l'image que l'on souhaite reconstruire
-        # if it is for a quick look of the real time display, use xmod=ymod=0
-
-        def make_image_using_grid(ra_dec, fluxes, Npixels=150, desc = None):
-
-            Npixel = 150
-            grid_x, grid_y = basic.make_image_grid(ra_dec, Npixel)
-
-            flux_maps = []
-            if desc is None:
-                for i in range(Nimages):
-                        # Interpolate the fluxes onto the grid
-                        flux_map = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), fluxes[:,:,i].sum(axis=0), (grid_x, grid_y), method='cubic')
-                        flux_maps += [flux_map]
-            else:
-                for i in tqdm(range(Nimages), desc=desc):
-                        # Interpolate the fluxes onto the grid
-                        flux_map = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), fluxes[:,:,i].sum(axis=0), (grid_x, grid_y), method='cubic')
-                        flux_maps += [flux_map]
-            flux_maps = np.array(flux_maps)
-        
-            return flux_maps
-        
-
-        flux_maps = make_image_using_grid(ra_dec, fluxes, desc="Creating flux maps")
-        flux_maps_residuals = make_image_using_grid(ra_dec, fluxes_residuals, desc="Creating flux residuals")
-        flux_maps_sum = np.nanmean(flux_maps, axis=0)
-        flux_maps_residuals_sum = np.nanmean(flux_maps_residuals, axis=0)
-
         header = d.header
-        header['X_FIRTYP'] = 'IMAGE'
+        header['X_FIRTYP'] = 'ASTROMETRY'
 
         list_of_hdus = []
         # Create a primary HDU with the data
-        hdu_primary = fits.PrimaryHDU(flux_maps_sum)
-        hdu_residual = fits.ImageHDU(flux_maps_residuals_sum, name="RESIDUAL")
+        hdu_primary = fits.PrimaryHDU(xy_dev)
+        hdu_residual = fits.ImageHDU(xy_dev, name="RESIDUAL")
         list_of_hdus += [hdu_primary, hdu_residual]
-
-        # Create a primary HDU with no data, just the header
-        if save_individual_frames:
-            hdu_frame = fits.ImageHDU(flux_maps, name="FRAMES")
-            hdu_frame_residual = fits.ImageHDU(flux_maps_residuals, name="FRAMES_RESIDUAL")
-            list_of_hdus += [hdu_frame, hdu_frame_residual]
-
-        if save_individual_wavelength:
-            flux_maps_wave = []
-            residuals_maps_wave = []
-
-            for w in tqdm(range(Nwave), desc="Creating wavelength slices"):
-                flux_maps_tmp = make_image_using_grid(ra_dec, fluxes[w,None])
-                flux_maps_residuals_tmp = make_image_using_grid(ra_dec, fluxes_residuals[w,None])
-                flux_maps_sum = np.nanmean(flux_maps_tmp, axis=0)
-                flux_maps_residuals_sum = np.nanmean(flux_maps_residuals_tmp, axis=0)
-
-                flux_maps_wave.append(flux_maps_sum)
-                residuals_maps_wave.append(flux_maps_residuals_sum)
-
-            hdu_wave = fits.ImageHDU(flux_maps_wave, name="3D_IMAGE")
-            hdu_wave_residual = fits.ImageHDU(residuals_maps_wave, name="3D_IMAGE_RESIDUAL")
-            list_of_hdus += [hdu_wave, hdu_wave_residual]
-            header['X_FIRTYP'] = 'WDIMAGE'
 
 
         # Add date and time to the header
@@ -483,11 +392,8 @@ if __name__ == "__main__":
         # Add input parameters to the header
         header['WLSMOOTH'] = wavelength_smooth  # Add wavelength smoothing factor
 
-        # Définir le chemin complet du sous-dossier "images"
-        output_dir = os.path.join(d.dirname,"../images")
-
-        #if os.path.exists(output_dir) and os.path.isdir(output_dir):
-        #    shutil.rmtree(output_dir)
+        # Définir le chemin complet du sous-dossier "astrometry"
+        output_dir = os.path.join(d.dirname,"../astrometry")
 
         # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
         os.makedirs(output_dir, exist_ok=True)
@@ -501,101 +407,6 @@ if __name__ == "__main__":
 
         # Write to a FITS file
         hdul.writeto(output_filename, overwrite=True)
-        print(f"Image saved to {output_filename}")
-
-        # Plot flux_maps_sum and flux_maps_residuals_sum side by side
-        fig, axes = plt.subplots(1, 2, num="Flux Maps", figsize=(12, 5.6), clear=True)
-        im0 = axes[0].imshow(flux_maps_sum[::-1].T, origin='lower', aspect='auto',
-                     extent=[grid_x.max(), grid_x.min(), grid_y.min(), grid_y.max()],vmin=0)
-        axes[0].set_title('Flux Map')
-        axes[0].set_xlabel('RA (mas)')
-        axes[0].set_ylabel('Dec (mas)')
-        fig.colorbar(im0, ax=axes[0], orientation='vertical', label='Flux (e-/s)')
-
-        im1 = axes[1].imshow(flux_maps_residuals_sum[::-1].T, origin='lower', aspect='auto',
-                     extent=[grid_x.max(), grid_x.min(), grid_y.min(), grid_y.max()],vmin=0)
-        axes[1].set_title('Flux Residuals')
-        axes[1].set_xlabel('RA (mas)')
-        axes[1].set_ylabel('Dec (mas)')
-        fig.colorbar(im1, ax=axes[1], orientation='vertical', label='Residual Flux (e-/s)')
-
-
-        N_middle=np.linalg.norm((d.xmod,d.ymod),axis=0).argmin()
-        for i in range(2):
-            axes[i].plot(star_positions[0], star_positions[1], 'rx', markersize=10, label='Star Position')
-            axes[i].plot(d.x_object, d.y_object, 'kx', markersize=5, label='PL center position',alpha=0.5)
-
-            fov_large = np.isnan(flux_maps_sum)
-            fov_small = np.isnan(flux_maps[N_middle])
-            # Overlay contours for the two FOVs
-            # Overlay contours for the two FOVs
-            axes[i].contour(grid_x, grid_y, fov_large, levels=[0.5], colors='k', linewidths=1)
-            axes[i].contour(grid_x, grid_y, fov_small, levels=[0.5], colors='w', linewidths=0.1, linestyles='solid', label='FOV')
-
-        axes[i].legend()
-        fig.suptitle(f"{d.basename} : {Ncube} x {Nmod} x {d.dit:.3f}s - RA = {d.x_object:.2f}, Dec = {d.y_object:.2f}", fontsize=16)
-        axes[0].set_aspect('equal')
-        axes[1].set_aspect('equal')
-        plt.tight_layout(rect=[0, 0, 1, 0.95])
-        png_filename = os.path.join(output_dir, runlib.create_output_filename(header).replace('.fits', '.png'))
-        plt.savefig(png_filename, dpi=150)
-        print(f"PNG image saved to {png_filename}")
-        # plt.close(fig)
-# %%
-        separation = np.linalg.norm(ra_dec,axis=2).ravel()
-        we = fluxes.mean(axis=0).T.ravel()
-        we2 = fluxes_residuals.mean(axis=0).T.ravel()
-
-        # Smooth 'we' as a function of 'separation' using a moving average
-        window_size = 100  # Adjust window size for smoothing
-        sort_idx = np.argsort(separation)
-        separation_sorted = separation[sort_idx]
-        we_sorted = we[sort_idx]
-        we2_sorted = we2[sort_idx]
-
-        # Apply moving average
-        def moving_average(x, y, window):
-            y_smooth = np.convolve(y, np.ones(window)/window, mode='same')
-            return x, y_smooth
-
-        sep_smooth, we_smooth = moving_average(separation_sorted, we_sorted, window_size)
-        sep2_smooth, we2_smooth = moving_average(separation_sorted, we2_sorted, window_size)
-
-
-        we_sorted/=we_sorted.max()
-        we2_smooth/=we_smooth.max()
-        we_smooth/=we_smooth.max()
-
-        plt.figure("Flux vs separation", figsize=(8, 5),clear=True)
-        plt.plot(separation_sorted, we_sorted, '.', alpha=0.3, label='Raw')
-        plt.plot(sep_smooth, we_smooth, '-', color='r', linewidth=2, label='Smoothed')
-        plt.plot(sep_smooth, we2_smooth, '-', color='g', linewidth=2, label='Smoothed Residuals',alpha=0.5)
-        plt.xlabel('Separation')
-        plt.ylabel('Contrast ratio')
-        plt.title('Flux vs separation (HIP81126), 22s exposure')
-        plt.yscale("log")
-        # plt.xscale("log")
-        plt.ylim(1e-2, 1)
-        plt.xlim(10, 160)
-        plt.legend()
-        plt.tight_layout()
-        plt.show()
-
-        # Add a vertical arrow at 70 mas separation and label it "HIP81126B"
-        arrow_x = 70
-        arrow_y_start = 0.5
-        arrow_y_end = 0.1
-        plt.annotate(
-            'HIP81126B',
-            xy=(arrow_x, arrow_y_end),
-            xytext=(arrow_x, arrow_y_start),
-            arrowprops=dict(facecolor='black', shrink=0.05, width=2, headwidth=8),
-            ha='center',
-            va='bottom',
-            fontsize=12,
-            color='black'
-        )
-
-        plt.savefig("flux_vs_separation_HIP81126.pdf")
+        print(f"AAstrometry saved to {output_filename}")
 
 # %%

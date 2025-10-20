@@ -388,9 +388,9 @@ if __name__ == "__main__":
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*fits"
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc/firstpl_2025-08-08T06:4?:??_HIP84212_P.fits"
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc/firstpl_2025-08-08T06:4[3-4]:??_HIP84212_P.fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-3]*TETCRB_P.fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?21*TETCRB_P.fits"
-            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*s"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-3]*TETCRB_P.fits"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?21*TETCRB_P.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*s"
             # dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
@@ -447,9 +447,11 @@ if __name__ == "__main__":
     filenames = [d.filename for d in datalist]
 
     flux_goodData,flux_threshold = runlib_basic.flux_filtering(flux)
+    print(f"* Percentage of good data: {np.sum(flux_goodData)/len(flux_goodData)*100:.1f} % (flux threshold)")
 
     data_svdfiltered,fit_goodData,errors = runlib_basic.svd_filtering(datacube,flux_goodData,Nsingular)
     goodData = flux_goodData & fit_goodData
+    print(f"* Percentage of good data: {np.sum(goodData)/len(goodData)*100:.1f} % (flux and svd threshold)")
 
 
     runlib_plots.plot_flux_map(flux.mean(axis=(2))[0], xmod[0], ymod[0])
