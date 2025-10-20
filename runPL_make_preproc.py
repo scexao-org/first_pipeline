@@ -79,14 +79,99 @@ Notes:
 
 
 def preprocess(files_with_pixelmap, plot_sum =False):
-    """
-    Preprocesses the data files using the provided pixel map and organizes them by directory.
-    This function handles the preprocessing of raw data files, applying the pixel map to extract
-    relevant pixel data, and saves the processed data along with diagnostic figures.
-    Args:
-        filelist_pixelmap (list): A list containing the pixel map file(s).
-        files_by_dir (dict): A dictionary where keys are directory paths and values are lists of
-                             raw data files in those directories.
+    """""
+    Preprocesses raw FITS files using provided pixel map(s), extracts and aggregates spectral
+    traces, computes basic quality-control metrics, and writes preprocessed FITS files and
+    diagnostic PNG figures into a per-directory "preproc" folder.
+    This function is designed to be run on a mapping of individual raw file paths to their
+    corresponding pixel map files. Each raw file is processed independently (but results are
+    aggregated for optional summary plotting). The function will skip processing for files
+    that already have a preprocessed output with a matching pixel-map check value (PM_CHECK),
+    unless the presence/absence of a MODULATION extension implies further processing is required.
+    Parameters
+    ----------
+    files_with_pixelmap : dict
+        Mapping of raw FITS file path -> pixel map file path. Each key is a path to a raw
+        FITS file and the corresponding value is the pixel map filename used to extract traces.
+    plot_sum : bool, optional
+        If True, a summary PNG showing the vertical offset of extracted windows across all
+        processed files will be produced and saved into the last processed directory's
+        preproc folder. Default is False.
+    Returns
+    -------
+    list
+        A list of output filenames (basename of created preprocessed FITS files) that were
+        created during this call. If no files were processed, an empty list is returned.
+    Side effects
+    ------------
+    - Creates a "preproc" subdirectory next to each input file's directory if it does not
+      already exist.
+    - Writes one preprocessed FITS file per input file into that "preproc" directory.
+    - Writes diagnostic PNG(s) for each file (trace figure and optional coupling/flux map)
+      and an optional summary PNG when plot_sum is True.
+    - Modifies/creates FITS headers inside the output files to record provenance and QC
+      metrics.
+    - May read a MODULATION HDU from the original file and append it to the output HDUList.
+    FITS header keys added or modified in the output primary HDU
+    ------------------------------------------------------------
+    Provenance / processing info:
+    - X_FIRTYP   : "PREPROC"
+    - X_FIRWOL   : copied from original header (fallback 'IN')
+    - X_FIRMID   : original X_FIRMID cast to int (used to decide on MODULATION handling)
+    - DATE-PRO   : processing timestamp (YYYY-MM-DDThh:mm:ss)
+    - ORG_NAME   : basename of the original raw file
+    - PM_FILE    : path to the pixel map file used
+    - PM_CHECK   : pixel map check value (from PixelMap.pm_check)
+    Pixel-map / extraction parameters:
+    - PIX_MIN, PIX_MAX, PIX_WIDE : integers describing extraction window limits and width
+    - OUT_CHAN   : number of output channels / traces
+    Quality-control (QC) metrics (stored as Q_P_* keys):
+    - Q_P_CENT   : integer pixel index of the extracted window center (relative to window)
+    - Q_P_BACK   : background level (median estimate)
+    - Q_P_BACN   : background noise estimate (approx 1-σ equivalent)
+    - Q_P_FLUX   : mean extracted flux (background-subtracted) used for diagnostics
+    - Q_P_NAME   : output filename (basename) for cross-reference
+    Modulation-related:
+    - MOD_LEN    : length (NAXIS2) of the MODULATION HDU if present; the MODULATION HDU
+                   is copied into the output file when appropriate.
+    Additional:
+    - Any header keywords from the pixel map header starting with 'P_PM' are copied into
+      the output header to preserve pixel-map metadata.
+    Note about FITS header comments
+    -------------------------------
+    - A human-readable comment should be inserted for important header keywords to aid users
+      inspecting the file (for example, describing the meaning of PM_CHECK or Q_P_NAME).
+      Example TODO: add a FITS header comment for 'PM_CHECK' explaining that it is the
+      pixel-map checksum/version used to decide whether an existing preprocessed file
+      matches the pixel map. (Insert the comment using the fits header comment parameter
+      when setting the header keyword.)
+    Behavioral details and heuristics
+    --------------------------------
+    - If the raw FITS file data is 2D, it will be treated as a single frame (added a leading
+      frame axis). If already multi-frame (3D), it is processed as-is.
+    - The function computes a summed "raw_image" to produce a trace-location diagnostic
+      figure via runlib_io.make_figure_of_trace and saves it alongside the preprocessed file.
+    - PixelMap.preprocess_cutData is used to extract the per-trace pixel arrays and dark
+      pixels; background percentiles and per-channel flux statistics are computed from
+      these arrays for QC.
+    - If X_FIRMID indicates newer-format data and the original file contains a MODULATION
+      extension, that extension is attached to the output file and a coupling map figure
+      may be produced (requires sufficient modulation points).
+    - Files are skipped if an existing output file is present with the same PM_CHECK and
+      (when relevant) matching presence/absence of the MODULATION extension; this avoids
+      redundant re-processing.
+    Errors and exceptions
+    ---------------------
+    - The function relies on valid FITS files and a valid PixelMap implementation. IO/reading
+      errors will propagate from astropy.io.fits and from filesystem operations (os.path,
+      os.makedirs). The caller may want to catch and handle these exceptions (e.g. FileNotFoundError,
+      OSError, astropy.io.fits-related errors) depending on usage.
+    Notes
+    -----
+    - The function writes FITS outputs with overwrite=True and output_verify='fix' and
+      checksum=True to provide consistent checksums in produced files.
+    - The pixelmap copy-to-preproc step is present but commented out in the implementation;
+      re-enable if a local copy of the pixelmap inside preproc is desired.
     """
 
     center_image = None
@@ -190,11 +275,12 @@ def preprocess(files_with_pixelmap, plot_sum =False):
         comp_hdu = fits.PrimaryHDU(data_cut, header=header)
 
         # Add quality control values to header with the values read in the header above
-        comp_hdu.header['P_P_CENT'] = centered
-        comp_hdu.header['P_P_BACK'] = perc_background[1]
-        comp_hdu.header['P_P_BACN'] = (perc_background[2]-perc_background[0])/2*np.sqrt(2)
-        comp_hdu.header['P_P_FLUX'] = flux_mean
-        comp_hdu.header['P_P_NAME'] = output_filename
+        comp_hdu.header['Q_P_CENT'] = (centered, 'center of extracted window (pixel index)')
+        comp_hdu.header['Q_P_BACK'] = (perc_background[1],'average background detected')
+        comp_hdu.header['Q_P_BACN'] = ((perc_background[2]-perc_background[0])/2*np.sqrt(2), 'background noise estimate')
+        # Quality control: mean extracted flux (background-subtracted) stored for diagnostics
+        comp_hdu.header['Q_P_FLUX'] = (flux_mean, 'mean extracted flux per pixel (background-subtracted)')    
+        comp_hdu.header['Q_P_NAME'] = (output_filename, 'output filename of preprocessed data')
 
         pmhd= pixelMap.header
         #add all headers keywords from pmhd that starts with P_PM to comp_hdu.header

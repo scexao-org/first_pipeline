@@ -527,16 +527,16 @@ if __name__ == "__main__":
         header['DATE'] = current_time
 
     # Add input parameters to the header
-    header['P_CMWSMO'] = wavelength_smooth  # Add wavelength smoothing factor
-    header['P_CMWBIN'] = wavelength_bin
-    header['P_CMSING'] = Nsingular  # Add number of singular values
-    header['P_CM_FT'] = flux_threshold  # Add flux threshold
+    header['Q_CMWSMO'] = (wavelength_smooth,  'wavelength smoothing factor')
+    header['Q_CMWBIN'] = (wavelength_bin, 'wavelength binning factor')
+    header['Q_CMSING'] = (Nsingular, 'number of singular values')
+    header['Q_CM_FT'] = (flux_threshold, 'flux threshold')
     # header['CHI2THR'] = chi2_threshold  # Add chi2 threshold
-    header['P_CM_CK'] = np.random.randint(0, 2**32, dtype=np.uint32)
+    header['Q_CM_CK'] = (np.random.randint(0, 2**32, dtype=np.uint32), 'checksum')
     for i, filename in enumerate(filenames):
-        header['P_CM_F%i' % i] = filename
+        header['Q_CM_F%i' % i] = (filename, 'filename of the extracted flux')
 
-    header['P_CMNAME'] = runlib_io.create_output_filename(header)
+    header['Q_CMNAME'] = (runlib_io.create_output_filename(header), 'name of the coupling map file')
 
     # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
     os.makedirs(output_dir, exist_ok=True)
@@ -546,7 +546,7 @@ if __name__ == "__main__":
     # Combine all HDUs into an HDUList
     hdul = fits.HDUList([hdu_primary, *hdu, modulation_hdu])
 
-    output_filename = os.path.join(output_dir, runlib_io.create_output_filename(header))
+    output_filename = os.path.join(output_dir, header['Q_CMNAME'])
 
     # Write to a FITS file
     print(f"Saving data to {output_filename}")

@@ -276,13 +276,13 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
         header['DATE'] = current_time
 
     # Add input parameters to the header
-    header['P_PMXMIN'] = pixel_min
-    header['P_PMXMAX'] = pixel_max
-    header['P_PMWIDE'] = pixel_wide
-    header['P_PMCHAN'] = output_channels
-    header['P_PM_CK'] = np.random.randint(0, 2**32, dtype=np.uint32)
+    header['Q_PMXMIN'] = pixel_min
+    header['Q_PMXMAX'] = pixel_max
+    header['Q_PMWIDE'] = pixel_wide
+    header['Q_PMCHAN'] = output_channels
+    header['Q_PM_CK'] = np.random.randint(0, 2**32, dtype=np.uint32)
     basename = runlib_io.create_output_filename(header)
-    header['P_PMNAME'] = basename
+    header['Q_PMNAME'] = basename
 
     # Définir le chemin complet du sous-dossier
     if folder.endswith("*fits"):
