@@ -67,6 +67,7 @@ Output:
 Options:
     --pixel_map=FILE   Specify which pixel map FITS file to use (default: auto-detect in directory)
     --loop=SECONDS     Loop and check for new files every X seconds (default: 0, i.e., run once)
+    --object=NAME     Specify the OBJECT name of data to reduced based on the FITS header
 
 Examples:
     runPL_preprocess.py --pixel_map=/path/to/pixel_map.fits /path/to/directory
@@ -359,13 +360,15 @@ if __name__ == "__main__":
     default_folder ="."
     loop = 0
     pixel_map = None
+    object = None
 
     # Add options for these values
     parser.add_option("--pixel_map", type="string", default=pixel_map,
                     help="Force to select which pixel map file to use")
     parser.add_option("--loop", type="int", default=loop,
                     help="loop for X seconds (default: %default)")
-
+    parser.add_option("--object", type="string", default=None,
+                    help="Specify the OBJECT name of data to reduced based on the FITS header")
 
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
         os.environ.get('SPYDER_DEBUG_FILE')):
@@ -386,6 +389,7 @@ if __name__ == "__main__":
         # If the user specifies a pixel map use it, otherwise look into the arguments
         pixel_map = options.pixel_map
         loop = options.loop
+        object = options.object
 
     if pixel_map is None:
         pixel_map = file_patterns + ['../pixelmaps/*.fits']
@@ -398,7 +402,13 @@ if __name__ == "__main__":
     time_start = time.time()
     time_wait = 30 # in seconds
 
-    filelist = runlib_io.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']})
+    fits_keywords =  {'X_FIRTYP': ['RAW']}
+    
+    # Adding other constraints if asked by user
+    if object is not None:
+        fits_keywords['OBJECT'] = [object]
+
+    filelist = runlib_io.get_filelist( file_patterns , fits_keywords)
     print(f"Found {len(filelist)} files to process in {file_patterns}")
     # print(filelist)
     filelist_pixelmap = runlib_io.get_filelist( pixel_map , {'X_FIRTYP': ['PIXELMAP']},  name_search="pixel map")
@@ -409,7 +419,7 @@ if __name__ == "__main__":
     
     while time.time()+time_wait < loop+time_start:
         time.sleep(time_wait)
-        filelist_new=runlib_io.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']})
+        filelist_new=runlib_io.get_filelist( file_patterns , fits_keywords)
         # Check for new files in filelist
         new_files = [file for file in filelist_new if file not in filelist]
         if new_files:
