@@ -5,12 +5,12 @@ import shutil
 import sys
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(parent_dir)
-import runPL_library_io as runlib
-from runPL_createPixelMap import run_createPixelMap, save_fits_and_png
-from runPL_preprocess import run_preprocess
-from runPL_createWavelengthMap import runCreateWavelengthMap
-from runPL_createWavelengthMap import runForStar
-from runPL_createCouplingMaps import run_create_coupling_maps
+import libraries.runPL_library_io as runlib
+from runPL_create_pixelMap import run_createPixelMap, save_fits_and_png
+from runPL_make_preproc import run_preprocess
+from runPL_create_wavelengthMap import runCreateWavelengthMap
+from runPL_create_wavelengthMap import runForStar
+from runPL_create_couplingMaps import run_create_coupling_maps
 
 import numpy as np
 from astropy.io import fits

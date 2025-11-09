@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.interpolate import griddata
-import runPL_library_linalg as runlib_linalg
-import runPL_library_plots as runlib_plots
+from . import runPL_library_linalg as runlib_linalg
+from . import runPL_library_plots as runlib_plots
 from tqdm import tqdm
 
 

@@ -29,12 +29,12 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
 from tqdm import tqdm
-import runPL_library_io as runlib
-import runPL_library_plots as runlib_plots
-import runPL_library_basic as runlib_basic
-import runPL_library_linalg as runlib_linalg
-from runPL_class_dataCube import DataCube, extract_datalist
-from runPL_class_couplingMap import CouplingMap
+import libraries.runPL_library_io as runlib
+import libraries.runPL_library_plots as runlib_plots
+import libraries.runPL_library_basic as runlib_basic
+import libraries.runPL_library_linalg as runlib_linalg
+from classes.runPL_class_dataCube import DataCube, extract_datalist
+from classes.runPL_class_couplingMap import CouplingMap
 from astropy.io import fits
 from astroplan import Observer
 from astropy.time import Time

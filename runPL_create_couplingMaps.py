@@ -36,12 +36,12 @@ from scipy import linalg
 from matplotlib import animation
 from itertools import product
 from scipy.linalg import pinv
-from runPL_class_couplingMap import CouplingMap
-from runPL_class_dataCube import DataCube, extract_datalist 
-import runPL_library_basic as runlib_basic
-import runPL_library_io as runlib_io
-import runPL_library_plots as runlib_plots
-import runPL_library_linalg as runlib_linalg
+from classes.runPL_class_couplingMap import CouplingMap
+from classes.runPL_class_dataCube import DataCube, extract_datalist 
+import libraries.runPL_library_basic as runlib_basic
+import libraries.runPL_library_io as runlib_io
+import libraries.runPL_library_plots as runlib_plots
+import libraries.runPL_library_linalg as runlib_linalg
 
 from scipy.ndimage import zoom
 from astropy.io import fits

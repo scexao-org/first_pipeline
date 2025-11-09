@@ -3,9 +3,9 @@ import sys
 from astropy.io import fits
 from glob import glob
 
-from runPL_createPixelMap import run_createPixelMap
-from runPL_preprocess import preprocess
-import runPL_library_io as runlib
+from runPL_create_pixelMap import run_createPixelMap
+from runPL_make_preproc import preprocess
+import libraries.runPL_library_io as runlib
 import numpy as np
 import matplotlib
 matplotlib.use('TkAgg') 

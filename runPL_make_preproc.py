@@ -26,14 +26,14 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
 from tqdm import tqdm
-import runPL_library_io as runlib_io
-import runPL_library_plots as runlib_plots
+import libraries.runPL_library_io as runlib_io
+import libraries.runPL_library_plots as runlib_plots
 import shutil
 from collections import defaultdict
 import time
 from astroplan import Observer
 from astropy.time import Time
-from runPL_class_pixelMap import PixelMap
+from classes.runPL_class_pixelMap import PixelMap
 
 subaru = Observer.at_site("Subaru")
 now_time = Time.now()
