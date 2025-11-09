@@ -177,7 +177,7 @@ def preprocess(files_with_pixelmap, plot_sum =False):
 
     center_image = None
     files_out = []
-    print(files_with_pixelmap)
+    print(list(files_with_pixelmap.keys()))
     dir_path_0 = os.path.dirname(list(files_with_pixelmap.keys())[0])
     if len(dir_path_0) == 0:
         dir_path_0 = '.'
