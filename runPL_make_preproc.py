@@ -11,7 +11,7 @@ import os
 import sys
 from astropy.io import fits
 from glob import glob
-from optparse import OptionParser
+import argparse
 import numpy as np
 import peakutils
 
@@ -248,7 +248,11 @@ def preprocess(files_with_pixelmap, plot_sum =False):
                     continue
 
         # now reading the data
-        data = fits.getdata(file)
+        try:
+            data = fits.getdata(file)
+        except Exception as e:
+            print(f"Error reading {file}: {e}")
+            continue
 
         if len(data.shape) == 2:
             data = data[None]
@@ -303,7 +307,8 @@ def preprocess(files_with_pixelmap, plot_sum =False):
                 if len(xmod) > 9:
                     fluxes = data_cut_pixels.mean(axis=(1,2,3))
                     fig= runlib_plots.plot_flux_map(fluxes, xmod, ymod)
-                    fig.suptitle(hd['OBJECT']+" - "+hd['DATA-TYP']+" - "+str(hd['EXPTIME'])+'s')
+                    string_title = hd['OBJECT']+" - "+hd['DATA-TYP']+" - "+str(hd['EXPTIME'])+'s \n X_FIROBX = '+str(hd.get('X_FIROBX', 'N/A'))+", X_FIROBY = "+str(hd.get('X_FIROBY', 'N/A'))
+                    fig.suptitle(string_title)
                     fig.savefig(output_filename_full[:-5]+"_2.png", dpi=300)
 
         files_out += [output_filename]
@@ -355,20 +360,48 @@ def run_preprocess(folder = ".",pixel_map_file = None):
 if __name__ == "__main__":
     debug = False
 
-    parser = OptionParser(usage)
-    # Default values
-    default_folder ="."
-    loop = 0
-    pixel_map = None
-    object = None
+    parser = argparse.ArgumentParser(
+        description="Preprocess the data using the pixel map.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Input: 
+    - Files of type X_FIRTYP=RAW in the directory.
+    - Files of type X_FIRTYP=PIXELMAP in the directory.
+    - The pixel map file is used to extract the data from the raw files.
+    - The pixel map file is used to create a new FITS file with the data extracted from the raw files. 
 
-    # Add options for these values
-    parser.add_option("--pixel_map", type="string", default=pixel_map,
-                    help="Force to select which pixel map file to use")
-    parser.add_option("--loop", type="int", default=loop,
-                    help="loop for X seconds (default: %default)")
-    parser.add_option("--object", type="string", default=None,
-                    help="Specify the OBJECT name of data to reduced based on the FITS header")
+Output:
+    - Files of type X_FIRTYP=PREPROC in the preproc directory.
+    - Diagnostic figures saved in the preproc directory:
+        * Pixel map overlay on raw images.
+        * Centroid shift of the data in the pixel map as a function of time.
+    - Pixel shift information is also stored in the FITS header ('QC_SHIFT').
+
+Examples:
+    %(prog)s --pixel_map=/path/to/pixel_map.fits /path/to/directory
+    %(prog)s /path/to/files*.fits
+
+Notes:
+    The centroid shift figure is useful to check if the position of the pixels changed over time.
+        """
+    )
+
+    # Add positional argument for files/directories
+    parser.add_argument('files', nargs='*', default=['*.fits'],
+                       help='Directory or FITS files to process (default: *.fits)')
+
+    # Add optional arguments
+    parser.add_argument("--pixel_map", 
+                       help="Specify which pixel map FITS file to use (default: auto-detect in directory)")
+    parser.add_argument("--loop", type=int, default=0,
+                       help="Loop and check for new files every X seconds (default: %(default)s, i.e., run once)")
+    parser.add_argument("--object", 
+                       help="Specify the OBJECT name of data to reduced based on the FITS header")
+
+    # Initialize default values
+    pixel_map = None
+    loop = 0
+    object = None
 
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
         os.environ.get('SPYDER_DEBUG_FILE')):
@@ -376,6 +409,8 @@ if __name__ == "__main__":
         if getpass.getuser() == "slacour":
             dir_files="/Users/slacour/DATA/LANTERNE/20250808/preproc/"
             file_patterns = dir_files+"firstpl_2025-08-08T07:17:??_HIP84212_P.fits"
+            dir_files = "/Users/slacour/DATA/LANTERNE/tmp/"
+            file_patterns = dir_files + "*.fits"
             pixel_map = dir_files + "../pixelmaps"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
@@ -383,13 +418,13 @@ if __name__ == "__main__":
         if getpass.getuser() == "ehuby":
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
     else:
-        (options, args) = parser.parse_args()
-        file_patterns=args if args else ['*.fits']
+        args = parser.parse_args()
+        file_patterns = args.files if args.files else ['*.fits']
 
         # If the user specifies a pixel map use it, otherwise look into the arguments
-        pixel_map = options.pixel_map
-        loop = options.loop
-        object = options.object
+        pixel_map = args.pixel_map
+        loop = args.loop
+        object = args.object
 
     if pixel_map is None:
         pixel_map = file_patterns + ['../pixelmaps/*.fits']

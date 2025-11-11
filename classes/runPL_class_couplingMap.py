@@ -11,7 +11,7 @@ class CouplingMap:
     def __init__(self, file, pyramids = False):
         cmap_file = fits.open(file)
         header = cmap_file[0].header
-        self.wavelength_bin = header['P_CMWBIN']
+        self.wavelength_bin = header['Q_CMWBIN']
         if pyramids:
             add_key = "_P"
         else:

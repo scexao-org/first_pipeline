@@ -11,7 +11,7 @@ import os
 import sys
 from astropy.io import fits
 from glob import glob
-from optparse import OptionParser
+import argparse
 import numpy as np
 from scipy.signal import correlate
 from scipy import linalg
@@ -139,7 +139,7 @@ def get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, o
             fits_keywords['X_FIRWOL'] = [wollaston]
 
         try:
-            filelist_dark = runlib_io.get_filelist(dark_patterns, fits_keywords,  name_search="dark")
+            filelist_dar = runlib_io.get_filelist(dark_patterns, fits_keywords,  name_search="dark")
         except FileNotFoundError as e:
             print(f"WARNING!!! {e}")
             filelist_dark = []
@@ -345,35 +345,49 @@ def quick_plot(data,title =""):
 
 
 if __name__ == "__main__":
-    parser = OptionParser(usage)
+    parser = argparse.ArgumentParser(
+        description="Create coupling maps from preprocessed photonic lantern data.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Summary:
+    It will get as input a list of files with DPR_CATG=CMAP and DPR_TYPE=PREPROC keywords.
+    It will select files based on modulation pattern, modulation scale, and object name if specified.
+    The script computes SVD-based coupling maps, saves results to FITS, and generates diagnostic plots.
 
-    # Default values
-    wavelength_smooth = 20
-    wavelength_bin = 10
-    Nsingular=19*6 
+Input:
+    - Files of type X_FIRTYP=PREPROC in the directory or in the argument pattern.
 
+Output:
+    - Files of type X_FIRTYP=COUPLINGMAP in the directory "../couplingmaps".
+    - A pdf report with the plots of the coupling maps and the SVD analysis.
+        """
+    )
 
-    # Add options for these values
-    parser.add_option("--object_name", type="string", 
-                    help="Selection of the data by the Object name (default: first target the list)")
-    parser.add_option("--dark_files", type="string", 
-                    help="Select one or more specific dark(s) files to use")
-    parser.add_option("--flat_files", type="string", 
-                    help="Select a specific flat file to use (default: use the flat files or if not the ones used to create the coupling maps)")
-    parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,
-                    help="smoothing factor for wavelength (default: %default)")
-    parser.add_option("--wavelength_bin", type="int", default=wavelength_bin,
-                    help="binning factor for wavelength (default: %default)")
-    parser.add_option("--Nsingular", type="int", default=Nsingular,
-                      help="Number of singular values to use (default: %default)")
-    parser.add_option("--modID", type="int", 
-                      help="Selection of the modulation pattern by user (default: first in the list)")
-    parser.add_option("--modScale", type="int", 
-                      help="Selection of the modulation pattern by user (default: first in the list)")
-    parser.add_option("--wollaston", type="string", 
-                      help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
-    parser.add_option("--compute_position", action="store_true", default=False,
-                    help="Compute position of individual DITs (slow) (default: %default)")
+    # Add positional argument for files
+    parser.add_argument('files', nargs='*', default=['*.fits'],
+                       help='FITS files to process (supports wildcards)')
+
+    # Add optional arguments
+    parser.add_argument("--object_name", 
+                       help="Selection of the data by the Object name (default: first target in the list)")
+    parser.add_argument("--dark_files", 
+                       help="Select one or more specific dark(s) files to use")
+    parser.add_argument("--flat_files", 
+                       help="Select a specific flat file to use (default: use the flat files or if not the ones used to create the coupling maps)")
+    parser.add_argument("--wavelength_smooth", type=int, default=20,
+                       help="Smoothing factor for wavelength (default: %(default)s)")
+    parser.add_argument("--wavelength_bin", type=int, default=10,
+                       help="Binning factor for wavelength (default: %(default)s)")
+    parser.add_argument("--Nsingular", type=int, default=19*6,
+                       help="Number of singular values to use (default: %(default)s)")
+    parser.add_argument("--modID", type=int, 
+                       help="Selection of the modulation pattern by user (default: first in the list)")
+    parser.add_argument("--modScale", type=int, 
+                       help="Selection of the modulation scale by user (default: first in the list)")
+    parser.add_argument("--wollaston", 
+                       help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
+    parser.add_argument("--compute_position", action="store_true", default=False,
+                       help="Compute position of individual DITs (slow) (default: %(default)s)")
     
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('SPYDER_DEBUG_FILE')):
         print("Running in compiler")
@@ -398,21 +412,21 @@ if __name__ == "__main__":
         if getpass.getuser() == "ehuby":
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
     else:
-        # Parse the options
-        (options, args) = parser.parse_args()
-        file_patterns=args if args else ['*.fits','./preproc/*.fits']
+        # Parse the arguments
+        args = parser.parse_args()
+        file_patterns = args.files if args.files else ['*.fits','./preproc/*.fits']
 
-        # Pass the parsed options to the function
-        modID=options.modID
-        modScale=options.modScale
-        object_name = options.object_name
-        wollaston = options.wollaston
-        Nsingular=options.Nsingular
-        wavelength_smooth=options.wavelength_smooth
-        wavelength_bin=options.wavelength_bin
-        flat_patterns = options.flat_files
-        dark_patterns = options.dark_files
-        compute_position = options.compute_position
+        # Extract the parsed arguments
+        modID = args.modID
+        modScale = args.modScale
+        object_name = args.object_name
+        wollaston = args.wollaston
+        Nsingular = args.Nsingular
+        wavelength_smooth = args.wavelength_smooth
+        wavelength_bin = args.wavelength_bin
+        flat_patterns = args.flat_files
+        dark_patterns = args.dark_files
+        compute_position = args.compute_position
 
     # If the user specifies a coupling map, use it, otherwise look into the arguments
     if flat_patterns is None:

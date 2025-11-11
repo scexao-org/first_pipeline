@@ -11,7 +11,7 @@ import os
 import sys
 from astropy.io import fits
 from glob import glob
-from optparse import OptionParser
+import argparse
 import numpy as np
 
 from scipy.interpolate import griddata
@@ -199,34 +199,40 @@ def quick_plot(data,title =""):
 
 
 if __name__ == "__main__":
-    parser = OptionParser(usage)
+    parser = argparse.ArgumentParser(
+        description="Perform astrometric analysis from FIRST Photonic Lantern data.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Summary:
+    This script processes preprocessed FITS files for astrometric measurements using coupling maps.
+        """
+    )
 
-    # default values
-    wavelength_smooth = 1
-    save_individual_frames = True
-    save_individual_wavelength = False
-    pyramids = False
+    # Add positional argument for files
+    parser.add_argument('files', nargs='*', default=['*.fits'],
+                       help='FITS files to process (supports wildcards)')
 
-    # Add options for these values
-    parser.add_option("--wollaston", type="string", 
-                      help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
-    parser.add_option("--coupling_map", type="string", 
-                    help="Force to select which coupling map file to use (default: the one in the directory)")
-    parser.add_option("--dark_files", type="string", 
-                help="Select one or more specific dark(s) files to use")
-    parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,
-                    help="smoothing factor for wavelength (default: %default)")
-    parser.add_option("--save_individual_frames", action="store_true", default=save_individual_frames,
-                    help="Save individual frames (default: %default)")
-    parser.add_option("--save_individual_wavelength", action="store_true", default=save_individual_wavelength,
-                    help="Save individual wavelength (default: %default)")
-    parser.add_option("--pyramids", action="store_true", default=pyramids,
-                    help="Use pyramids for data fitting by coupling map (default: %default)")
+    # Add optional arguments
+    parser.add_argument("--wollaston", 
+                       help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
+    parser.add_argument("--coupling_map", 
+                       help="Force to select which coupling map file to use (default: the one in the directory)")
+    parser.add_argument("--dark_files", 
+                       help="Select one or more specific dark(s) files to use")
+    parser.add_argument("--wavelength_smooth", type=int, default=1,
+                       help="Smoothing factor for wavelength (default: %(default)s)")
+    parser.add_argument("--save_individual_frames", action="store_true", default=True,
+                       help="Save individual frames (default: %(default)s)")
+    parser.add_argument("--save_individual_wavelength", action="store_true", default=False,
+                       help="Save individual wavelength (default: %(default)s)")
+    parser.add_argument("--pyramids", action="store_true", default=False,
+                       help="Use pyramids for data fitting by coupling map (default: %(default)s)")
 
     if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or os.environ.get('SPYDER_DEBUG_FILEfile =')):
         print("Running in compiler")
         wollaston = None
         dark_patterns = None
+        pyramids = False
 
         if getpass.getuser() == "slacour":
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/firstpl_2025-06-14T01:38*fits"
@@ -255,17 +261,18 @@ if __name__ == "__main__":
             cmap_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/couplingmaps_TETCRB/"
     else:
 
-        (options, args) = parser.parse_args()
-        file_patterns=args if args else ['*.fits']
+        args = parser.parse_args()
+        file_patterns = args.files if args.files else ['*.fits']
 
-        wavelength_smooth=options.wavelength_smooth
-        dark_patterns = options.dark_files
-        wollaston = options.wollaston
+        wavelength_smooth = args.wavelength_smooth
+        dark_patterns = args.dark_files
+        wollaston = args.wollaston
 
-        save_individual_frames=options.save_individual_frames
-        save_individual_wavelength=options.save_individual_wavelength
+        save_individual_frames = args.save_individual_frames
+        save_individual_wavelength = args.save_individual_wavelength
+        pyramids = args.pyramids
 
-        cmap_patterns = options.coupling_map
+        cmap_patterns = args.coupling_map
 
     # If the user specifies a coupling map, use it, otherwise use the science file pattern
     if cmap_patterns is None:

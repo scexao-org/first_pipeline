@@ -11,7 +11,7 @@ import os
 import sys
 from astropy.io import fits
 from glob import glob
-from optparse import OptionParser
+import argparse
 import numpy as np
 import peakutils
 
@@ -28,6 +28,7 @@ from datetime import datetime
 from tqdm import tqdm
 import libraries.runPL_library_io as runlib_io
 import shutil
+from scipy.signal import find_peaks
 
 
 plt.ion()
@@ -123,7 +124,11 @@ def raw_image_clean(filelist):
         print("Processing files: ", filelist_cleaned)
         for filename in tqdm(filelist_cleaned, desc="Co-adding files"):
             if not "optim" in filename:
-                raw_image += fits.getdata(filename).sum(axis=0)
+                try:
+                    data_summed = fits.getdata(filename).sum(axis=0)
+                    raw_image += data_summed
+                except Exception as e:
+                    print(f"Error processing {filename}: {e}")
         
         return raw_image, header
 
@@ -134,20 +139,20 @@ def quick_fits(data, title=""):
     runlib_io.save_fits_file(data, "/home/jsarrazin/Bureau/test zone/coupling_maps/"+title+"_"+date_time_str+".fits")
     print("check")
 
-def loop_lowering_my_treshold( sampling, peaks_number, raw_image, peaks, output_channels, filelist, start = 0.01, stop = 0.1, num = 50, instance=0):
-    if instance==1:
-        print("Cant find flux at the moment.... Running additional tests on your files.")
-        filter_only_good_files(filelist)
+def loop_lowering_my_treshold( sampling, peaks_number, raw_image, peaks, output_channels, filelist, start = 0.01, stop = 0.1, num = 50):
+    # if instance==1:
+    #     print("Cant find flux at the moment.... Running additional tests on your files.")
+    #     filter_only_good_files(filelist)
     threshold_array = np.linspace(start, stop, num)
     solution_found=[]
     for i in (range(sampling.shape[0])): #from 0 to the number of samples
         #Sum 10 values of x (wavelenght=columns) of the pic
-        sum_image = raw_image[:,sampling[i]-5:sampling[i]+5].sum(axis=1)
+        sum_image = raw_image[:,sampling[i]-25:sampling[i]+25].sum(axis=1)
         detectedWavePeaks=np.zeros(output_channels)
         found = False
         #Search for the 38 modes expected
         for t in threshold_array:
-            detectedWavePeaks_tmp = peakutils.peak.indexes(sum_image,thres=t, min_dist=6)
+            detectedWavePeaks_tmp = peakutils.peak.indexes(sum_image,thres=t, min_dist=7)
             if len(detectedWavePeaks_tmp) == peaks_number:
                 detectedWavePeaks = detectedWavePeaks_tmp
                 found = True
@@ -156,14 +161,39 @@ def loop_lowering_my_treshold( sampling, peaks_number, raw_image, peaks, output_
         #The values will be saved at the index i of the sample
         peaks[:,i]=detectedWavePeaks
 
-    true_count = sum(solution_found)  # because True == 1, False == 0
-    percentage = true_count / len(solution_found)
-    if percentage>=0.1 : 
-        return solution_found, peaks
-    elif instance<5:
-        solution_found, peaks = loop_lowering_my_treshold(sampling, peaks_number, raw_image, peaks, output_channels,filelist, start = start/2, stop = stop*2, num=num+20, instance=instance+1)
+    return solution_found, peaks
 
-    raise ValueError("Too many runs, no solution found. Verify your pixelmap or run with --filter_files True.")
+
+def peaks_using_scipy(raw_image, sampling, Nsampling, output_channels):
+    # if instance==1:
+    #     print("Cant find flux at the moment.... Running additional tests on your files.")
+    #     filter_only_good_files(filelist)
+    solution_found=[]
+    peaks_all_samples = np.zeros([output_channels, sampling.shape[0]])
+    for i in (range(sampling.shape[0])): #from 0 to the number of samples
+        #Sum 50 values of x (wavelenght=columns) of the pic
+        sum_image = raw_image[:,sampling[i]-Nsampling:sampling[i]+Nsampling].sum(axis=1)
+        #slightly smooth data along y axis
+        sum_image = np.convolve(sum_image, [0.25,0.5,0.25], mode='same')
+        #normalize for prominence calculation
+        sum_image /= max(sum_image)
+
+        prominence = 0.02
+        peaks, props = find_peaks(sum_image/max(sum_image), prominence=prominence, distance=5)
+
+        detectedWavePeaks=np.zeros(output_channels)
+        found = False
+
+        if len(peaks) >= output_channels:
+            detectedWavePeaks = peaks[np.argsort(props['prominences'])[-output_channels:]]
+            detectedWavePeaks.sort()
+            found = True
+
+        solution_found+=[found]
+        #The values will be saved at the index i of the sample
+        peaks_all_samples[:,i]=detectedWavePeaks
+
+    return solution_found, peaks_all_samples
 
 
 def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist):
@@ -171,13 +201,18 @@ def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist
     pixel_length=raw_image.shape[1]
 
     #300 values of pixels between pixelmin and pixelmax
-    sampling        = np.linspace(pixel_min+5,pixel_max-5,300,dtype=int)
+    Nsampling = 25
+    sampling        = np.linspace(pixel_min+Nsampling,pixel_max-Nsampling,300,dtype=int)
     peaks           = np.zeros([output_channels, sampling.shape[0]])
 
-    threshold_array=np.linspace(0.01,0.1,50) #originally #np.linspace(0.01,0.1,50) 
-    peaks_number=output_channels
+    solution_found, peaks = peaks_using_scipy(raw_image, sampling, Nsampling, output_channels)
     
-    solution_found, peaks = loop_lowering_my_treshold( sampling, peaks_number, raw_image, peaks, output_channels, filelist)
+    true_count = sum(solution_found)  # because True == 1, False == 0
+    percentage = true_count / len(solution_found)
+    print(f"Percentage of successful detections: {percentage}")
+    if percentage<0.1 : 
+        raise ValueError("Too many runs, no solution found. Verify your pixelmap or run with --filter_files True.")
+
     traces_loc= np.ones([pixel_length,output_channels],dtype=int)
 
     x_found=[]
@@ -187,6 +222,7 @@ def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist
 
     #Once we've picked each detected peak, we need to verify that they all belong to the same mode,
     #and that there is no outlier
+    diff_y_median = np.median(np.diff(peaks[:,solution_found],axis=0))
 
     for i in range(output_channels):
         # x is a list of all the pixels/wavelength at which 38 peaks were detected
@@ -194,12 +230,14 @@ def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist
         # y the corresponding positions of each peak/mode
         y = peaks[i][solution_found]
 
+        inliers = np.abs(y-np.median(y)) < diff_y_median * 2 / 3
+        poly_coeffs = np.polyfit(x[inliers], y[inliers], 1)
+
         if i==11:
             print("check")
 
         # To check for outlier, we make a 1D polyfit between x and y
         for b in range(5): # The process is repeated 5 times to refine the polyfit each time
-            poly_coeffs = np.polyfit(x, y, 1)
 
             # Calculate residuals of the function
             y_fit = np.polyval(poly_coeffs, x)
@@ -207,25 +245,26 @@ def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist
 
             # Calculate standard deviation of residuals
             std_residuals = np.std(residuals)
-            if std_residuals < 1*(10**(-10)):
-                x_with_none = x
-                y_with_none = y
-                continue
+            # keep it above half a pixel
+            if std_residuals < 1/2:
+                std_residuals = 1/2
 
             # Identify inliers (points with residuals within the threshold)
             inliers = np.abs(residuals) < 3 * std_residuals
+            inliers &= np.abs(residuals) < diff_y_median * 2 / 3
             
 
             # Remove outliers
             x = x[inliers]
             y = y[inliers]
 
+            # Fit the polynomial to the cleaned data
+            poly_coeffs = np.polyfit(x, y, 2)
+
             # Replace outliers with None
             x_with_none = [xi if inlier else None for xi, inlier in zip(x, inliers)]
             y_with_none = [yi if inlier else None for yi, inlier in zip(y, inliers)]
 
-        # Fit the polynomial to the cleaned data
-        poly_coeffs = np.polyfit(x, y, 1)
         # We stop considering solo pixels and consider the 1D polyfit to trace over all of them.
         traces_loc[:,i] = np.polyval(poly_coeffs, np.arange(pixel_length))+0.5
         # x is a list of all the pixels/wavelength at which 38 peaks were detected
@@ -234,6 +273,10 @@ def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist
         y_found += [y]
         x_none +=[x_with_none]
         y_none +=[y_with_none]
+        plot(x,y,'o')
+
+    imshow(raw_image, aspect='auto', origin='lower', cmap='viridis',vmax = 1e6)
+    plot(traces_loc, '-', linewidth=2.5)
 
     return traces_loc, x_found,y_found, x_none, y_none
 
@@ -266,8 +309,16 @@ def checking_wavelength_aligment_in_modes(x_none, y_none):
 
 def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder):
 
+    # Handle case when traces_loc is None (failed pixelmap generation)
+    if traces_loc is None:
+        print("Warning: traces_loc is None, creating empty pixelmap data for output")
+        # Create a dummy array with the same shape as the raw image
+        traces_loc_data = np.zeros((raw_image.shape[1], output_channels), dtype=int)
+    else:
+        traces_loc_data = traces_loc.copy()
+
     # Save fits file with traces_loc inside
-    hdu = fits.PrimaryHDU(traces_loc.copy())
+    hdu = fits.PrimaryHDU(traces_loc_data)
     header['X_FIRTYP'] = 'PIXELMAP'
     # Add date and time to the header
     current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
@@ -296,27 +347,31 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
     hdul = fits.HDUList([hdu])
     filename_out = os.path.join(output_dir, basename)
 
-    hdul.writeto(filename_out, overwrite=True)
-    hdul.close()
+    if traces_loc is not None:
+        hdul.writeto(filename_out, overwrite=True)
+        hdul.close()
+        print("File saved as: "+filename_out)
 
-
-    fig,ax=runlib_io.make_figure_of_trace(raw_image,traces_loc,pixel_wide,pixel_min,pixel_max)
-
+    traces_loc_for_plot = traces_loc_data
+    fig,ax=runlib_io.make_figure_of_trace(raw_image,traces_loc_for_plot,pixel_wide,pixel_min,pixel_max)
     
     annotation = False
     y_trace = False
-    if not y_trace :
+    if not y_trace and x_found is not None and y_found is not None:
         for i in range(output_channels):
-            ax.plot(x_found[i],y_found[i],'w-',linewidth=0.5)
-            if annotation :
-                # Annotate each point
-                for j, (x, y) in enumerate(zip(x_found[i], y_found[i])):
-                    offset = (5, -5) if j % 2 == 0 else (-5, 5)  # Alternate offsets
-                    ax.annotate(f'({x}, {y})', xy=(x, y), xytext=offset, textcoords='offset points', 
-                                fontsize=6, color='white')
+            if i < len(x_found) and i < len(y_found):
+                ax.plot(x_found[i],y_found[i],'w-',linewidth=0.5)
+                if annotation :
+                    # Annotate each point
+                    for j, (x, y) in enumerate(zip(x_found[i], y_found[i])):
+                        offset = (5, -5) if j % 2 == 0 else (-5, 5)  # Alternate offsets
+                        ax.annotate(f'({x}, {y})', xy=(x, y), xytext=offset, textcoords='offset points', 
+                                    fontsize=6, color='white')
+    elif x_found is None or y_found is None:
+        print("Warning: x_found or y_found is None, skipping trace plotting")
     
     
-    if y_trace:
+    if y_trace and x_found is not None and y_found is not None:
         max_columns = max(len(row) for row in x_found)
 
         # Iterate over each column index
@@ -331,13 +386,8 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
                 ax.plot(x_vals, y_vals, marker='o', label=f'Column {j+1}')
 
 
-    ax.legend()
-
     fig.savefig(filename_out[:-4]+"png",dpi=300)
-
-    print("File saved as: "+filename_out)
     print("PNG saved as: "+filename_out[:-4]+"png")
-    # os.system("ls -l "+os.path.join(folder,"../pixelmaps"))
 
 def quick_fits(data, title=""):
     #For debugging purpose
@@ -348,13 +398,13 @@ def quick_fits(data, title=""):
 
 def run_createPixelMap(folder, destination, pixel_min=20, pixel_max=1600, pixel_wide=3, output_channels=38, file_patterns=["**/*.fits"]):
     filelist = process_files(folder, file_patterns)
-    raw_Image, header = raw_image_clean(filelist)
-    quick_fits(raw_Image)
-    traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_Image, pixel_min, pixel_max, output_channels, filelist)
+    raw_image, header = raw_image_clean(filelist)
+    # quick_fits(raw_image)
+    traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist)
     #checking_wavelength_aligment_in_modes(x_none, y_none) # TESTING ONLY, TO REMOVE
-    save_fits_and_png(raw_Image, traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder)
-    save_fits_and_png(raw_Image,traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, destination)
-    return raw_Image, traces_loc, header,  x_found,y_found
+    save_fits_and_png(raw_image, traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder)
+    save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, destination)
+    return raw_image, traces_loc, header,  x_found,y_found
 
 
 def get_fits_statistics(filepath):
@@ -416,39 +466,73 @@ def filter_only_good_files(filelist, filter_files=False):
     return 0
 
 if __name__ == "__main__":
-    parser = OptionParser(usage)
+    parser = argparse.ArgumentParser(
+        description="Create the pixel map needed to preprocess the data.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    %(prog)s --pixel_min=20 --pixel_max=1600 --pixel_wide=2 --filter_files *.fits
+    %(prog)s --pixel_min=50 --pixel_max=1500  data/*.fits
 
+Input:
+    - Files of type X_FIRTYP=RAW in the directory.
 
-    # Default values
-    pixel_min = 20
-    pixel_max = 1600
-    pixel_wide = 2
-    folder = "."  # Default to current directory
-    filter_files=False
+Output:
+    - A FITS file with the pixel map.
+    - A PNG file with the pixel map.
+        """
+    )
 
-    # Add options for these values
-    parser.add_option("--pixel_min", type="int", default=pixel_min,
-                    help="Minimum pixel value (default: %default)")
-    parser.add_option("--pixel_max", type="int", default=pixel_max,
-                    help="Maximum pixel value (default: %default)")
-    parser.add_option("--pixel_wide", type="int", default=pixel_wide,
-                    help="Pixel width (default: %default)")
-    parser.add_option("--filter_files", action="store_true", default=filter_files,
-                    help="Wether to filter files that dont have enough flux (default: %default)")
+    # Add positional argument for file patterns
+    parser.add_argument('file_patterns', nargs='*', default=['*.fits'],
+                       help='One or more glob patterns for FITS files (default: *.fits)')
+
+    # Add optional arguments with better defaults and validation
+    parser.add_argument("--pixel_min", type=int, default=100,
+                       help="Minimum pixel value along wavelength axis (default: %(default)s)")
+    parser.add_argument("--pixel_max", type=int, default=1600,
+                       help="Maximum pixel value along wavelength axis (default: %(default)s)")
+    parser.add_argument("--pixel_wide", type=int, default=2,
+                       help="Window half width (default: %(default)s) (full width = 2*pixel_wide+1)")
+    parser.add_argument("--filter_files", action='store_true',
+                       help="Flag to filter out files that don't have enough flux. Can be long, recommended only if previous run failed.")
     
-    # Parse the options
-    (options, args) = parser.parse_args()
+    if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
+        os.environ.get('SPYDER_DEBUG_FILE')):
+        print("Running in compiler")
+        if getpass.getuser() == "slacour":
+            pixel_min=50
+            pixel_max=1500
+            pixel_wide=2
+            filter_files=True
+            file_patterns=["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
+            
+            # Create clean argument list for development environment
+            dev_args = [
+                f"--pixel_min={pixel_min}", 
+                f"--pixel_max={pixel_max}", 
+                f"--pixel_wide={pixel_wide}"
+            ] + file_patterns
+            
+            print(f"Development arguments: {dev_args}")
+            # Parse with custom arguments to avoid Jupyter kernel conflicts
+            args = parser.parse_args(dev_args)
+    else:
+        # Parse the arguments normally
+        args = parser.parse_args()
 
-    # Pass the parsed options to the function
-    pixel_min=options.pixel_min
-    pixel_max=options.pixel_max
-    pixel_wide=options.pixel_wide
-    file_patterns=args if args else ['*.fits']
-    filter_files=options.filter_files
+
+    # Extract the parsed arguments
+    pixel_min = args.pixel_min
+    pixel_max = args.pixel_max
+    pixel_wide = args.pixel_wide
+    file_patterns = args.file_patterns
+    filter_files = args.filter_files
     
-    filelist=runlib_io.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']})
+    filelist, folder=runlib_io.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']}, get_folder=True)
 
     if filter_files==True: 
+        print("Filtering files based on flux...")
         filelist = filter_only_good_files(filelist, True)
 
     wollastons = np.unique([fits.getheader(f).get('X_FIRWOL', 'IN') for f in filelist])
@@ -467,6 +551,12 @@ if __name__ == "__main__":
         else:
             output_channels = 19
 
-        raw_Image, header = raw_image_clean(filtered_files)
-        traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_Image, pixel_min, pixel_max, output_channels, filtered_files)
-        save_fits_and_png(raw_Image, traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder)
+        raw_image, header = raw_image_clean(filtered_files)
+        try:
+            traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filtered_files)
+        except Exception as e:
+            print(f"Error occurred while generating pixelmap: {e}")
+            traces_loc, x_found,y_found, x_none, y_none = None, None, None, None, None
+        save_fits_and_png(raw_image, traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder)
+
+# %%

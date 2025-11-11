@@ -10,7 +10,6 @@ Created on Sun May 24 22:56:25 2015
 import os
 from astropy.io import fits
 from glob import glob
-from optparse import OptionParser
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
@@ -200,7 +199,7 @@ def latest_file(filelist):
     
     return last_created_file
 
-def get_filelist(file_patterns=["*.fits"], fits_keywords=None, name_search=None):
+def get_filelist(file_patterns=["*.fits"], fits_keywords=None, name_search=None, get_folder = False):
     """
     Find files based on the given parameters.
 
@@ -257,7 +256,15 @@ def get_filelist(file_patterns=["*.fits"], fits_keywords=None, name_search=None)
     # Sort the file list for consistent processing order
     filelist.sort()
 
-    return filelist
+    # now get the directory where most of the files are located
+    dirs = [os.path.dirname(file) for file in filelist]
+    most_common_dir = max(set(dirs), key=dirs.count)
+    print(f"Most files "+str_search+f" are located in: {most_common_dir}")
+
+    if get_folder:
+        return filelist, most_common_dir
+    else:
+        return filelist
 
 def get_fits_date(fits_file):
     try:

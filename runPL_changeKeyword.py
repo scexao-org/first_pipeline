@@ -10,99 +10,94 @@ import os
 import sys
 from astropy.io import fits
 from glob import glob
-from optparse import OptionParser
+import argparse
 import libraries.runPL_library_io as runlib
 
-# Add options
-usage = """
-    usage: %prog [options] files.fits [more_files.fits] [wildcards]
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Update the FIRST_PL FITS header keywords.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    %(prog)s --DATA-TYP=FLAT --X_FIRTYP=RAW *.fits
+    %(prog)s --OBJECT="Target Name" --X_FIRTYP=SCIENCE data/*.fits
 
-    Goal: Update the FIRST_PL FITS header keywords.
-
-    Examples:
-      runPL_changeKeyword.py --DATA-TYP=FLAT --X_FIRTYP=RAW *.fits
-
-    Options:
-      -c, --DATA-TYP   Category of data (RAW, PREPROC, REDUCED)
-      -t, --X_FIRTYP   Type of dataproduct (WAVE, FLAT, SCIENCE, PIXELS, SPECTRA)
-      -i, --X_FIRMID   Modulation ID of the data
-      -r, --X_FIRTRG   Trigger of camera (INT for internal, EXT for external)
-      -g, --GAIN       Gain value
-      -d, --DATE       Date value (use DEFAULT to extract from filename)
-
-    Keyword meanings:
-      DATA-TYP:
+Keyword meanings:
+    DATA-TYP:
         TEST   - Test data
         DARK   - Dark data
         FLAT   - Flat field data
         
-      X_FIRTYP:
-        RAW    - Raw data from the camera
+    X_FIRTYP:
+        RAW      - Raw data from the camera
         WAVE     - Neon source data
         FLAT     - Data from SuperK
         SCIENCE  - Night time observation data
         PIXELS   - Pixel map on the detector (for REDUCED data)
         SPECTRA  - Extracted spectra (for REDUCED data)
 
-    This script updates the specified FITS header keywords for all matching files.
-"""
+This script updates the specified FITS header keywords for all matching files.
+        """
+    )
 
-parser = OptionParser(usage)
-parser.add_option("-c","--DATA-TYP", action="store",
-                  help="DATA-TYP gives the category of data")
-parser.add_option("-o","--OBJECT", action="store",
-                  help="OBJECT gives the name of the observed target")
-parser.add_option("-t","--X_FIRTYP", action="store", 
-                  help="X_FIRTYP gives the type of dataproduct")
-parser.add_option("-i","--X_FIRMID", action="store",
-                  help="X_FIRMID gives the modulation ID of the data")
-parser.add_option("-r","--X_FIRTRG", action="store", 
-                  help="Trigger of camera. Use INT for internal or EXT for external trigger")
-parser.add_option("-w","--X_FIRWOL", action="store", 
-                  help="Wollaston status. Use IN for internal or OUT for no wollaston")
-parser.add_option("-g","--GAIN", action="store", 
-                  help="")
-parser.add_option("-d","--DATE", action="store", 
-                  help="Use DEFAULT to get the date from the filename")
-
-(argoptions, args) = parser.parse_args()
-
-
-filelist=[]
-## If the user specifies a file name or wild cards ("*_0001.fits")
-if len(args) > 0 :
-    for f in args:
-        filelist += [file for file in glob(f) if file.endswith(".fits")]
-## Processing of the full current directory
-else :
-    for file in os.listdir("."):
-        if file.endswith(".fits"):
-            filelist.append(file)
-
-filelist.sort() # process the files in alphabetical order
-
+    # Add positional argument for files
+    parser.add_argument('files', nargs='*', 
+                       help='FITS files to process (supports wildcards). If none specified, processes all .fits files in current directory.')
     
-# Update FITS headers based on provided options
-header_updates = {
-    'OBJECT': argoptions.OBJECT,
-    'DATA-TYP': argoptions.DATA_TYP,
-    'X_FIRTYP': argoptions.X_FIRTYP,
-    'X_FIRMID': argoptions.X_FIRMID,
-    'X_FIRTRG': argoptions.X_FIRTRG,
-    'X_FIRWOL': argoptions.X_FIRWOL,
-    'GAIN': argoptions.GAIN,
-    'DATE': argoptions.DATE if argoptions.DATE != "DEFAULT" else None,
-}
+    # Add optional arguments for header keywords
+    parser.add_argument("-c", "--DATA-TYP", 
+                       help="DATA-TYP gives the category of data")
+    parser.add_argument("-o", "--OBJECT", 
+                       help="OBJECT gives the name of the observed target")
+    parser.add_argument("-t", "--X_FIRTYP", 
+                       help="X_FIRTYP gives the type of dataproduct")
+    parser.add_argument("-i", "--X_FIRMID", 
+                       help="X_FIRMID gives the modulation ID of the data")
+    parser.add_argument("-r", "--X_FIRTRG", 
+                       help="Trigger of camera. Use INT for internal or EXT for external trigger")
+    parser.add_argument("-w", "--X_FIRWOL", 
+                       help="Wollaston status. Use IN for internal or OUT for no wollaston")
+    parser.add_argument("-g", "--GAIN", 
+                       help="Gain value")
+    parser.add_argument("-d", "--DATE", 
+                       help="Date value (use DEFAULT to extract from filename)")
 
-if any(v is not None for v in header_updates.values()) or argoptions.DATE == "DEFAULT":
-    for filename in filelist:
-        updates = header_updates.copy()
-        if argoptions.DATE == "DEFAULT":
-            updates['DATE'] = runlib.get_date_from_filename(filename)
-        string_print = filename + "   ----->"
-        with fits.open(filename, mode='update') as filehandle:
-            for key, value in updates.items():
-                if value is not None:
-                    filehandle[0].header[key] = value
-                    string_print += f'   {key}={value}'
-        print(string_print)
+    args = parser.parse_args()
+
+    filelist = []
+    # If the user specifies file names or wildcards
+    if len(args.files) > 0:
+        for f in args.files:
+            filelist += [file for file in glob(f) if file.endswith(".fits")]
+    # Processing of the full current directory
+    else:
+        for file in os.listdir("."):
+            if file.endswith(".fits"):
+                filelist.append(file)
+
+    filelist.sort()  # process the files in alphabetical order
+
+    # Update FITS headers based on provided options
+    header_updates = {
+        'OBJECT': args.OBJECT,
+        'DATA-TYP': getattr(args, 'DATA_TYP'),
+        'X_FIRTYP': args.X_FIRTYP,
+        'X_FIRMID': args.X_FIRMID,
+        'X_FIRTRG': args.X_FIRTRG,
+        'X_FIRWOL': args.X_FIRWOL,
+        'GAIN': args.GAIN,
+        'DATE': args.DATE if args.DATE != "DEFAULT" else None,
+    }
+
+    if any(v is not None for v in header_updates.values()) or args.DATE == "DEFAULT":
+        for filename in filelist:
+            updates = header_updates.copy()
+            if args.DATE == "DEFAULT":
+                updates['DATE'] = runlib.get_date_from_filename(filename)
+            string_print = filename + "   ----->"
+            with fits.open(filename, mode='update') as filehandle:
+                for key, value in updates.items():
+                    if value is not None:
+                        filehandle[0].header[key] = value
+                        string_print += f'   {key}={value}'
+            print(string_print)

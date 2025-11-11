@@ -11,7 +11,7 @@ import os
 import sys
 from astropy.io import fits
 from glob import glob
-from optparse import OptionParser
+import argparse
 import numpy as np
 from scipy.signal import correlate
 from scipy import linalg
@@ -375,30 +375,32 @@ def interpolate_halpha(data_2_postiptilt, postiptilt_2_data, pix_to_waves=""):
 
 
 if __name__ == "__main__":
-    parser = OptionParser(usage)
+    parser = argparse.ArgumentParser(
+        description="Development script for FIRST Photonic Lantern data analysis.",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
 
-    # default values
-    wavelength_smooth = 1
-    save_individual_frames = True
-    save_individual_wavelength = False
+    # Add positional argument for files
+    parser.add_argument('files', nargs='*', default=['*.fits'],
+                       help='FITS files to process (supports wildcards)')
 
-    # Add options for these values
-    parser.add_option("--object_name", type="string", 
-                    help="Selection of the data by the Object name (default: %default -- no selection)")
-    parser.add_option("--modID", type="int", 
-                      help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
-    parser.add_option("--modScale", type="int", 
-                      help="Selection of the modulation pattern by user [0 == first in the list] (default: %default)")
-    parser.add_option("--wollaston", type="string", 
-                      help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
-    parser.add_option("--coupling_map", type="string", 
-                    help="Force to select which coupling map file to use (default: the one in the directory)")
-    parser.add_option("--wavelength_smooth", type="int", default=wavelength_smooth,
-                    help="smoothing factor for wavelength (default: %default)")
-    parser.add_option("--save_individual_frames", action="store_true", default=save_individual_frames,
-                    help="Save individual frames (default: %default)")
-    parser.add_option("--save_individual_wavelength", action="store_true", default=save_individual_wavelength,
-                    help="Save individual wavelength (default: %default)")
+    # Add optional arguments
+    parser.add_argument("--object_name", 
+                       help="Selection of the data by the Object name (default: no selection)")
+    parser.add_argument("--modID", type=int,
+                       help="Selection of the modulation pattern by user [0 == first in the list]")
+    parser.add_argument("--modScale", type=int,
+                       help="Selection of the modulation scale by user [0 == first in the list]")
+    parser.add_argument("--wollaston", 
+                       help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
+    parser.add_argument("--coupling_map", 
+                       help="Force to select which coupling map file to use (default: the one in the directory)")
+    parser.add_argument("--wavelength_smooth", type=int, default=1,
+                       help="Smoothing factor for wavelength (default: %(default)s)")
+    parser.add_argument("--save_individual_frames", action="store_true", default=True,
+                       help="Save individual frames (default: %(default)s)")
+    parser.add_argument("--save_individual_wavelength", action="store_true", default=False,
+                       help="Save individual wavelength (default: %(default)s)")
     
 
     if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or os.environ.get('SPYDER_DEBUG_FILEfile =')):
@@ -417,19 +419,19 @@ if __name__ == "__main__":
             object_name = 'HIP81126'
     else:
 
-        (options, args) = parser.parse_args()
-        file_patterns=args if args else ['*.fits']
+        args = parser.parse_args()
+        file_patterns = args.files if args.files else ['*.fits']
 
-        wavelength_smooth=options.wavelength_smooth
-        modID=options.modID
-        modScale=options.modScale
-        object_name=options.object_name
+        wavelength_smooth = args.wavelength_smooth
+        modID = args.modID
+        modScale = args.modScale
+        object_name = args.object_name
 
-        save_individual_frames=options.save_individual_frames
-        save_individual_wavelength=options.save_individual_wavelength
+        save_individual_frames = args.save_individual_frames
+        save_individual_wavelength = args.save_individual_wavelength
 
         # If the user specifies a coupling map, use it, otherwise look into the arguments
-        coupling_map = options.coupling_map
+        coupling_map = args.coupling_map
         if coupling_map is None:
             coupling_map = file_patterns +['../couplingmaps/*.fits']
 

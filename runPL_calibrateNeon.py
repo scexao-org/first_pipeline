@@ -2,7 +2,7 @@
 import numpy as np
 from itertools import combinations
 import heapq
-from optparse import OptionParser
+import argparse
 import sys
 
 # Add options
@@ -146,42 +146,56 @@ def run_trials_for_all_combination_of_waves(all_peaks,peaks_weight,wavelength_li
 
 
 if __name__ == "__main__":
-    parser = OptionParser(usage)
+    parser = argparse.ArgumentParser(
+        description="Calibrate a list of detected peaks on a pixel range on a wavelength range using a set list of wavelength.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Example:
+    %(prog)s --all_peaks="[100,200,300]" --peaks_weight="[1.0,0.8,0.9]" --wavelength_list="[656.3,486.1,434.0]"
+        """
+    )
 
-    # Default values
-    all_peaks =[]
-    peaks_weight =[]
-    wavelength_list =[]
-    skip_n_wave =0
-    how_many_more_peaks =0
-
-    # Add options for these values
-    parser.add_option("--all_peaks", type="list", default=all_peaks,
-                      help="List of detected peaks")
-    parser.add_option("--peaks_weight", type="int", default=peaks_weight,
-                    help="List of weight associated with each peak ")
-    parser.add_option("--wavelenght_list", type="int", default=wavelength_list,
-                    help="List of wavelength to fit")
-    parser.add_option("--skip_n_wave", type="int", default=skip_n_wave,
-                    help="Maximum number of wavelength to skip if unfit (default : 0)")
-    parser.add_option("--how_many_more_peaks", type="int", default=how_many_more_peaks,
-                    help="How many additional detected peak to consider in the search (default : 0)")
+    # Add arguments
+    parser.add_argument("--all_peaks", required=True,
+                       help="List of detected peaks (comma-separated or python list format)")
+    parser.add_argument("--peaks_weight", required=True,
+                       help="List of weight associated with each peak (comma-separated or python list format)")
+    parser.add_argument("--wavelength_list", required=True,
+                       help="List of wavelength to fit (comma-separated or python list format)")
+    parser.add_argument("--skip_n_wave", type=int, default=0,
+                       help="Maximum number of wavelength to skip if unfit (default: %(default)s)")
+    parser.add_argument("--how_many_more_peaks", type=int, default=0,
+                       help="How many additional detected peak to consider in the search (default: %(default)s)")
     
-    # Parse the options
-    (options, args) = parser.parse_args()
+    # Parse the arguments
+    args = parser.parse_args()
 
-    # Pass the parsed options to the function*
-    if all_peaks==[]: 
+    # Parse the list arguments (assuming they are comma-separated or python list format)
+    try:
+        import ast
+        all_peaks = ast.literal_eval(args.all_peaks) if args.all_peaks.startswith('[') else [float(x.strip()) for x in args.all_peaks.split(',')]
+        peaks_weight = ast.literal_eval(args.peaks_weight) if args.peaks_weight.startswith('[') else [float(x.strip()) for x in args.peaks_weight.split(',')]
+        wavelength_list = ast.literal_eval(args.wavelength_list) if args.wavelength_list.startswith('[') else [float(x.strip()) for x in args.wavelength_list.split(',')]
+    except (ValueError, SyntaxError) as e:
+        print(f"Error parsing list arguments: {e}")
+        sys.exit(1)
+
+    # Extract parsed arguments
+    skip_n_wave = args.skip_n_wave
+    how_many_more_peaks = args.how_many_more_peaks
+
+    # Validate the parsed data
+    if not all_peaks: 
         raise ValueError("No detected peaks")
         sys.exit(1) 
-    elif peaks_weight==[]:
+    elif not peaks_weight:
         raise ValueError("No peak weight")
         sys.exit(1) 
-    elif len(all_peaks)!=len(peaks_weight):
+    elif len(all_peaks) != len(peaks_weight):
         raise ValueError("Peaks don't match weight")
         sys.exit(1) 
-    elif wavelength_list==[]:
-        raise ValueError("No reference wavelenght list")
+    elif not wavelength_list:
+        raise ValueError("No reference wavelength list")
         sys.exit(1) 
     
-    run_trials_for_all_combination_of_waves(all_peaks,peaks_weight,wavelength_list, skip_n_wave,how_many_more_peaks)
+    run_trials_for_all_combination_of_waves(all_peaks, peaks_weight, wavelength_list, skip_n_wave, how_many_more_peaks)

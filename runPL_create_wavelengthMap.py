@@ -11,7 +11,7 @@ import os
 import sys
 from astropy.io import fits
 from glob import glob
-from optparse import OptionParser
+import argparse
 import numpy as np
 import peakutils
 
@@ -445,22 +445,35 @@ if __name__ == "__main__":
     to change the parameters to skip wavelenght or consider more peaks, change value in function
     findPeaks directly, in the instance of "run_trials_for_all_combination_of_waves"
     '''
-    parser = OptionParser(usage)
-    
+    parser = argparse.ArgumentParser(
+        description="Create a wavelength map from the provided FITS files.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Summary:
+- Searches for FITS files with X_FIRTYP=PREPROC and DATA-TYP=WAVE keywords.
+- Finds corresponding dark files (X_FIRTYP=PREPROC, DATA-TYP=DARK).
+- Reads wave files, subtracts the median of the dark files.
+- Detects emission peaks and fits a polynomial to create a wavelength map.
+- N (number of peaks) is determined by the number of wavelengths in --wave_list.
+- Saves the wavelength map as a FITS file in the output directory.
+- Generates and saves figures for visualization.
+- Output files are stored in an "output/wave" directory.
 
+Example:
+    %(prog)s --wave_list="[748.9, 743.9, 724.5, 717.4, 703.2, 693, 671.7, 667.8, 659.9, 653.3, 650.7, 640.2, 638.2, 633.4, 630.5, 626.7, 621.7, 616.4]"
+        """
+    )
 
     # Default values
     wave_list_string_default = "[748.9, 743.9, 724.5, 717.4, 703.2, 693, 671.7, 667.8, 659.9, 653.3, 650.7, 640.2, 638.2, 633.4, 630.5, 626.7, 621.7, 616.4]"
-    #wave_list_string_default = "[753.6, 748.9, 743.9, 724.5, 717.4, 703.2, 693, 671.7, 667.8, 659.9, 653.3, 650.7, 640.2, 638.2, 633.4, 630.5, 626.7, 621.7, 616.4]"
 
-    filelist = "."
-    # Add options for these values
-    parser.add_option("--wave_list", type="string", default=wave_list_string_default,
-        help="comma-separated list of emmission lines (default: %s)"%wave_list_string_default)
-    parser.add_option("--filelist", type="string", default=filelist,
-        help="folder in which the preprocess files can be found (default: .)")
+    # Add arguments
+    parser.add_argument("--wave_list", default=wave_list_string_default,
+                       help=f"Comma-separated list of emission lines (default: {wave_list_string_default})")
+    parser.add_argument("--filelist", default=".",
+                       help="Folder containing the preprocessed FITS files (default: %(default)s)")
     
-    options, args = parser.parse_args()
+    args = parser.parse_args()
 
-    result = runCreateWavelengthMap(options.filelist, options.wave_list)
+    result = runCreateWavelengthMap(args.filelist, args.wave_list)
     np.savetxt("WavePolyBest.txt", result)
