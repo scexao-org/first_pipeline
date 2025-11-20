@@ -207,7 +207,10 @@ python runPL_make_astrometry.py --wavelength_smooth 2 --pyramids *.fits
 
 ## Requirements
 
-- **Python dependencies**: numpy, astropy, matplotlib, scipy (standard scientific stack)
+- **Python dependencies**: 
+  - Core scientific stack: `numpy`, `scipy`, `matplotlib`
+  - Astronomy libraries: `astropy`, `astroplan` 
+  - Utility libraries: `tqdm` (progress bars), `peakutils` (peak detection)
 - **External tools**: `dfits` from ESO FITS Tools for FITS inspection
 - **FITS keywords**: Scripts rely on specific header keywords for file selection
 
