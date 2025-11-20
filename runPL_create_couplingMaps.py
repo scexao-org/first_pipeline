@@ -139,7 +139,7 @@ def get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, o
             fits_keywords['X_FIRWOL'] = [wollaston]
 
         try:
-            filelist_dar = runlib_io.get_filelist(dark_patterns, fits_keywords,  name_search="dark")
+            filelist_dark = runlib_io.get_filelist(dark_patterns, fits_keywords,  name_search="dark")
         except FileNotFoundError as e:
             print(f"WARNING!!! {e}")
             filelist_dark = []
@@ -389,15 +389,24 @@ Output:
     parser.add_argument("--compute_position", action="store_true", default=False,
                        help="Compute position of individual DITs (slow) (default: %(default)s)")
     
+    # Parse the arguments
+    args = parser.parse_args()
+    file_patterns = args.files if args.files else ['*.fits','./preproc/*.fits']
+
+    # Extract the parsed arguments
+    modID = args.modID
+    modScale = args.modScale
+    object_name = args.object_name
+    wollaston = args.wollaston
+    Nsingular = args.Nsingular
+    wavelength_smooth = args.wavelength_smooth
+    wavelength_bin = args.wavelength_bin
+    flat_patterns = args.flat_files
+    dark_patterns = args.dark_files
+    compute_position = args.compute_position
+    
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('SPYDER_DEBUG_FILE')):
         print("Running in compiler")
-        flat_patterns = None
-        dark_patterns = None
-        modID = None
-        modScale = None
-        object_name = None
-        wollaston = None
-        compute_position = True
         if getpass.getuser() == "slacour":
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*fits"
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250808/preproc/firstpl_2025-08-08T06:4?:??_HIP84212_P.fits"
@@ -411,22 +420,11 @@ Output:
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
         if getpass.getuser() == "ehuby":
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
-    else:
-        # Parse the arguments
-        args = parser.parse_args()
-        file_patterns = args.files if args.files else ['*.fits','./preproc/*.fits']
-
-        # Extract the parsed arguments
-        modID = args.modID
-        modScale = args.modScale
-        object_name = args.object_name
-        wollaston = args.wollaston
-        Nsingular = args.Nsingular
-        wavelength_smooth = args.wavelength_smooth
-        wavelength_bin = args.wavelength_bin
-        flat_patterns = args.flat_files
-        dark_patterns = args.dark_files
-        compute_position = args.compute_position
+            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
+            modID = 3
+            modScale = 50
+            object_name = 'TETCRB'
+        
 
     # If the user specifies a coupling map, use it, otherwise look into the arguments
     if flat_patterns is None:
