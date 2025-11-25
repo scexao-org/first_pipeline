@@ -6,11 +6,17 @@ class PixelMap:
         self.file = file
         self.header = fits.getheader(file)
         self.traces_loc = fits.getdata(file)
-        self.pixel_min = self.header.get('PIX_MIN', 100)
-        self.pixel_max = self.header.get('PIX_MAX', 1600)
-        self.pixel_wide = self.header.get('PIX_WIDE', 2)
-        self.output_channels = self.header.get('OUT_CHAN', 38)
-        self.pm_check = self.header.get('PM_CHECK', 0)
+        # Check for required header keywords and raise error if not found
+        required_keys = ['Q_PMXMIN', 'Q_PMXMAX', 'Q_PMWIDE', 'Q_PMCHAN', 'Q_PM_CK']
+        missing_keys = [key for key in required_keys if key not in self.header]
+        if missing_keys:
+            raise KeyError(f"FITS header keywords missing in Pixel Map: {missing_keys}")
+        
+        self.pixel_min = self.header['Q_PMXMIN']
+        self.pixel_max = self.header['Q_PMXMAX']
+        self.pixel_wide = self.header['Q_PMWIDE']
+        self.output_channels = self.header['Q_PMCHAN']
+        self.pm_check = self.header['Q_PM_CK']
 
     def preprocess_cutData(self, data, dark_calculation=False):
         """

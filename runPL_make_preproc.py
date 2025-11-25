@@ -399,9 +399,11 @@ Notes:
                        help="Specify the OBJECT name of data to reduced based on the FITS header")
 
     # Initialize default values
-    pixel_map = None
-    loop = 0
-    object = None
+    args = parser.parse_args()
+    file_patterns = args.files if args.files else ['*.fits']
+    pixel_map = args.pixel_map
+    loop = args.loop
+    object = args.object
 
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
         os.environ.get('SPYDER_DEBUG_FILE')):
@@ -417,14 +419,6 @@ Notes:
             pixel_map = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
         if getpass.getuser() == "ehuby":
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
-    else:
-        args = parser.parse_args()
-        file_patterns = args.files if args.files else ['*.fits']
-
-        # If the user specifies a pixel map use it, otherwise look into the arguments
-        pixel_map = args.pixel_map
-        loop = args.loop
-        object = args.object
 
     if pixel_map is None:
         pixel_map = file_patterns + ['../pixelmaps/*.fits']

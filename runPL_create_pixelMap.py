@@ -497,6 +497,14 @@ Output:
     parser.add_argument("--filter_files", action='store_true',
                        help="Flag to filter out files that don't have enough flux. Can be long, recommended only if previous run failed.")
     
+    # Extract the parsed arguments
+    args = parser.parse_args()
+    pixel_min = args.pixel_min
+    pixel_max = args.pixel_max
+    pixel_wide = args.pixel_wide
+    file_patterns = args.file_patterns
+    filter_files = args.filter_files
+
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
         os.environ.get('SPYDER_DEBUG_FILE')):
         print("Running in compiler")
@@ -517,17 +525,7 @@ Output:
             print(f"Development arguments: {dev_args}")
             # Parse with custom arguments to avoid Jupyter kernel conflicts
             args = parser.parse_args(dev_args)
-    else:
-        # Parse the arguments normally
-        args = parser.parse_args()
 
-
-    # Extract the parsed arguments
-    pixel_min = args.pixel_min
-    pixel_max = args.pixel_max
-    pixel_wide = args.pixel_wide
-    file_patterns = args.file_patterns
-    filter_files = args.filter_files
     
     filelist, folder=runlib_io.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']}, get_folder=True)
 
