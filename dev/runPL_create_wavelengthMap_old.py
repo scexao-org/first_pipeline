@@ -33,7 +33,7 @@ from scipy import linalg
 from matplotlib import animation
 from itertools import product
 #from scipy.linalg import pinvfind_closest_dark
-from runPL_calibrateNeon import its_a_match, run_trials_for_all_combination_of_waves
+from dev.runPL_calibrateNeon import its_a_match, run_trials_for_all_combination_of_waves
 
 #plt.ion()
 
