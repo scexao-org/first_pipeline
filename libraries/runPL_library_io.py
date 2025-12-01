@@ -15,120 +15,67 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import re
 
-def clean_filelist(fits_keywords, filelist):
-    filelist_cleaned = []
-    if isinstance(filelist, str):
-        filelist = [filelist]
-    for filename in filelist:
-        try:
-            first_file = fits.open(filename, memmap=True)
-        except:
-            continue
-        header = first_file[0].header.copy()
-        first_file.close()
-        del first_file
+
+# def associate_dark(filelist, filelist_dark):
+#     """
+#     Filters the input file list to separate coupling map files and dark files based on FITS keywords.
+#     Raises an error if no valid files are found.
+#     Returns a dictionary mapping coupling map files to their closest dark files.
+#     """
+
+#     # raise an error if filelist is empty
+#     if len(filelist) == 0:
+#         raise FileNotFoundError("No good files to process. Please check the file patterns and keywords.")
+#     # raise an error if filelist_dark is empty
+#     if len(filelist_dark) == 0:
+#         print("WARNING: No good dark to substract to data files")
+
+#     # Check if all files have the same value for header['PM_CHECK']
+#     pm_check_values = set()
+#     combined_filelist = []
+#     combined_filelist.extend(filelist_dark)
+#     combined_filelist.extend(filelist)
+#     for file in combined_filelist:
+#         header = fits.getheader(file)
+#         pm_check_values.add(header.get('PM_CHECK', 0))
         
-        # Data files with the correct keywords only
-        key_names = list(fits_keywords.keys())
-        type_ok = True
-        for strname in key_names:
-            type_ok *= (strname in header)
+#     if len(pm_check_values) > 1:
+#         print("WARNING: The 'PM_CHECK' values (ie, the pixel map used to preprocess the files) \n are not consistent across all files!")
+#         print(f"Found values: {pm_check_values}")
 
-        if not type_ok:
-            continue
+#     # for each file in filelist_cmap find the closest dark file in filelist_dark with, by priority, first the directory in which the file is, and then by the date in the "DATE" fits keyword, and second, the directory in which the file is
 
-        keys_ok = True
-        for name in key_names:
-            keys_ok *= (header[name] in fits_keywords[name])
+#     filelist = np.sort(np.unique(filelist))
+#     files_with_dark = {file: find_closest_dark(file, filelist_dark) for file in filelist}
 
-        if not keys_ok:
-            continue
+#     return files_with_dark
 
-        filelist_cleaned.append(filename)
+
+# def associate_pixelmap(filelist , filelist_pixelmap):
+
+#     # raise an error if filelist is empty
+#     if len(filelist) == 0:
+#         raise FileNotFoundError("No good files to process. Please check the file patterns and keywords.")
+#     # raise an error if filelist_dark is empty
+#     if len(filelist_pixelmap) == 0:
+#         raise FileNotFoundError("No good pixelmap to process the files. Please check the file patterns and keywords.")
+
+#     filelist = np.sort(np.unique(filelist))
+#     files_with_pixelmap = {file: find_closest_pixelmap(file, filelist_pixelmap) for file in filelist}
+#     # Remove entries where no pixel map was found
+#     files_with_pixelmap = {file: pixelmap for file, pixelmap in files_with_pixelmap.items() if pixelmap is not None}
+
+#     if len(files_with_pixelmap) == 0:
+#         raise FileNotFoundError("The pixel map does not have the good wollaston configuration.")
     
-    filelist_cleaned = np.array(filelist_cleaned)
+#     if len(files_with_pixelmap) != len(filelist):
+#         print("WARNING: Some files do not have a corresponding pixel map.")
+#         for file in filelist:
+#             if file not in files_with_pixelmap:
+#                 print(f"No pixel map found for {file}")
 
-    return np.sort(filelist_cleaned)
+#     return files_with_pixelmap
 
-def associate_dark(filelist, filelist_dark):
-    """
-    Filters the input file list to separate coupling map files and dark files based on FITS keywords.
-    Raises an error if no valid files are found.
-    Returns a dictionary mapping coupling map files to their closest dark files.
-    """
-
-    # raise an error if filelist is empty
-    if len(filelist) == 0:
-        raise FileNotFoundError("No good files to process. Please check the file patterns and keywords.")
-    # raise an error if filelist_dark is empty
-    if len(filelist_dark) == 0:
-        print("WARNING: No good dark to substract to data files")
-
-    # Check if all files have the same value for header['PM_CHECK']
-    pm_check_values = set()
-    combined_filelist = []
-    combined_filelist.extend(filelist_dark)
-    combined_filelist.extend(filelist)
-    for file in combined_filelist:
-        header = fits.getheader(file)
-        pm_check_values.add(header.get('PM_CHECK', 0))
-        
-    if len(pm_check_values) > 1:
-        print("WARNING: The 'PM_CHECK' values (ie, the pixel map used to preprocess the files) \n are not consistent across all files!")
-        print(f"Found values: {pm_check_values}")
-
-    # for each file in filelist_cmap find the closest dark file in filelist_dark with, by priority, first the directory in which the file is, and then by the date in the "DATE" fits keyword, and second, the directory in which the file is
-
-    filelist = np.sort(np.unique(filelist))
-    files_with_dark = {file: find_closest_dark(file, filelist_dark) for file in filelist}
-
-    return files_with_dark
-
-
-def associate_pixelmap(filelist , filelist_pixelmap):
-
-    # raise an error if filelist is empty
-    if len(filelist) == 0:
-        raise FileNotFoundError("No good files to process. Please check the file patterns and keywords.")
-    # raise an error if filelist_dark is empty
-    if len(filelist_pixelmap) == 0:
-        raise FileNotFoundError("No good pixelmap to process the files. Please check the file patterns and keywords.")
-
-    filelist = np.sort(np.unique(filelist))
-    files_with_pixelmap = {file: find_closest_pixelmap(file, filelist_pixelmap) for file in filelist}
-    # Remove entries where no pixel map was found
-    files_with_pixelmap = {file: pixelmap for file, pixelmap in files_with_pixelmap.items() if pixelmap is not None}
-
-    if len(files_with_pixelmap) == 0:
-        raise FileNotFoundError("The pixel map does not have the good wollaston configuration.")
-    
-    if len(files_with_pixelmap) != len(filelist):
-        print("WARNING: Some files do not have a corresponding pixel map.")
-        for file in filelist:
-            if file not in files_with_pixelmap:
-                print(f"No pixel map found for {file}")
-
-    return files_with_pixelmap
-
-def find_closest_pixelmap(raw, filelist_pixelmap):
-    """
-    Find the closest pixel map file for a given raw data file.
-    The closest pixel map is determined by the wollaston status, and date.
-    """
-    header = fits.getheader(raw)
-    raw_wollaston = header.get('X_FIRWOL', 'IN')
-    raw_dir = os.path.dirname(raw)
-
-    # Filter pixel maps by wollaston status
-    pixelmaps_filtered = [pm for pm in filelist_pixelmap if fits.getheader(pm).get('X_FIRWOL', 'IN') == raw_wollaston]
-
-    # If no pixel map found, return None
-    if not pixelmaps_filtered:
-        return None
-
-    # Sort by date and return the most recent one
-    pixelmaps_filtered.sort(key=lambda pm: fits.getheader(pm).get('DATE-PRO', '1970-01-01'))
-    return pixelmaps_filtered[-1]
 
 def make_figure_of_trace(raw_image,traces_loc,pixel_wide,pixel_min,pixel_max):
     output_channels=traces_loc.shape[1]
@@ -198,73 +145,6 @@ def latest_file(filelist):
     last_created_file = max(filelist, key=os.path.getctime)
     
     return last_created_file
-
-def get_filelist(file_patterns=["*.fits"], fits_keywords=None, name_search=None, get_folder = False):
-    """
-    Find files based on the given parameters.
-
-    Args:
-        file_patterns (list): List of file patterns to process (e.g., ["*.fits"]).
-        fits_keywords (dict): Dictionary of FITS keywords to filter files.
-
-    Returns:
-        list: A list of files to process.
-    """
-    if name_search is not None:
-        str_search = "for " + str(name_search).upper()
-    else:
-        str_search=""
-
-    filelist = []
-
-    if isinstance(file_patterns, str):
-        file_patterns = [file_patterns]
-
-    print('file_patterns',file_patterns)
-    # If file patterns are provided, use glob to find matching files
-    for pattern in file_patterns:
-
-        if os.path.isdir(pattern):
-            file_path = os.path.join(pattern, '*.fits')
-        else:
-            file_path = pattern
-
-        filelist += glob(file_path)
-
-    # Filter out non-fits files
-    filelist = [file for file in filelist if file.endswith('.fits')]
-    
-    if len(filelist) == 0:
-        raise FileNotFoundError("No fits files found "+str_search+" with the specified patterns")
-
-    if fits_keywords is not None:
-        # If fits_keywords is provided, filter the file list based on the keywords
-        print("Looking for files with the correct keywords :",fits_keywords)
-        filelist_filtered = clean_filelist(fits_keywords, filelist)
-
-        if len(filelist_filtered) == 0:
-            for key in list(fits_keywords.keys()):
-                test_keywords = fits_keywords.copy()
-                test_keywords.pop(key)
-                test_filelist = clean_filelist(test_keywords, filelist)
-                if len(test_filelist) > 0:
-                    continue
-            raise FileNotFoundError(f"No fits files found "+str_search+f", Keyword {key}={fits_keywords[key]} may be too restrictive.")
-
-        filelist = filelist_filtered
-
-    # Sort the file list for consistent processing order
-    filelist.sort()
-
-    # now get the directory where most of the files are located
-    dirs = [os.path.dirname(file) for file in filelist]
-    most_common_dir = max(set(dirs), key=dirs.count)
-    print(f"Most files "+str_search+f" are located in: {most_common_dir}")
-
-    if get_folder:
-        return filelist, most_common_dir
-    else:
-        return filelist
 
 def get_fits_date(fits_file):
     try:
@@ -353,35 +233,4 @@ def save_fits_file(data, filepath, headerDict=None):
     print("Fit file saved in : ", filepath)
 
 
-def find_closest_in_time_dark(cmap_file, dark_files):
-    """
-    Finds the closest dark file to a given coupling map file based on the 'DATE' FITS keyword.
-    """
-
-    cmap_date = fits.getheader(cmap_file)['DATE']
-    
-    # find the closest by date
-    dark_dates = [(dark, fits.getheader(dark)['DATE']) for dark in dark_files]
-    dark_dates.sort(key=lambda x: abs(datetime.strptime(x[1], '%Y-%m-%dT%H:%M:%S') - datetime.strptime(cmap_date, '%Y-%m-%dT%H:%M:%S')))
-    
-    try:
-        return dark_dates[0][0]  # Return the closest dark file by date
-    except:
-        return None
-
-def find_closest_dark(cmap_file, dark_files):
-    """
-    Finds the closest dark file to a given coupling map file, prioritizing files in the same directory.
-    """
-
-    cmap_dir = os.path.dirname(cmap_file)
-    dark_samegain = [dark for dark in dark_files if fits.getheader(dark)['GAIN'] == fits.getheader(cmap_file)['GAIN']]
-    
-    # Filter dark files by the same directory
-    same_dir_darks = [dark for dark in dark_samegain if os.path.dirname(dark) == cmap_dir]
-    
-    if same_dir_darks:
-        return find_closest_in_time_dark(cmap_file, same_dir_darks)  # Return the first match in the same directory    
-    else:
-        return find_closest_in_time_dark(cmap_file, dark_samegain) 
 

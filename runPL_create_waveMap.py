@@ -30,9 +30,9 @@ from datetime import datetime
 from tqdm import tqdm
 import libraries.runPL_library_io as runlib_io
 import libraries.runPL_library_plots as runlib_plots
-from classes.runPL_class_flatWaveMap import FlatWaveMap
-from classes.runPL_class_dataCube import DataCube, extract_datalist 
-
+from classes.runPL_class_flatMap import FlatMap
+from classes.runPL_class_fileList import FileList
+from classes.runPL_class_dataCube import DataCube 
 
 #plt.ion()
 
@@ -75,146 +75,6 @@ neon_intensity = np.array([
     0.03268, 0.33628, 0.02421, 0.19251, 0.5563, 0.02255,
     0.19111, 0.04466, 0.03884, 0.04444, 0.03404
 ])
-
-constraints = {
-    'wollaston': None,
-    'object': None,
-    'modID': None,
-    'modScale': None
-}
-
-def get_filelist_wave(file_patterns, constraints, darks=dark_patterns, flatMap=flat_patterns, couplingMap = None, PixelMap = None) -> List[str]:
-
-        fits_keywords = {'X_FIRTYP': ['PREPROC'],
-                        'DATA-TYP': ['FLAT'],
-                        }    
-        
-        # Adding other constraints if asked by user
-        if constraints['wollaston'] is not None:
-            fits_keywords['X_FIRWOL'] = [constraints['wollaston']]
-        
-        print(wave_patterns)
-        filelist = runlib_io.get_filelist(wave_patterns, fits_keywords)
-
-        # Adding new constraints if not asked by user
-        hd=fits.getheader(filelist[0])
-        wollaston = hd.get('X_FIRWOL', None)
-        if wollaston is not None:
-            fits_keywords['X_FIRWOL'] = [wollaston]
-
-        print("----------------")
-        print(f"Selected wollaston={wollaston}")
-
-        filelist = runlib_io.get_filelist(wave_patterns, fits_keywords)
-
-        print(f"Found {len(filelist)} files matching criteria.")
-        print("----------------")
-
-        # finding darks files
-        fits_keywords['DATA-TYP'] = ['DARK']
-
-        try:
-            filelist_dark = runlib_io.get_filelist(dark_patterns, fits_keywords,  name_search="dark")
-        except FileNotFoundError as e:
-            print(f"WARNING!!! {e}")
-            filelist_dark = []
-
-        # finding flats files
-        fits_keywords['DATA-TYP'] = ['COMPARAISON']
-
-        try:
-            filelist_neon = runlib_io.get_filelist(flat_patterns, fits_keywords,  name_search="flat")
-        except FileNotFoundError as e:
-            print(f"WARNING!!! {e}")
-            filelist_neon =[]
-
-        files_with_dark = runlib_io.associate_dark(filelist, filelist_dark)
-        if len(filelist_neon)>0:
-            neons_with_dark = runlib_io.associate_dark(filelist_neon, filelist_dark)
-        else:
-            neons_with_dark = []
-
-        return files_with_dark
-
-
-def compute_flat(datalist, intercept_at_zero = False):
-
-    flats=np.concatenate([np.concatenate(d.data) for d in datalist])
-    variance=np.concatenate([np.concatenate(d.variance) for d in datalist])
-    valid_mask = ~np.isnan(flats[:,0,0])
-    flats = flats[valid_mask]
-    variance = variance[valid_mask]
-    
-    Nflat_smooth = 25
-    flats_smooth = np.zeros_like(flats)
-    window = np.hanning(Nflat_smooth)
-    window /= window.sum()
-    conv_ref = np.convolve(np.ones(len(flats[0,0])), window, mode='same')
-    
-    for f in range(flats_smooth.shape[0]):
-        for o in range(flats_smooth.shape[1]):
-            flats_smooth[f, o, :] =  np.convolve(flats[f, o, :], window, mode='same') / conv_ref
-
-    # Fit first order polynomial for each pixel position
-    poly_coeffs = np.zeros((flats.shape[1], flats.shape[2], 2))  # Store coefficients for each pixel
-    fit_quality = np.zeros((flats.shape[1], flats.shape[2], 3))  # Store quality metrics: [chi2_reduced, r_squared, weighted_rmse]
-    
-    for o in tqdm(range(flats.shape[1]),desc="Linear fit of gain for each pixels"):  # For each output
-        for p in range(flats.shape[2]):  # For each pixel
-            # Extract the data for this pixel across all flat frames
-            y_data = flats[:, o, p]
-            x_data = flats_smooth[:, o, p]
-            w_data = 1/variance[:, o, p]
-            
-            # Fit linear function: y = ax + b using weighted least squares
-            # Calculate using normal equations for weighted linear regression
-            sum_w = np.sum(w_data)
-            sum_wx = np.sum(w_data * x_data)
-            sum_wy = np.sum(w_data * y_data)
-            sum_wxx = np.sum(w_data * x_data * x_data)
-            sum_wxy = np.sum(w_data * x_data * y_data)
-
-            # Solve normal equations: [sum_wxx sum_wx; sum_wx sum_w] * [a; b] = [sum_wxy; sum_wy]
-            det = sum_wxx * sum_w - sum_wx * sum_wx
-            
-            if abs(det) > 1e-12:  # Check for numerical stability
-                a = (sum_w * sum_wxy - sum_wx * sum_wy) / det
-                b = (sum_wxx * sum_wy - sum_wx * sum_wxy) / det
-            else:
-                # Fallback to weighted least squares through origin if matrix is singular
-                a = sum_wxy / sum_wxx if sum_wxx != 0 else 0
-                b = 0
-
-            if intercept_at_zero:
-                a = sum_wxy / sum_wxx if sum_wxx != 0 else 0
-                b = 0
-
-            poly_coeffs[o, p, 0] = a  # slope
-            poly_coeffs[o, p, 1] = b  # intercept
-            
-            # Calculate fit quality metrics
-            y_fit = a * x_data + b
-            residuals = y_data - y_fit
-            
-            # 1. Reduced Chi-squared (should be ~1 for good fit)
-            chi2 = np.sum(w_data * residuals**2)
-            dof = len(y_data) - 2  # degrees of freedom (n_points - n_parameters)
-            chi2_reduced = chi2 / dof if dof > 0 else np.inf
-            
-            # 2. Weighted R-squared coefficient of determination
-            y_mean = np.sum(w_data * y_data) / sum_w
-            ss_tot = np.sum(w_data * (y_data - y_mean)**2)
-            ss_res = np.sum(w_data * residuals**2)
-            r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
-            
-            # 3. Weighted RMSE (normalized by typical signal level)
-            weighted_rmse = np.sqrt(ss_res / sum_w) / np.abs(y_mean) if y_mean != 0 else np.inf
-            
-            fit_quality[o, p, 0] = chi2_reduced
-            fit_quality[o, p, 1] = r_squared
-            fit_quality[o, p, 2] = weighted_rmse
-
-    return poly_coeffs, fit_quality
 
 
 def calculate_pixel_peaks_and_aberations(neon):
@@ -461,29 +321,31 @@ if __name__ == "__main__":
             """
         )
 
+
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     # Add positional argument for files
     parser.add_argument('files', nargs='*', default=['*.fits'],
                        help='FITS files to process (supports wildcards)')
 
     # Add optional arguments
-    parser.add_argument('-f',"--flat_files", 
-                       help="Select a specific flat file to use (default: use what is in argument)")
-    parser.add_argument("-d","--dark_files", 
+    parser.add_argument("--dark_files", 
                        help="Select one or more specific dark(s) files to use")
-    parser.add_argument('-w',"--wollaston", 
+    parser.add_argument("--flatMap", 
+                       help="Select a specific flat Map to use")
+    parser.add_argument("--wollaston", 
                        help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list of files)")
     parser.add_argument('--Nexclude', type=int, default=4,
                        help="Number of wavelength peak to exclude from the fit (default: 4)")
+    parser.add_argument("--f", help=argparse.SUPPRESS)
     
     # Parse the arguments
     args = parser.parse_args()
     file_patterns = args.files if args.files else ['*.fits','./preproc/*.fits']
 
     # Extract the parsed arguments
-    wollaston = args.wollaston
-    neon_files = args.neon_files
-    flat_files = args.flat_files
     dark_patterns = args.dark_files
+    flatMap = args.flatMap
+    wollaston = args.wollaston
     Nexclude = args.Nexclude
 
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('SPYDER_DEBUG_FILE')):
@@ -498,25 +360,20 @@ if __name__ == "__main__":
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
         
 
-    # If the user specifies a coupling map, use it, otherwise look into the arguments
-    if neon_files is None:
-        neon_files = file_patterns
     # If the user specify a dark, use it. Otherwise, use the science file pattern
     if dark_patterns is None:
         dark_patterns = file_patterns
+    # If the user specifies a coupling map, use it, otherwise look into the arguments
+    if flatMap is None:
+        flatMap = file_patterns
 
-    flats_with_dark, neon_with_dark = get_filelist_wave(file_patterns, dark_patterns, neon_files, wollaston)
+    fileList = FileList(file_patterns, data_type='COMPARAISON', first_type='PREPROC', wollaston=wollaston)
+    fileList.make_association(darks_pattern=dark_patterns)
+    file_flat = fileList.get_flatmap_file(flatMap)
 
+    flatMap =  FlatMap(file_flat) if file_flat is not None else None
 
-    # calculate the flat by fitting a linear function on each pixel
-    datalist_flat : List[DataCube] = extract_datalist(flats_with_dark, center = False)
-    poly_coeffs, fit_quality = compute_flat(datalist_flat)
-    flat = poly_coeffs[:,:,0] #slope
-
-    # making pictures
-    fig_flat=runlib_plots.plot_flat_fit_quality(poly_coeffs, fit_quality)
-
-    datalist : List[DataCube] = extract_datalist(neon_with_dark, center = False, flat=flat) 
+    datalist : List[DataCube] = fileList.extract_data_from_list(flatMap = flatMap, center = False)
 
     # calculating optical aberration (deformation) of the wavelength on the detector
     neon=np.array([np.nanmean(d.data, axis=(0,1)) for d in datalist]).sum(axis=0)
@@ -551,17 +408,16 @@ if __name__ == "__main__":
     hdu_primary = fits.PrimaryHDU()
 
     # Create HDUs for each array
-    hdu = [fits.ImageHDU(data=flat, name='FLAT')]
-    hdu += [fits.ImageHDU(data=wave_axis, name='WAVELENGTH')]
+    hdu = [fits.ImageHDU(data=wave_axis, name='WAVELENGTH')]
     hdu += [fits.ImageHDU(data=index, name='INDEX')]
     hdu += [fits.ImageHDU(data=weights, name='WEIGHT')]
 
-    header = datalist_flat[-1].header
+    header = datalist[-1].header
     # Définir le chemin complet du sous-dossier "output/couplingmaps"
-    folder = datalist_flat[-1].dirname
-    output_dir = os.path.join(folder,"../flatwavemaps")
+    folder = fileList.get_most_common_dir()
+    output_dir = os.path.join(folder,"../wavemaps")
 
-    header['X_FIRTYP'] = 'FLATWAVEMAP'
+    header['X_FIRTYP'] = 'WAVEMAP'
 
     # Add date and time to the header
     current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
@@ -596,5 +452,41 @@ if __name__ == "__main__":
     print(f"Saving data to {output_filename}")
     hdul.writeto(output_filename, overwrite=True)
 
+
+    # Create a figure to display the coefficients
+    fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+    ax.axis('off')  # Turn off axis
+
+    # Create text strings for the coefficients
+    coef_1d_text = f"""1D Wavelength Mapping Coefficients:
+    λ(pixel) = {coef_1d[0]:.6e} × pixel² + {coef_1d[1]:.6e} × pixel + {coef_1d[2]:.6e}
+
+    a₂ = {coef_1d[0]:.6e}
+    a₁ = {coef_1d[1]:.6e} 
+    a₀ = {coef_1d[2]:.6e}"""
+
+    coef_2d_text = f"""2D Aberration Coefficients:
+    Δpixel(x,y) = {coef_2d[0]:.6e} + {coef_2d[1]:.6e} × x + {coef_2d[2]:.6e} × y + {coef_2d[3]:.6e} × xy + {coef_2d[4]:.6e} × y²
+
+    c₀ = {coef_2d[0]:.6e}
+    c₁ = {coef_2d[1]:.6e}
+    c₂ = {coef_2d[2]:.6e}
+    c₃ = {coef_2d[3]:.6e}
+    c₄ = {coef_2d[4]:.6e}"""
+
+    # Display the text
+    ax.text(0.02, 0.98, coef_1d_text, transform=ax.transAxes, fontsize=10, 
+        verticalalignment='top', fontfamily='monospace',
+        bbox=dict(boxstyle="round,pad=0.5", facecolor="lightblue", alpha=0.8))
+
+    ax.text(0.02, 0.48, coef_2d_text, transform=ax.transAxes, fontsize=10,
+        verticalalignment='top', fontfamily='monospace',
+        bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgreen", alpha=0.8))
+
+    ax.set_title('Wavelength Mapping Coefficients', fontsize=14, fontweight='bold')
+    plt.tight_layout()
+
+
+    runlib_plots.save_pdf_in_file(output_filename)
 
 # %%

@@ -30,7 +30,7 @@ from datetime import datetime
 from tqdm import tqdm
 import libraries.runPL_library_io as runlib_io
 import libraries.runPL_library_plots as runlib_plots
-from classes.runPL_class_flatWaveMap import FlatWaveMap
+from classes.runPL_class_flatMap import FlatWaveMap
 from classes.runPL_class_dataCube import DataCube, extract_datalist 
 
 
@@ -76,7 +76,7 @@ neon_intensity = np.array([
     0.19111, 0.04466, 0.03884, 0.04444, 0.03404
 ])
 
-def get_filelist_wave(flat_patterns, dark_patterns, wollaston):
+def get_filelist_wave(wave_patterns, dark_patterns, flat_patterns, wollaston):
 
         fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['FLAT'],
@@ -86,8 +86,8 @@ def get_filelist_wave(flat_patterns, dark_patterns, wollaston):
         if wollaston is not None:
             fits_keywords['X_FIRWOL'] = [wollaston]
         
-        print(flat_patterns)
-        filelist = runlib_io.get_filelist(flat_patterns, fits_keywords)
+        print(wave_patterns)
+        filelist = runlib_io.get_filelist(wave_patterns, fits_keywords)
 
         # Adding new constraints if not asked by user
         hd=fits.getheader(filelist[0])
@@ -98,7 +98,7 @@ def get_filelist_wave(flat_patterns, dark_patterns, wollaston):
         print("----------------")
         print(f"Selected wollaston={wollaston}")
 
-        filelist = runlib_io.get_filelist(flat_patterns, fits_keywords)
+        filelist = runlib_io.get_filelist(wave_patterns, fits_keywords)
 
         print(f"Found {len(filelist)} files matching criteria.")
         print("----------------")
@@ -112,9 +112,22 @@ def get_filelist_wave(flat_patterns, dark_patterns, wollaston):
             print(f"WARNING!!! {e}")
             filelist_dark = []
 
-        files_with_dark = runlib_io.associate_dark(filelist, filelist_dark)
+        # finding flats files
+        fits_keywords['DATA-TYP'] = ['COMPARAISON']
 
-        return files_with_dark
+        try:
+            filelist_neon = runlib_io.get_filelist(flat_patterns, fits_keywords,  name_search="flat")
+        except FileNotFoundError as e:
+            print(f"WARNING!!! {e}")
+            filelist_neon =[]
+
+        files_with_dark = runlib_io.associate_dark(filelist, filelist_dark)
+        if len(filelist_neon)>0:
+            neons_with_dark = runlib_io.associate_dark(filelist_neon, filelist_dark)
+        else:
+            neons_with_dark = []
+
+        return files_with_dark, neons_with_dark
 
 
 def compute_flat(datalist, intercept_at_zero = False):
@@ -446,20 +459,27 @@ if __name__ == "__main__":
                        help='FITS files to process (supports wildcards)')
 
     # Add optional arguments
+    parser.add_argument('-f',"--flat_files", 
+                       help="Select a specific flat file to use (default: use what is in argument)")
+    parser.add_argument("-n","--neon_files", 
+                       help="Select a specific neon file to use (default: use what is in argument)")
     parser.add_argument("-d","--dark_files", 
                        help="Select one or more specific dark(s) files to use")
     parser.add_argument('-w',"--wollaston", 
                        help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list of files)")
-    parser.add_argument('-f',"--force", default="TRUE",
-                       help="Force the creation of the flatfield map even if it exists (default: TRUE)")
-                            
+    parser.add_argument('--Nexclude', type=int, default=4,
+                       help="Number of wavelength peak to exclude from the fit (default: 4)")
+    
     # Parse the arguments
     args = parser.parse_args()
     file_patterns = args.files if args.files else ['*.fits','./preproc/*.fits']
 
     # Extract the parsed arguments
     wollaston = args.wollaston
+    neon_files = args.neon_files
+    flat_files = args.flat_files
     dark_patterns = args.dark_files
+    Nexclude = args.Nexclude
 
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('SPYDER_DEBUG_FILE')):
         print("Running in compiler")
@@ -471,20 +491,53 @@ if __name__ == "__main__":
         if getpass.getuser() == "ehuby":
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
+        
 
+    # If the user specifies a coupling map, use it, otherwise look into the arguments
+    if neon_files is None:
+        neon_files = file_patterns
     # If the user specify a dark, use it. Otherwise, use the science file pattern
     if dark_patterns is None:
         dark_patterns = file_patterns
 
-    flats_with_dark = get_filelist_wave(file_patterns, dark_patterns, wollaston)
+    flats_with_dark, neon_with_dark = get_filelist_wave(file_patterns, dark_patterns, neon_files, wollaston)
+
 
     # calculate the flat by fitting a linear function on each pixel
-    datalist : List[DataCube] = extract_datalist(flats_with_dark, center = False)
-    poly_coeffs, fit_quality = compute_flat(datalist)
+    datalist_flat : List[DataCube] = extract_datalist(flats_with_dark, center = False)
+    poly_coeffs, fit_quality = compute_flat(datalist_flat)
     flat = poly_coeffs[:,:,0] #slope
 
     # making pictures
     fig_flat=runlib_plots.plot_flat_fit_quality(poly_coeffs, fit_quality)
+
+    datalist : List[DataCube] = extract_datalist(neon_with_dark, center = False, flat=flat) 
+
+    # calculating optical aberration (deformation) of the wavelength on the detector
+    neon=np.array([np.nanmean(d.data, axis=(0,1)) for d in datalist]).sum(axis=0)
+    ref_pixels_lines, aberated_image, coef_2d, fig_aberations = calculate_pixel_peaks_and_aberations(neon)
+
+    # calculating the wavelength on each pixel on the image without aberration (1D adjustement)
+    wave_1D_mapping, coef_1d, fig_1d_mapping = calculate_the_pixel_to_wavelength_mapping(ref_pixels_lines, neon_wavelengths, Nexclude)
+
+    # computing final 2D wavelength map
+    wave_2D_mapping = wave_1D_mapping + aberated_image
+    wave_axis = wave_1D_mapping[wave_1D_mapping > wave_2D_mapping[:,-1].max()]
+    wave_axis = wave_axis[wave_axis < wave_2D_mapping[:,0].min()]
+
+    # computing the pixel index for each wavelength in the range, and the weights for interpolation
+    index = np.zeros((len(wave_axis),len(wave_2D_mapping),2), dtype=int)
+    weights = np.zeros((len(wave_axis),len(wave_2D_mapping),2))
+    for i,lambda_0 in tqdm(enumerate(wave_axis), desc = "Calculating weights for wavelength interpolation"):
+        idx=np.abs(wave_2D_mapping-lambda_0).argsort(axis=1)[:,:2]
+        for o in range(len(idx)):
+            lambda_1=wave_2D_mapping[o,idx[o,0]]
+            lambda_2=wave_2D_mapping[o,idx[o,1]]
+            denom = 1 / (lambda_2 - lambda_1)
+            w1 = (lambda_2 - lambda_0) * denom
+            w2 = (lambda_0 - lambda_1) * denom
+            weights[i,o] = (w1,w2)
+        index[i] = idx
 
     ############### Save results ####################
     # Save arrays into a FITS file
@@ -494,23 +547,35 @@ if __name__ == "__main__":
 
     # Create HDUs for each array
     hdu = [fits.ImageHDU(data=flat, name='FLAT')]
+    hdu += [fits.ImageHDU(data=wave_axis, name='WAVELENGTH')]
+    hdu += [fits.ImageHDU(data=index, name='INDEX')]
+    hdu += [fits.ImageHDU(data=weights, name='WEIGHT')]
 
-    header = datalist[-1].header
+    header = datalist_flat[-1].header
     # Définir le chemin complet du sous-dossier "output/couplingmaps"
-    folder = datalist[-1].dirname
+    folder = datalist_flat[-1].dirname
     output_dir = os.path.join(folder,"../flatwavemaps")
 
-    header['X_FIRTYP'] = 'FLATMAP'
+    header['X_FIRTYP'] = 'FLATWAVEMAP'
 
     # Add date and time to the header
     current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
     header['DATE-PRO'] = current_time
 
-    filenames = [d.filename for d in datalist]
-    for i, filename in enumerate(filenames):
-        header['Q_FM_F%i' % i] = (filename, 'filename of the extracted flux')
+    # Add input parameters to the header
+    header['Q_WM1D'] = (coef_1d[2],  'wavelength 2nd order poly')
+    header['Q_WM1DX'] = (coef_1d[1],  'wavelength 2nd order poly')
+    header['Q_WM1DX2'] = (coef_1d[0],  'wavelength 2nd order poly')
+    header['Q_WM2D'] = (coef_2d[0],  'Aberrations constant')
+    header['Q_WM2DX'] = (coef_2d[1],  'Aberrations X')
+    header['Q_WM2DY'] = (coef_2d[2],  'Aberrations Y')
+    header['Q_WM2DXY'] = (coef_2d[3],  'Aberrations XY')
+    header['Q_WM2DY2'] = (coef_2d[4],  'Aberrations Y2')
 
-    header['Q_FMNAME'] = (runlib_io.create_output_filename(header), 'name of the flatwave map file')
+    # for i, filename in enumerate(filenames):
+    #     header['Q_WM_F%i' % i] = (filename, 'filename of the extracted flux')
+
+    header['Q_WMNAME'] = (runlib_io.create_output_filename(header), 'name of the flatwave map file')
 
     # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
     os.makedirs(output_dir, exist_ok=True)
@@ -520,7 +585,7 @@ if __name__ == "__main__":
     # Combine all HDUs into an HDUList
     hdul = fits.HDUList([hdu_primary, *hdu])
 
-    output_filename = os.path.join(output_dir, header['Q_FMNAME'])
+    output_filename = os.path.join(output_dir, header['Q_WMNAME'])
 
     # Write to a FITS file
     print(f"Saving data to {output_filename}")

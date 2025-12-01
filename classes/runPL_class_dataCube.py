@@ -166,15 +166,6 @@ class DataCube:
 
         return self.ra_dec
 
-    def normalize_with_flat(self, flat):
-        """
-        Normalize the data cube by a flat field.
-        Args:
-            flat (numpy.ndarray): The flat field to normalize the data cube.
-        """
-        self.data /= flat
-        self.variance /= flat**2
-
     def compute_flux(self):
         """
         Get the mean spectra of the 38 outputs.
@@ -289,61 +280,3 @@ class DataCube:
 
         return good_pyramids, center_pyramids
 
-
-def extract_datalist(files_with_dark, Nsmooth = 1, Nbin = 1, flat = None, center = True):
-    """
-    Extracts and processes data cubes from the input files.
-    Subtracts dark files, applies wavelength smoothing, and calculates variance.
-    Returns the processed data cubes, variance cubes, and a header to save.
-    If Nsmooth > 1, the data is smoothed along its wavelength dimension by Nsmooth values.
-    If Nbin > 1, the data is binned along its wavelength dimension by Nbin values.
-    """
-
-    datalist=[]
-
-    for data_file,dark_file  in files_with_dark.items():
-
-        # reading header data
-        header=fits.getheader(data_file)
-        # important to cast the data in double!
-        data=np.double(fits.getdata(data_file))
-
-        if dark_file is not None:
-            data_dark=fits.getdata(dark_file)
-            if len(data_dark)==1:
-                data_dark=data_dark[0]
-                data_dark_std=data_dark[0]*0+12
-            else:
-                data_dark=data_dark.mean(axis=0)
-                data_dark_std=data_dark.std(axis=0)
-        else:
-            # using default values if we do not know the dark
-            data_dark=header["DETBIAS"]*(1+2*header["PIX_WIDE"])
-            data_dark_std=12*np.sqrt(1+2*header["PIX_WIDE"])
-
-        data-=data_dark
-        gain=header['GAIN']
-        data_dark_var=data_dark_std**2
-        data_var=data_dark_var+gain*np.abs(data)#+0.05*np.abs(data)**2
-        data_var[np.abs(data)>2**16]=np.inf #saturating values
-
-        dataCube = DataCube(data, data_var, data_dark, data_dark_var, data_file, header)
-
-        # Normalize the data cube by the flat field if provided
-        if flat is not None:
-            dataCube.normalize_with_flat(flat)
-
-        # If smoothing and binning is required
-        if Nsmooth > 1:
-            dataCube.smooth(Nsmooth)
-        if Nbin > 1:
-            dataCube.bin(Nbin)
-
-        # If centering flux is required, do it after smoothing and binning
-        dataCube.compute_flux()
-        if center == True:
-            dataCube.center_flux_outputs()
-
-        datalist += [dataCube]
-
-    return datalist

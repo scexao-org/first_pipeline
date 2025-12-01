@@ -121,8 +121,8 @@ def plot_results_of_line_identification(spectrum, ref_pixels_lines, neon_wavelen
 
     return fig
 
-def plot_flat_fit_quality(poly_coeffs, fit_quality):
-    fig, axes = plt.subplots(2, 3, num="result of flat fit",figsize=(18, 10), constrained_layout=True, sharex=True, sharey=True, clear=True)
+def plot_flat_fit_quality(poly_coeffs, fit_quality, desc = "Flat Fit Quality"):
+    fig, axes = plt.subplots(2, 3, num=desc, figsize=(18, 10), constrained_layout=True, sharex=True, sharey=True, clear=True)
     
     # Top row: Fit coefficients
     # Plot coefficient a (slope)
@@ -216,14 +216,15 @@ def fit_gaussian_on_flux(fluxes, xmod, ymod):
     # Use the mean fluxes for the grid
     
     # Prepare data for fitting
-    z = fluxes
-    x = xmod
-    y = ymod
-    amplitude_0=np.max(fluxes)-np.min(fluxes)
-    x_0= x[fluxes.argmax()]
-    y_0= y[fluxes.argmax()]
+    z_is_nan = np.isnan(fluxes)
+    z = fluxes[~z_is_nan]
+    x = xmod[~z_is_nan]
+    y = ymod[~z_is_nan]
+    amplitude_0=np.nanmax(fluxes)-np.nanmin(fluxes)
+    x_0= x[np.nanargmax(fluxes)]
+    y_0= y[np.nanargmax(fluxes)]
     sigma_0 = (x.max()-x.min())/4
-    offset_0=np.min(fluxes)
+    offset_0=np.nanmin(fluxes)
 
     # Initial guess for the parameters
     initial_guess = (amplitude_0,x_0,y_0,sigma_0,offset_0)
@@ -263,7 +264,7 @@ def save_all_as_PDF(output_dir = "/home/jsarrazin/Bureau/test zone/coupling_maps
     print(f"All plots saved to {pdf_filename}")
     return 1
 
-def plot_flux_map(fluxes, xmod, ymod):
+def plot_flux_map(fluxes, xmod, ymod, desc = "Flux Map"):
 
     Ndit = len(fluxes)
     Nmod = len(xmod)
@@ -281,8 +282,7 @@ def plot_flux_map(fluxes, xmod, ymod):
     flux_padded[:size_old]=fluxes
     flux_padded=flux_padded.reshape(size_new)
 
-    plt.close("Coupling Map")
-    fig,axs = plt.subplots(Ncube, num="Coupling Map", figsize=(8, 6*Ncube), clear=True,squeeze=False)
+    fig,axs = plt.subplots(Ncube, num=desc, figsize=(8, 6*Ncube), clear=True,squeeze=False)
     for c in range(Ncube):
         fluxes = flux_padded[c]
         popt = fit_gaussian_on_flux(fluxes, xmod, ymod)
