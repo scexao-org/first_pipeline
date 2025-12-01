@@ -365,7 +365,7 @@ if __name__ == "__main__":
         dark_patterns = file_patterns
     # If the user specifies a coupling map, use it, otherwise look into the arguments
     if flatMap is None:
-        flatMap = file_patterns
+        flatMap = file_patterns  + ['../flatmaps/*.fits']
 
     fileList = FileList(file_patterns, data_type='COMPARAISON', first_type='PREPROC', wollaston=wollaston)
     fileList.make_association(darks_pattern=dark_patterns)

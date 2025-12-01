@@ -229,7 +229,6 @@ if __name__ == "__main__":
     # Add positional argument for files
     parser.add_argument('files', nargs='*', default=['*.fits'],
                        help='FITS files to process (supports wildcards)')
-
     # Add optional arguments
     parser.add_argument("--dark_files", 
                        help="Select one or more specific dark(s) files to use")
@@ -266,8 +265,7 @@ if __name__ == "__main__":
 
     datalist : List[DataCube] = fileList.extract_data_from_list(center = False)
 
-
-    poly_coeffs, fit_quality = compute_flat(datalist[6:7])
+    poly_coeffs, fit_quality = compute_flat(datalist, intercept_at_zero = True)
 
     # making pictures
     fig_flat=runlib_plots.plot_flat_fit_quality(poly_coeffs, fit_quality)
@@ -279,7 +277,7 @@ if __name__ == "__main__":
     hdu_primary = fits.PrimaryHDU()
 
     # Create HDUs for each array
-    hdu = [fits.ImageHDU(data=poly_coeffs[:,:,0], name='FLAT')]
+    hdu = [fits.ImageHDU(data=1/poly_coeffs[:,:,0], name='FLAT')]
 
     header = datalist[-1].header
     # Définir le chemin complet du sous-dossier "output/couplingmaps"
@@ -317,18 +315,30 @@ if __name__ == "__main__":
 
     flatMap =  FlatMap(output_filename)
 
-    datalist : List[DataCube] = fileList.extract_data_from_list(flatMap = flatMap, center = False)
+    datalist_1 : List[DataCube] = fileList.extract_data_from_list(flatMap = None, center = False)
+    datalist_2 : List[DataCube] = fileList.extract_data_from_list(flatMap = flatMap, center = False)
 
-    for d in datalist:
+    data_noflat=np.array([np.nanmean(d.data,axis=(0,1)) for d in datalist_1])
+    data_withflat=np.array([np.nanmean(d.data,axis=(0,1)) for d in datalist_2])
 
-        runlib_plots.plot_flux_map(np.nanmean(d.flux,axis=(0,2)), d.xmod[0], d.ymod[0], desc=d.basename+" Flux Map")
-
-        poly_coeffs, fit_quality = compute_flat([d], intercept_at_zero = True)
-
-        # making pictures
-        fig_flat=runlib_plots.plot_flat_fit_quality(poly_coeffs, fit_quality, desc = d.basename)
-
-
+    for i in range(len(data_noflat)):
+        d=datalist_1[0]
+        runlib_plots.plot_flux_map(np.nanmean(d.data,axis=(0,2,3)), d.xmod[0], d.ymod[0], desc = f'Flux map for file {d.basename}')
+        fig = plt.figure(figsize=(18,10),clear=True)
+        plt.subplot(2, 2, 1)
+        vmin,vmax=np.percentile(data_noflat[i], (5,95))
+        im0=plt.imshow(data_noflat[i], origin='lower', aspect='auto', vmin=vmin, vmax=vmax, interpolation='none', rasterized=True)
+        plt.title(f'Without flat - File {i}')
+        plt.colorbar(im0)
+        plt.subplot(2, 2, 2)
+        im1=plt.imshow(data_withflat[i], origin='lower', aspect='auto', vmin=vmin, vmax=vmax, interpolation='none', rasterized=True)
+        plt.title(f'With flat - File {i}')
+        plt.colorbar(im1)
+        plt.subplot(2, 1, 2)
+        plt.plot(data_withflat[i].T,'k')
+        plt.plot(data_noflat[i].T)
+        plt.suptitle(f'Flat correction comparison for file {d.basename}')
+        plt.tight_layout()
 
     runlib_plots.save_pdf_in_file(output_filename)
 

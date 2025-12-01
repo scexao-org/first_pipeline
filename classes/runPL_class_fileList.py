@@ -240,8 +240,9 @@ class FileList:
             print(f"WARNING!!! {e}")
             return None
 
+        print(filelist_flatMap)
         # Return the most recent flat map
-        filelist_flatMap.sort(key=lambda pm: fits.getheader(pm).get('DATE-PRO', '1970-01-01'))
+        filelist_flatMap = sorted(filelist_flatMap, key=lambda pm: fits.getheader(pm).get('DATE-PRO', '1970-01-01'))
         return filelist_flatMap[-1]
     
     def get_couplingmap_file(self):
@@ -262,7 +263,8 @@ class FileList:
             return None
 
         # Return the most recent coupling map
-        filelist_couplingMap.sort(key=lambda pm: fits.getheader(pm).get('DATE-PRO', '1970-01-01'))
+        filelist_couplingMap = sorted(filelist_couplingMap, key=lambda pm: fits.getheader(pm).get('DATE-PRO', '1970-01-01'))
+
         return filelist_couplingMap[-1]
     
     def get_wavemap_file(self):
@@ -284,7 +286,7 @@ class FileList:
             return None
 
         # Return the most recent wave map
-        filelist_waveMap.sort(key=lambda pm: fits.getheader(pm).get('DATE-PRO', '1970-01-01'))
+        filelist_waveMap = sorted(filelist_waveMap, key=lambda pm: fits.getheader(pm).get('DATE-PRO', '1970-01-01'))
         return filelist_waveMap[-1]
     
 
