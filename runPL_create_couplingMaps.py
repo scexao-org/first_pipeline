@@ -91,7 +91,7 @@ usage = """
     runPL_createCouplingMaps.py  *.fits
 """
 
-def get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, object_name, wollaston):
+def get_filelist_cmap(file_patterns, dark_patterns, flat_patterns, modID, modScale, object_name, wollaston):
 
         fits_keywords = {'X_FIRTYP': ['PREPROC'],
                         'DATA-TYP': ['OBJECT','OJECT','TEST'],
@@ -386,13 +386,12 @@ Output:
                        help="Selection of the modulation scale by user (default: first in the list)")
     parser.add_argument("--wollaston", 
                        help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
-    parser.add_argument("--compute_position", action="store_true", default=False,
-                       help="Compute position of individual DITs (slow) (default: %(default)s)")
-    
+
     # Parse the arguments
     args = parser.parse_args()
     file_patterns = args.files if args.files else ['*.fits','./preproc/*.fits']
 
+#%%
     # Extract the parsed arguments
     modID = args.modID
     modScale = args.modScale
@@ -403,7 +402,6 @@ Output:
     wavelength_bin = args.wavelength_bin
     flat_patterns = args.flat_files
     dark_patterns = args.dark_files
-    compute_position = args.compute_position
     
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('SPYDER_DEBUG_FILE')):
         print("Running in compiler")
@@ -433,7 +431,7 @@ Output:
     if dark_patterns is None:
         dark_patterns = file_patterns
 
-    files_with_dark, flats_with_dark = get_filelist(file_patterns, dark_patterns, flat_patterns, modID, modScale, object_name, wollaston)
+    files_with_dark, flats_with_dark = get_filelist_cmap(file_patterns, dark_patterns, flat_patterns, modID, modScale, object_name, wollaston)
 
     flat = compute_flat(flats_with_dark)
 
@@ -808,3 +806,5 @@ Output:
 
 
 # %%
+
+#ideal : 0.01 mas

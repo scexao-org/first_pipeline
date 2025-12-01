@@ -29,6 +29,152 @@ import astropy.units as u
 subaru = Observer.at_site("Subaru")
 plt.ion()
 
+def plot_wavefit_coeffs(peaks_all_sub, peaks_all_sub_good, aberations, aberations_fit):
+
+    # Plot peaks_all_sub and peaks_all_sub_good using imshow
+    fig, axes = plt.subplots(2, 3, figsize=(18, 8))
+    fig.suptitle('Peak Analysis and Aberration Fitting')
+
+    # Plot all peaks
+    im1 = axes[0, 0].imshow(peaks_all_sub, aspect='auto', interpolation='none', rasterized=True, cmap='viridis')
+    fig.colorbar(im1, ax=axes[0, 0], label='Peak Position (pixels)')
+    axes[0, 0].set_title('All Detected Peaks')
+    axes[0, 0].set_xlabel('Peak Index')
+    axes[0, 0].set_ylabel('PL output')
+
+    # Plot only good peaks
+    im2 = axes[0, 1].imshow(peaks_all_sub_good, aspect='auto', interpolation='none', rasterized=True, cmap='viridis')
+    fig.colorbar(im2, ax=axes[0, 1], label='Peak Position (pixels)')
+    axes[0, 1].set_title('Good Peaks Only')
+    axes[0, 1].set_xlabel('Good Peak Index')
+    axes[0, 1].set_ylabel('PL output')
+
+    # Plot aberrations
+    im3 = axes[0, 2].imshow(aberations, aspect='auto', interpolation='none', rasterized=True, cmap='RdBu')
+    fig.colorbar(im3, ax=axes[0, 2], label='Aberration (pixels)')
+    axes[0, 2].set_title('Aberrations')
+    axes[0, 2].set_xlabel('Good Peak Index')
+    axes[0, 2].set_ylabel('PL output')
+
+    # Plot all peaks with median removed
+    peaks_all_sub_centered = peaks_all_sub - np.median(peaks_all_sub, axis=0)[None, :]
+    im4 = axes[1, 0].imshow(peaks_all_sub_centered, aspect='auto', interpolation='none', rasterized=True, cmap='viridis')
+    fig.colorbar(im4, ax=axes[1, 0], label='Peak Position Deviation (pixels)')
+    axes[1, 0].set_title('All Peaks (Median Removed)')
+    axes[1, 0].set_xlabel('Peak Index')
+    axes[1, 0].set_ylabel('PL output')
+
+    # Plot good peaks with median removed
+    peaks_all_sub_good_centered = peaks_all_sub_good - np.median(peaks_all_sub_good, axis=0)[None, :]
+    im5 = axes[1, 1].imshow(peaks_all_sub_good_centered, aspect='auto', interpolation='none', rasterized=True, cmap='viridis')
+    fig.colorbar(im5, ax=axes[1, 1], label='Peak Position Deviation (pixels)')
+    axes[1, 1].set_title('Good Peaks (Median Removed)')
+    axes[1, 1].set_xlabel('Good Peak Index')
+    axes[1, 1].set_ylabel('PL output')
+
+    # Plot residual aberrations (observed - fitted)
+    aberations_residual = aberations - aberations_fit
+    im6 = axes[1, 2].imshow(aberations_residual, aspect='auto', interpolation='none', rasterized=True, cmap='RdBu')
+    fig.colorbar(im6, ax=axes[1, 2], label='Residual Aberration (pixels)')
+    axes[1, 2].set_title('Residual Aberrations (obs - fit)')
+    axes[1, 2].set_xlabel('Good Peak Index')
+    axes[1, 2].set_ylabel('PL output')
+
+    fig.tight_layout()
+
+    return fig
+
+def plot_results_of_line_identification(spectrum, ref_pixels_lines, neon_wavelengths, best_idx, best_valid_idx, coeffs_poly, Nexclude):
+
+    p2w = np.poly1d(coeffs_poly)
+    pixels = np.arange(0, len(spectrum))
+    wave =  p2w(pixels)
+
+    ref_pixels_lines_int = np.clip(np.round(ref_pixels_lines).astype(int), 0, len(spectrum)-1)
+    ref_pixels_neon_int = np.abs(wave-neon_wavelengths[:,None]).argmin(axis=1)
+
+    fig,axs=plt.subplots(3,1,num="line fitting results, Nexclude="+str(Nexclude),figsize=(18, 8), sharex = True, clear=True)
+    axs[0].plot(p2w(pixels),spectrum,label="cumulative spectrum (all outputs)")
+    axs[0].plot(p2w(ref_pixels_lines), spectrum[ref_pixels_lines_int], "o", markersize=10, markerfacecolor='none', markeredgecolor='g', markeredgewidth=2,label="discarded peak")
+    axs[0].plot(p2w(ref_pixels_lines)[best_valid_idx], spectrum[ref_pixels_lines_int][best_valid_idx], "o", markersize=10, markerfacecolor='none', markeredgecolor='r', markeredgewidth=2,label="used peak")
+    axs[0].plot(neon_wavelengths, spectrum[ref_pixels_neon_int], "s", markersize=10, markerfacecolor='none', markeredgecolor='b', markeredgewidth=2, label="catalog Neon lines",zorder=-12)
+    # axs[0].plot(neon_wavelengths, neon_intensity*2e5, "g^", markersize=10, markerfacecolor='none', markeredgecolor='g', markeredgewidth=2)
+    axs[0].set_title("Detected Peaks in Neon Spectrum, Nexclude="+str(Nexclude))
+    axs[0].set_xlabel("Wavelength (nm)")
+    axs[0].set_ylabel("Intensity")
+    axs[0].legend()
+
+    axs[1].plot(wave,wave,'k')
+    axs[1].plot(p2w(ref_pixels_lines),neon_wavelengths[best_idx], "o", markersize=10, markerfacecolor='none', markeredgecolor='g', markeredgewidth=2)
+    axs[1].plot(p2w(ref_pixels_lines)[best_valid_idx],neon_wavelengths[best_idx][best_valid_idx], "o", markersize=10, markerfacecolor='none', markeredgecolor='r', markeredgewidth=2)
+    axs[1].set_title("Wavelengths for each peak")
+    axs[1].set_xlabel("Pixel")
+    axs[1].set_ylabel("Wavelength (nm)")
+
+    axs[2].plot(wave,wave-wave,'k')
+    # axs[2].plot(p2w(ref_pixels_lines),p2w(ref_pixels_lines)-neon_wavelengths[best_idx], "o", markersize=10, markerfacecolor='none', markeredgecolor='g', markeredgewidth=2)
+    axs[2].plot(p2w(ref_pixels_lines)[best_valid_idx],p2w(ref_pixels_lines)[best_valid_idx]-neon_wavelengths[best_idx][best_valid_idx], "o", markersize=10, markerfacecolor='none', markeredgecolor='r', markeredgewidth=2)
+    axs[2].set_title("Wavelengths error for each peak")
+    axs[2].set_xlabel("Pixel")
+    axs[2].set_ylabel("Wavelength error (nm)")
+    plt.tight_layout()
+
+    return fig
+
+def plot_flat_fit_quality(poly_coeffs, fit_quality):
+    fig, axes = plt.subplots(2, 3, num="result of flat fit",figsize=(18, 10), constrained_layout=True, sharex=True, sharey=True, clear=True)
+    
+    # Top row: Fit coefficients
+    # Plot coefficient a (slope)
+    im1 = axes[0, 0].imshow(poly_coeffs[:, :, 0], aspect='auto', cmap='viridis', interpolation='none', rasterized=True)
+    axes[0, 0].set_title('Coefficient a (slope)')
+    axes[0, 0].set_xlabel('Pixel')
+    axes[0, 0].set_ylabel('Output')
+    plt.colorbar(im1, ax=axes[0, 0])
+
+    # Plot coefficient b (intercept)
+    im2 = axes[0, 1].imshow(poly_coeffs[:, :, 1], aspect='auto', cmap='viridis', interpolation='none', rasterized=True)
+    axes[0, 1].set_title('Coefficient b (intercept)')
+    axes[0, 1].set_xlabel('Pixel')
+    axes[0, 1].set_ylabel('Output')
+    plt.colorbar(im2, ax=axes[0, 1])
+
+    # Combined fit success metric (R^2 weighted by inverse chi^2)
+    success_metric = fit_quality[:, :, 1] / (1 + fit_quality[:, :, 0])  # R^2 / (1 + chi^2)
+    im3 = axes[0, 2].imshow(success_metric, aspect='auto', cmap='RdYlGn', interpolation='none', rasterized=True)
+    axes[0, 2].set_title(r'Fit Success Metric: $R^2/(1+\chi^2)$ (higher=better)')
+    axes[0, 2].set_xlabel('Pixel')
+    axes[0, 2].set_ylabel('Output')
+    plt.colorbar(im3, ax=axes[0, 2])
+
+    # Bottom row: Detailed quality metrics
+    # Plot reduced chi-squared (should be 1 for good fit)
+    im4 = axes[1, 0].imshow(fit_quality[:, :, 0], aspect='auto', cmap='coolwarm', interpolation='none', 
+                        rasterized=True)
+    axes[1, 0].set_title(r'Reduced $\chi^2$ (ideal $\approx$ 1)')
+    axes[1, 0].set_xlabel('Pixel')
+    axes[1, 0].set_ylabel('Output')
+    plt.colorbar(im4, ax=axes[1, 0])
+
+    # Plot R-squared (coefficient of determination, 1=perfect fit)
+    im5 = axes[1, 1].imshow(fit_quality[:, :, 1], aspect='auto', cmap='viridis', interpolation='none', 
+                        rasterized=True)
+    axes[1, 1].set_title(r'$R^2$ Coefficient (higher=better)')
+    axes[1, 1].set_xlabel('Pixel')
+    axes[1, 1].set_ylabel('Output')
+    plt.colorbar(im5, ax=axes[1, 1])
+
+    # Plot weighted RMSE (normalized, lower=better)
+    im6 = axes[1, 2].imshow(fit_quality[:, :, 2], aspect='auto', cmap='plasma_r', interpolation='none', 
+                        rasterized=True, vmin=0, vmax=np.percentile(fit_quality[:, :, 2], 95))
+    axes[1, 2].set_title('Weighted RMSE (lower=better)')
+    axes[1, 2].set_xlabel('Pixel')
+    axes[1, 2].set_ylabel('Output')
+    plt.colorbar(im6, ax=axes[1, 2])
+
+    plt.suptitle('Flatfield Fit Quality Analysis', fontsize=16)
+    
+    return fig
 
 def make_image_grid(ra_dec, Npixels):
     """
@@ -260,3 +406,4 @@ def make_image_using_grid(ra_dec, fluxes, Npixels=150, desc = None):
 
     return flux_maps
         
+# %%

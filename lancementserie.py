@@ -8,8 +8,8 @@ sys.path.append(parent_dir)
 import libraries.runPL_library_io as runlib
 from runPL_create_pixelMap import run_createPixelMap, save_fits_and_png
 from runPL_make_preproc import run_preprocess
-from runPL_create_wavelengthMap import runCreateWavelengthMap
-from runPL_create_wavelengthMap import runForStar
+from runPL_create_flatwaveMap import runCreateWavelengthMap
+from runPL_create_flatwaveMap import runForStar
 from runPL_create_couplingMaps import run_create_coupling_maps
 
 import numpy as np

@@ -20,21 +20,20 @@ if __name__ == "__main__":
         epilog="""
 Examples:
     %(prog)s --DATA-TYP=FLAT --X_FIRTYP=RAW *.fits
-    %(prog)s --OBJECT="Target Name" --X_FIRTYP=SCIENCE data/*.fits
+    %(prog)s --OBJECT="Target Name" --X_FIRTYP=PREPROC data/*.fits
 
 Keyword meanings:
     DATA-TYP:
-        TEST   - Test data
-        DARK   - Dark data
-        FLAT   - Flat field data
+        FLAT         - Data from SuperK
+        DARK         - Dark frames
+        OBJECT       - Night time observation data
+        TEST         - Test data
+        ACQUISITION  - Acquisition data
+        COMPARAISON  - Neon data (spectral calibration)
         
     X_FIRTYP:
-        RAW      - Raw data from the camera
-        WAVE     - Neon source data
-        FLAT     - Data from SuperK
-        SCIENCE  - Night time observation data
-        PIXELS   - Pixel map on the detector (for REDUCED data)
-        SPECTRA  - Extracted spectra (for REDUCED data)
+        RAW          - Raw data
+        PREPROC      - Pre-processed data
 
 This script updates the specified FITS header keywords for all matching files.
         """
@@ -46,16 +45,19 @@ This script updates the specified FITS header keywords for all matching files.
     
     # Add optional arguments for header keywords
     parser.add_argument("-c", "--DATA-TYP", 
+                       choices=["OBJECT", "TEST", "ACQUISITION", "DARK", "FLAT", "COMPARAISON"],
                        help="DATA-TYP gives the category of data")
     parser.add_argument("-o", "--OBJECT", 
                        help="OBJECT gives the name of the observed target")
     parser.add_argument("-t", "--X_FIRTYP", 
+                       choices=["RAW", "PREPROC", "COULPLINGMAP", "PIXELMAP", "WAVEMAP"],
                        help="X_FIRTYP gives the type of dataproduct")
     parser.add_argument("-i", "--X_FIRMID", 
                        help="X_FIRMID gives the modulation ID of the data")
     parser.add_argument("-r", "--X_FIRTRG", 
                        help="Trigger of camera. Use INT for internal or EXT for external trigger")
     parser.add_argument("-w", "--X_FIRWOL", 
+                       choices=["IN", "OUT"],
                        help="Wollaston status. Use IN for internal or OUT for no wollaston")
     parser.add_argument("-g", "--GAIN", 
                        help="Gain value")

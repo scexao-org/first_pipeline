@@ -104,12 +104,14 @@ class DataCube:
         size_new = (self.Ncube,self.Nmod,self.Noutput,self.Nwave)
         size_old = np.prod((self.Ndit,self.Noutput,self.Nwave))
 
+        # Reshape data and variance arrays accordingly to datacube size
+        # padding with NaN if needed
         if np.prod(size_new) != size_old:
-            data_padded=np.zeros(np.prod(size_new))
+            data_padded=np.full(np.prod(size_new), np.nan)
             data_padded[:size_old]=self.data.ravel()[:size_old]
             self.data=data_padded.reshape(size_new)
 
-            variance_padded=np.zeros(np.prod(size_new))
+            variance_padded=np.full(np.prod(size_new), np.inf)
             variance_padded[:size_old]=self.variance.ravel()[:size_old]
             self.variance=variance_padded.reshape(size_new)
         else:
@@ -322,7 +324,8 @@ def extract_datalist(files_with_dark, Nsmooth = 1, Nbin = 1, flat = None, center
         data-=data_dark
         gain=header['GAIN']
         data_dark_var=data_dark_std**2
-        data_var=data_dark_var+gain*np.abs(data)+0.05*np.abs(data)**2
+        data_var=data_dark_var+gain*np.abs(data)#+0.05*np.abs(data)**2
+        data_var[np.abs(data)>2**16]=np.inf #saturating values
 
         dataCube = DataCube(data, data_var, data_dark, data_dark_var, data_file, header)
 
