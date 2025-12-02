@@ -199,10 +199,10 @@ class FileList:
         if modScale is not None:
             self.fits_keywords['X_FIRMSC'] = [modScale]
 
-        print(f"Searching in: {self.file_patterns}",self.fits_keywords)
+        print("----------------")
+        # print(f"Searching in: {self.file_patterns}",self.fits_keywords)
         filelist = get_filelist(self.file_patterns, self.fits_keywords)
 
-        print("----------------")
         if wollaston is not None:
             print(f"Selected wollaston={wollaston}")
         if modID is not None:

@@ -36,29 +36,27 @@ from classes.runPL_class_fileList import FileList
 from classes.runPL_class_dataCube import DataCube 
 
 #plt.ion()
-
 # Add options
 usage = """
-Usage: %prog [options]
+Usage: %prog [options] files
 
-Goal: Create a wavelength map from the provided FITS files.
+Goal: Create a flat field map from the provided FITS files.
 
 Summary:
-- Searches for FITS files with X_FIRTYP=PREPROC and DATA-TYP=WAVE keywords.
+- Searches for FITS files with X_FIRTYP=PREPROC and DATA-TYP=FLAT keywords.
 - Finds corresponding dark files (X_FIRTYP=PREPROC, DATA-TYP=DARK).
-- Reads wave files, subtracts the median of the dark files.
-- Detects emission peaks and fits a polynomial to create a wavelength map.
-- N (number of peaks) is determined by the number of wavelengths in --wave_list.
-- Saves the wavelength map as a FITS file in the output directory.
-- Generates and saves figures for visualization.
-- Output files are stored in an "output/wave" directory.
+- Reads flat field files, subtracts the median of the dark files.
+- Performs linear regression to compute gain correction for each pixel.
+- Saves the flat field map as a FITS file in the output directory.
+- Generates and saves figures for visualization and quality assessment.
+- Output files are stored in a "flatmaps" directory.
 
 Options:
-    --wave_list   Comma-separated list of emission lines (default: [748.9, 743.9, 724.5, 717.4, 703.2, 693, 671.7, 667.8, 659.9, 653.3, 650.7, 640.2, 638.2, 633.4, 630.5, 626.7, 621.7, 616.4])
-    --filelist    Folder containing the preprocessed FITS files (default: .)
+    --dark_files  Select one or more specific dark files to use
+    --wollaston   Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list of files)
 
 Example:
-    runPL_create_waveMap.py --wave_list="[748.9, 743.9, 724.5, 717.4, 703.2, 693, 671.7, 667.8, 659.9, 653.3, 650.7, 640.2, 638.2, 633.4, 630.5, 626.7, 621.7, 616.4]"
+    runPL_create_flatMap.py *.fits --dark_files="dark*.fits" --wollaston=IN
 """
 
 neon_wavelengths = np.array([
@@ -237,7 +235,6 @@ if __name__ == "__main__":
                        help="Select one or more specific dark(s) files to use")
     parser.add_argument("--wollaston", 
                        help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list of files)")
-    parser.add_argument("--f", help=argparse.SUPPRESS)
     
     # Parse the arguments
     args = parser.parse_args()

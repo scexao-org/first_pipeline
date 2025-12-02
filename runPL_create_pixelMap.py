@@ -51,15 +51,18 @@ Output:
     - A PNG file with the pixel map.
     
 Options:
-    --pixel_min         Minimum pixel value along wavelength axis (default: 20)
-    --pixel_max         Maximum pixel value along wavelength axis  (default: 1600)
+    --pixel_min         Minimum pixel value along wavelength axis (default: 100)
+    --pixel_max         Maximum pixel value along wavelength axis (default: 2100)
     --pixel_wide        Window half width (default: 2) (full width = 2*pixel_wide+1)
-    --output_channels   Number of output channels (default: 38)
     --filter_files      Flag to filter out files that don't have enough flux. Can be long, recommended only if previous run failed.
 
+Note:
+    - Output channels are automatically determined based on wollaston status (38 for 'IN', 19 for 'OUT')
+    - Files are processed separately by wollaston status
+
 Examples:
-    runPL_createPixelMap.py --pixel_min=20 --pixel_max=1600 --pixel_wide=2 --output_channels=38 --filter_files *.fits
-    runPL_createPixelMap.py --pixel_min=50 --pixel_max=1500 --output_channels=32 data/*.fits
+    runPL_createPixelMap.py --pixel_min=100 --pixel_max=2100 --pixel_wide=2 --filter_files *.fits
+    runPL_createPixelMap.py --pixel_min=50 --pixel_max=1500 data/*.fits
 
 """
 

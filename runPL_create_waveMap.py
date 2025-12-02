@@ -36,29 +36,32 @@ from classes.runPL_class_dataCube import DataCube
 from classes.runPL_class_waveMap import WaveMap
 
 #plt.ion()
-
 # Add options
 usage = """
-Usage: %prog [options]
+Usage: %prog [options] [files]
 
 Goal: Create a wavelength map from the provided FITS files.
 
 Summary:
-- Searches for FITS files with X_FIRTYP=PREPROC and DATA-TYP=WAVE keywords.
+- Searches for FITS files with X_FIRTYP=PREPROC and DATA-TYP=COMPARAISON keywords.
 - Finds corresponding dark files (X_FIRTYP=PREPROC, DATA-TYP=DARK).
-- Reads wave files, subtracts the median of the dark files.
+- Reads neon comparison files, subtracts the median of the dark files.
 - Detects emission peaks and fits a polynomial to create a wavelength map.
-- N (number of peaks) is determined by the number of wavelengths in --wave_list.
+- Generates 2D wavelength mapping with aberration correction.
 - Saves the wavelength map as a FITS file in the output directory.
 - Generates and saves figures for visualization.
-- Output files are stored in an "output/wave" directory.
+- Output files are stored in a "wavemaps" directory.
 
 Options:
-    --wave_list   Comma-separated list of emission lines (default: [748.9, 743.9, 724.5, 717.4, 703.2, 693, 671.7, 667.8, 659.9, 653.3, 650.7, 640.2, 638.2, 633.4, 630.5, 626.7, 621.7, 616.4])
-    --filelist    Folder containing the preprocessed FITS files (default: .)
+    files             FITS files to process (supports wildcards, default: *.fits)
+    --dark_files      Select one or more specific dark files to use
+    --flatMap         Select a specific flat map to use
+    --wollaston       Wollaston status: IN for internal or OUT for no wollaston
+    --Nexclude        Number of wavelength peaks to exclude from fit (default: 4)
 
 Example:
-    runPL_create_waveMap.py --wave_list="[748.9, 743.9, 724.5, 717.4, 703.2, 693, 671.7, 667.8, 659.9, 653.3, 650.7, 640.2, 638.2, 633.4, 630.5, 626.7, 621.7, 616.4]"
+    runPL_create_waveMap.py *.fits --Nexclude=3
+    runPL_create_waveMap.py /path/to/files/*.fits --dark_files="dark*.fits" --flatMap="flatmap.fits"
 """
 
 neon_wavelengths = np.array([

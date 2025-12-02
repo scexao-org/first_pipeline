@@ -44,44 +44,48 @@ if subaru.is_night(now_time):
 else:
     print("It's day at Subaru Observatory.")
 
-plt.ion()
-
+# plt.ion()
 # Add options
 usage = """
-Usage: %prog [options] [directory | files.fits]
+Usage: python runPL_make_preproc.py [options] [directory | files.fits]
 
 Goal:
-    Preprocess the data using the pixel map.
+    Preprocess raw FITS files using pixel maps to extract spectral traces.
+    This script applies pixel maps to raw data, extracts traces, computes quality metrics,
+    and outputs preprocessed FITS files with diagnostic figures.
 
 Input: 
-    - Files of type X_FIRTYP=RAW in the directory.
-    - Files of type X_FIRTYP=PIXELMAP in the directory.
-    - The pixel map file is used to extract the data from the raw files.
-    - The pixel map file is used to create a new FITS file with the data extracted from the raw files. 
+    - Raw FITS files with X_FIRTYP='RAW' in the specified directory
+    - Pixel map FITS files with X_FIRTYP='PIXELMAP' for trace extraction
+    - Optional MODULATION extension in raw files for coupling analysis
 
 Output:
-    - Files of type X_FIRTYP=PREPROC in the preproc directory.
-    - Diagnostic figures saved in the preproc directory:
-        * Pixel map overlay on raw images.
-        * Centroid shift of the data in the pixel map as a function of time.
-    - Pixel shift information is also stored in the FITS header ('QC_SHIFT').
+    - Preprocessed FITS files with X_FIRTYP='PREPROC' in ../preproc/ directory
+    - Diagnostic PNG figures:
+        * Trace overlay visualization (*_1.png)
+        * Flux coupling maps (*_2.png, when modulation data available)
+        * Summary centroid shift plot (*_PREPROCSHIFT.png)
+    - Updated FITS headers with quality control metrics (Q_P_* keywords)
 
 Options:
-    --pixel_map=FILE   Specify which pixel map FITS file to use (default: auto-detect in directory)
-    --loop=SECONDS     Loop and check for new files every X seconds (default: 0, i.e., run once)
-    --object=NAME     Specify the OBJECT name of data to reduced based on the FITS header
-
+    --pixel_map=PATH   Specify pixel map file or directory (default: auto-detect from ../pixelmaps)
+    --object=NAME      Process only files matching OBJECT header keyword
+    
 Examples:
-    runPL_preprocess.py --pixel_map=/path/to/pixel_map.fits /path/to/directory
-    runPL_preprocess.py /path/to/files*.fits
+    python runPL_make_preproc.py /path/to/raw/data/
+    python runPL_make_preproc.py --pixel_map=/path/to/pixelmaps/ /path/to/raw/
+    python runPL_make_preproc.py --object=HIP84212 /data/science/
 
 Notes:
-    The centroid shift figure is useful to check if the position of the pixels changed over time.
+    - Files are processed only if no matching preprocessed file exists with same PM_CHECK
+    - Centroid shift diagnostics help monitor trace stability over time
+    - Supports both single files and directory processing with glob patterns
+    - Compatible with FIRST Visible Photonic Lantern pipeline workflow
 """
 
 
 
-def preprocess(files_with_pixelmap, plot_sum =False):
+def preprocess(fileList, plot_sum =False):
     """""
     Preprocesses raw FITS files using provided pixel map(s), extracts and aggregates spectral
     traces, computes basic quality-control metrics, and writes preprocessed FITS files and
@@ -177,15 +181,24 @@ def preprocess(files_with_pixelmap, plot_sum =False):
       re-enable if a local copy of the pixelmap inside preproc is desired.
     """
 
+
     center_image = None
+    dir_path_0 = fileList.get_most_common_dir()
     files_out = []
-    print(list(files_with_pixelmap.keys()))
-    dir_path_0 = os.path.dirname(list(files_with_pixelmap.keys())[0])
-    if len(dir_path_0) == 0:
-        dir_path_0 = '.'
+    # print(list(files_with_pixelmap.keys()))
+    # dir_path_0 = os.path.dirname(list(files_with_pixelmap.keys())[0])
+    # if len(dir_path_0) == 0:
+    #     dir_path_0 = '.'
 
     # Process each directory separately 
-    for file, pixelmap in tqdm(files_with_pixelmap.items(), desc=f"Pre-processing of files in {dir_path_0}"):
+    for file_withpixelmap in tqdm(fileList.files_with_associated_files, desc=f"Pre-processing of files in {dir_path_0}"):
+
+        file = file_withpixelmap['file']
+        pixelmap = file_withpixelmap['pixelMap']
+
+        if pixelmap is None:
+            print(f"No pixel map associated with {file}, skipping.")
+            continue
 
         pixelMap=PixelMap(pixelmap)
         pixel_min = pixelMap.pixel_min
@@ -426,6 +439,7 @@ Notes:
 
     if pixel_map is None:
         folder = os.path.dirname(file_patterns[0])
+        print("Using pixel map folder: ",folder)
         pixel_map = file_patterns + [os.path.join(folder,"../pixelmaps")]
 
     fileList = FileList(file_patterns, first_type='RAW', object_name=object)
@@ -434,24 +448,24 @@ Notes:
 
     print(f"Found {len(fileList.filelist)} files to process in {file_patterns}")
     # print(filelist)
-    filelist_pixelmap = runlib_io.get_filelist( pixel_map , {'X_FIRTYP': ['PIXELMAP']},  name_search="pixel map")
-    print(f"Found {len(filelist_pixelmap)} pixel map files in {pixel_map}")
-    # print(filelist_pixelmap)
-    files_with_pixelmap = runlib_io.associate_pixelmap(filelist , filelist_pixelmap)
-    preprocess(files_with_pixelmap, plot_sum = plot_sum)
+    # filelist_pixelmap = runlib_io.get_filelist( pixel_map , {'X_FIRTYP': ['PIXELMAP']},  name_search="pixel map")
+    # print(f"Found {len(filelist_pixelmap)} pixel map files in {pixel_map}")
+    # # print(filelist_pixelmap)
+    # files_with_pixelmap = runlib_io.associate_pixelmap(filelist , filelist_pixelmap)
+    preprocess(fileList)
     
-    while time.time()+time_wait < loop+time_start:
-        time.sleep(time_wait)
-        filelist_new=runlib_io.get_filelist( file_patterns , fits_keywords)
-        # Check for new files in filelist
-        new_files = [file for file in filelist_new if file not in filelist]
-        if new_files:
-            print(f"New files detected: {new_files}")
-            filelist.extend(new_files)
-            filelist_pixelmap,files_by_dir = runlib_io.associate_pixelmap(new_files , filelist_pixelmap, plot_sum= False)
-            preprocess(files_with_pixelmap)
-        else:
-            print("Waiting for new files for the next %i seconds"%(int(loop+time_start-time.time())), end="\r")
+    # while time.time()+time_wait < loop+time_start:
+    #     time.sleep(time_wait)
+    #     filelist_new=runlib_io.get_filelist( file_patterns , fits_keywords)
+    #     # Check for new files in filelist
+    #     new_files = [file for file in filelist_new if file not in filelist]
+    #     if new_files:
+    #         print(f"New files detected: {new_files}")
+    #         filelist.extend(new_files)
+    #         filelist_pixelmap,files_by_dir = runlib_io.associate_pixelmap(new_files , filelist_pixelmap, plot_sum= False)
+    #         preprocess(files_with_pixelmap)
+    #     else:
+    #         print("Waiting for new files for the next %i seconds"%(int(loop+time_start-time.time())), end="\r")
 
 
 # %%

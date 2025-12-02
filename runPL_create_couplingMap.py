@@ -64,35 +64,40 @@ import signal
 plt.ion()
 
 DEBUG = True
-
 # Add options
 usage = """
     usage:  %prog [options] files.fits
 
     Goal: Create coupling maps from preprocessed photonic lantern data.
 
-    Sumary
-    It will get as input a list of files with DPR_CATG=CMAP and DPR_TYPE=PREPROC keywords.
-    It will select files based on modulation pattern, modulation scale, and object name if specified.
-    The script computes SVD-based coupling maps, saves results to FITS, and generates diagnostic plots.
+    Summary:
+    This script processes preprocessed photonic lantern data (X_FIRTYP=PREPROC) to generate
+    coupling maps. It performs SVD-based analysis, computes triangular and pyramidal coupling
+    coefficients, and produces diagnostic plots for data quality assessment.
 
     Input:
-    - Files of type X_FIRTYP=PREPROC in the directory or in the argument pattern.
+    - Files with X_FIRTYP=PREPROC in the specified directory or pattern
+    - Optional dark and flat calibration files
+    - Wavelength maps for spectral calibration
 
     Output:
-    - Files of type X_FIRTYP=COULPLINGMAP in the directory "../couplingmaps".
-    - A pdf report with the plots of the coupling maps and the SVD analysis.
+    - Coupling map files (X_FIRTYP=COUPLINGMAP) in "../couplingmaps" directory
+    - PDF report with diagnostic plots and SVD analysis results
 
     Options:
-    --wavelength_smooth: Smoothing factor for wavelength (default: 20)
-    --wavelength_bin: Binning factor for wavelength (default: 15)
-    --object_name: Selection of the data by the Object name (default: NONE)
-    --modID: Selection of the modulation pattern by user [0 == first in the list] (default: 0)
-    --modScale: Selection of the modulation scale by user [0 == first in the list] (default: 0)
-    --Nsingular: Number of singular values to use (default: 57)
+    --object_name: Filter by object name (default: auto-detect from first file)
+    --modID: Modulation pattern ID selection (default: auto-detect)
+    --modScale: Modulation scale selection (default: auto-detect) 
+    --wollaston: Wollaston prism setting (IN/OUT, default: auto-detect)
+    --dark_files: Specific dark files to use (default: auto-detect)
+    --flatMap: Specific flat map file (default: most recent in flatmaps/)
+    --waveMap: Specific wavelength map file (default: most recent in wavemaps/)
+    --wavelength_smooth: Spectral smoothing factor (default: 20)
+    --wavelength_bin: Spectral binning factor (default: 10)
+    --Nsingular: Number of SVD singular values (default: 114)
 
     Example:
-    runPL_createCouplingMaps.py  *.fits
+    python runPL_createCouplingMaps.py preproc/*.fits --object_name HIP84212 --modScale 50
 """
 
 def get_filelist_cmap(file_patterns, dark_patterns, flat_patterns, modID, modScale, object_name, wollaston):
