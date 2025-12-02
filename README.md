@@ -85,28 +85,6 @@ python runPL_create_pixelMap.py --filter_files data/*.fits
 
 ---
 
-### runPL_create_flatMap.py
-Python script to create flat field maps from preprocessed flat data.  
-Generates gain coefficients and quality metrics for detector calibration.
-
-**Usage:**
-```bash
-python runPL_create_flatMap.py [options] [files...]
-
-# Examples:
-python runPL_create_flatMap.py --wollaston IN *.fits
-python runPL_create_flatMap.py --dark_files=/path/to/darks/*.fits data/*.fits
-```
-
-**Key Options:**
-- `--wollaston`: Wollaston status (IN for internal, OUT for no wollaston)
-- `--dark_files`: Select specific dark file(s) to use for calibration
-
-**Input**: Preprocessed flat field files with `X_FIRTYP=PREPROC` and `DATA-TYP=FLAT`  
-**Output**: Flat field map with gain coefficients and fit quality metrics
-
----
-
 ### runPL_make_preproc.py
 Python script to preprocess raw FIRST data using the pixel map.  
 Applies pixel map alignment and performs initial data cleaning.
@@ -128,6 +106,28 @@ python runPL_make_preproc.py --loop 30 /path/to/directory  # Monitor mode
 
 **Input**: Preprocessed files with `X_FIRTYP=PREPROC` and `X_FIRTYP=PIXELMAP`  
 **Output**: Preprocessed files with `X_FIRTYP=PREPROC` in `preproc/` directory
+
+---
+
+### runPL_create_flatMap.py
+Python script to create flat field maps from preprocessed flat data.  
+Generates gain coefficients and quality metrics for detector calibration.
+
+**Usage:**
+```bash
+python runPL_create_flatMap.py [options] [files...]
+
+# Examples:
+python runPL_create_flatMap.py --wollaston IN *.fits
+python runPL_create_flatMap.py --dark_files=/path/to/darks/*.fits data/*.fits
+```
+
+**Key Options:**
+- `--wollaston`: Wollaston status (IN for internal, OUT for no wollaston)
+- `--dark_files`: Select specific dark file(s) to use for calibration
+
+**Input**: Preprocessed flat field files with `X_FIRTYP=PREPROC` and `DATA-TYP=FLAT`  
+**Output**: Flat field map with gain coefficients and fit quality metrics
 
 ---
 
