@@ -215,6 +215,10 @@ Output files:
         """
     )
 
+    # needed to work in VLC:
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--f", help=argparse.SUPPRESS)
+
     # Add positional argument for files
     parser.add_argument('files', nargs='*', default=['*.fits'],
                        help='FITS files to process (supports wildcards)')
@@ -234,6 +238,18 @@ Output files:
                        help="Save individual wavelength (default: %(default)s)")
     
 
+    args = parser.parse_args()
+    file_patterns = args.files if args.files else ['*.fits']
+
+    wavelength_smooth = args.wavelength_smooth
+    dark_patterns = args.dark_files
+    wollaston = args.wollaston
+
+    save_individual_frames = args.save_individual_frames
+    save_individual_wavelength = args.save_individual_wavelength
+
+    cmap_patterns = args.coupling_map
+    
     if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or os.environ.get('SPYDER_DEBUG_FILEfile =')):
         print("Running in compiler")
         wollaston = None
@@ -260,28 +276,16 @@ Output files:
 
             # cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/../couplingmaps/firstpl_2025-06-14T01:48:57_HIP105966_CM.fits"
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/firstpl_2025-06-14T01:50*fits"
-
-
         if getpass.getuser() == "ehuby" :
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/firstpl_*.fits"
             cmap_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/couplingmaps_TETCRB/"
-    else:
-
-        args = parser.parse_args()
-        file_patterns = args.files if args.files else ['*.fits']
-
-        wavelength_smooth = args.wavelength_smooth
-        dark_patterns = args.dark_files
-        wollaston = args.wollaston
-
-        save_individual_frames = args.save_individual_frames
-        save_individual_wavelength = args.save_individual_wavelength
-
-        cmap_patterns = args.coupling_map
+        file_patterns = [file_patterns] if isinstance(file_patterns, str) else file_patterns
+        cmap_patterns = [cmap_patterns] if isinstance(cmap_patterns, str) else cmap_patterns
 
     # If the user specifies a coupling map, use it, otherwise use the science file pattern
     if cmap_patterns is None:
-        cmap_patterns = file_patterns + ['../couplingmaps/*.fits']
+        folder = os.path.dirname(file_patterns[0])
+        flat_patterns = file_patterns + [os.path.join(folder,"../couplingmaps")]
     # If the user specify a dark, use it. Otherwise, use the science file pattern
     if dark_patterns is None:
         dark_patterns = file_patterns

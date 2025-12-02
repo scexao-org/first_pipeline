@@ -225,7 +225,10 @@ if __name__ == "__main__":
         )
 
 
+    # needed to work in VLC:
     parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--f", help=argparse.SUPPRESS)
+    
     # Add positional argument for files
     parser.add_argument('files', nargs='*', default=['*.fits'],
                        help='FITS files to process (supports wildcards)')

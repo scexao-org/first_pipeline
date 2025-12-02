@@ -5,6 +5,7 @@ from glob import glob
 from datetime import datetime
 from classes.runPL_class_dataCube import DataCube
 from classes.runPL_class_flatMap import FlatMap
+from classes.runPL_class_waveMap import WaveMap
 
 def clean_filelist(fits_keywords, filelist):
     filelist_cleaned = []
@@ -245,7 +246,7 @@ class FileList:
         filelist_flatMap = sorted(filelist_flatMap, key=lambda pm: fits.getheader(pm).get('DATE-PRO', '1970-01-01'))
         return filelist_flatMap[-1]
     
-    def get_couplingmap_file(self):
+    def get_couplingmap_file(self, file_patterns):
         """
         Get coupling map file matching constraints.
         
@@ -257,7 +258,7 @@ class FileList:
         if self.fits_keywords.get('X_FIRWOL') is not None:
             fits_keywords['X_FIRWOL'] = self.fits_keywords['X_FIRWOL']
 
-        filelist_couplingMap = get_filelist(self.file_patterns, fits_keywords, name_search="coupling map")
+        filelist_couplingMap = get_filelist(file_patterns, fits_keywords, name_search="coupling map")
 
         if len(filelist_couplingMap) == 0:
             return None
@@ -267,7 +268,7 @@ class FileList:
 
         return filelist_couplingMap[-1]
     
-    def get_wavemap_file(self):
+    def get_wavemap_file(self, file_patterns):
         """
         Get wavelength map file matching constraints.
         
@@ -280,7 +281,7 @@ class FileList:
             fits_keywords['X_FIRWOL'] = self.fits_keywords['X_FIRWOL']
 
         try:
-            filelist_waveMap = get_filelist(self.file_patterns, fits_keywords, name_search="wave map")
+            filelist_waveMap = get_filelist(file_patterns, fits_keywords, name_search="wave map")
         except FileNotFoundError as e:
             print(f"WARNING!!! {e}")
             return None
@@ -335,7 +336,7 @@ class FileList:
         return self.files_with_associated_files
 
 
-    def extract_data_from_list(self, Nsmooth = 1, Nbin = 1, flatMap = None, center = True):
+    def extract_data_from_list(self, Nsmooth = 1, Nbin = 1, flatMap = None, waveMap = None, center = True):
         """
         Extracts and processes data cubes from the input files.
         Subtracts dark files, applies wavelength smoothing, and calculates variance.
@@ -380,6 +381,13 @@ class FileList:
             # Normalize the data cube by the flat field if provided
             if flatMap is not None and isinstance(flatMap, FlatMap):
                 flatMap.normalize_with_flat(dataCube)
+
+            # Normalize the data cube by the wavelength map if provided
+            if waveMap is not None and isinstance(waveMap, WaveMap):
+                waveMap.interpolate_data(dataCube)
+                dataCube.wave_label = waveMap.wave_label
+                dataCube.Nwave = waveMap.Nwave
+                dataCube.wave = waveMap.wave
 
             # If smoothing and binning is required
             if Nsmooth > 1:

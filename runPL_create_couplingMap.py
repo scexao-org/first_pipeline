@@ -36,8 +36,12 @@ from scipy import linalg
 from matplotlib import animation
 from itertools import product
 from scipy.linalg import pinv
-from classes.runPL_class_couplingMap import CouplingMap
-from classes.runPL_class_dataCube import DataCube, extract_datalist 
+from classes.runPL_class_flatMap import FlatMap
+from classes.runPL_class_waveMap import WaveMap
+from classes.runPL_class_fileList import FileList
+from classes.runPL_class_dataCube import DataCube 
+from classes.runPL_class_couplingMap import CouplingMap 
+
 import libraries.runPL_library_basic as runlib_basic
 import libraries.runPL_library_io as runlib_io
 import libraries.runPL_library_plots as runlib_plots
@@ -161,24 +165,6 @@ def get_filelist_cmap(file_patterns, dark_patterns, flat_patterns, modID, modSca
         flats_with_dark = runlib_io.associate_dark(filelist_flat, filelist_dark)
 
         return files_with_dark, flats_with_dark
-
-
-def compute_flat(flats_with_dark):
-    
-    datalist : List[DataCube] = extract_datalist(flats_with_dark, center = False)
-    flats=[d.data.sum(axis=(0,1)) for d in datalist]
-    flat=np.sum(flats,axis=0)
-    flat/=np.mean(flat,axis=0)
-
-    Nflat_smooth = 100
-    # window = np.ones(Nflat_smooth)/Nflat_smooth
-    window = np.hanning(Nflat_smooth)
-    window /= window.sum()
-    conv_ref = np.convolve(np.ones(len(flat[0])), window, mode='same')
-    for f in flat:
-        f[:] *= conv_ref / np.convolve(f, window, mode='same') 
-
-    return flat
 
 
 def singular_vector_basis(data_svdfiltered,goodData,indexes, centers, xmod, ymod):
@@ -363,6 +349,10 @@ Output:
         """
     )
 
+    # needed to work in VLC:
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--f", help=argparse.SUPPRESS)
+
     # Add positional argument for files
     parser.add_argument('files', nargs='*', default=['*.fits'],
                        help='FITS files to process (supports wildcards)')
@@ -372,8 +362,10 @@ Output:
                        help="Selection of the data by the Object name (default: first target in the list)")
     parser.add_argument("--dark_files", 
                        help="Select one or more specific dark(s) files to use")
-    parser.add_argument("--flat_files", 
-                       help="Select a specific flat file to use (default: use the flat files or if not the ones used to create the coupling maps)")
+    parser.add_argument("--flatMap", 
+                       help="Select a specific flat Map to use (default: most recent in the flatmaps folder)")
+    parser.add_argument("--waveMap", 
+                       help="Select a specific wave Map to use (default: most recent in the wavemaps folder)")
     parser.add_argument("--wavelength_smooth", type=int, default=20,
                        help="Smoothing factor for wavelength (default: %(default)s)")
     parser.add_argument("--wavelength_bin", type=int, default=10,
@@ -391,7 +383,6 @@ Output:
     args = parser.parse_args()
     file_patterns = args.files if args.files else ['*.fits','./preproc/*.fits']
 
-#%%
     # Extract the parsed arguments
     modID = args.modID
     modScale = args.modScale
@@ -400,8 +391,9 @@ Output:
     Nsingular = args.Nsingular
     wavelength_smooth = args.wavelength_smooth
     wavelength_bin = args.wavelength_bin
-    flat_patterns = args.flat_files
     dark_patterns = args.dark_files
+    flat_patterns = args.flatMap
+    wave_patterns = args.waveMap
     
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('SPYDER_DEBUG_FILE')):
         print("Running in compiler")
@@ -413,6 +405,7 @@ Output:
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?21*TETCRB_P.fits"
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*s"
             # dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20251125/preproc/firstpl_2025-11-25T06?23*s"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
@@ -422,27 +415,29 @@ Output:
             modID = 3
             modScale = 50
             object_name = 'TETCRB'
-        
+        file_patterns = [file_patterns] if isinstance(file_patterns, str) else file_patterns
 
-    # If the user specifies a coupling map, use it, otherwise look into the arguments
-    if flat_patterns is None:
-        flat_patterns = file_patterns
     # If the user specify a dark, use it. Otherwise, use the science file pattern
     if dark_patterns is None:
         dark_patterns = file_patterns
+    # If the user specifies a specific map, use it, otherwise look into the arguments + default directories
+    if flat_patterns is None:
+        folder = os.path.dirname(file_patterns[0])
+        flat_patterns = file_patterns + [os.path.join(folder,"../flatmaps")]
+    if wave_patterns is None:
+        folder = os.path.dirname(file_patterns[0])
+        wave_patterns = file_patterns + [os.path.join(folder,"../wavemaps")]
 
-    files_with_dark, flats_with_dark = get_filelist_cmap(file_patterns, dark_patterns, flat_patterns, modID, modScale, object_name, wollaston)
+    fileList = FileList(file_patterns, first_type='PREPROC', wollaston=wollaston)
+    fileList.make_association(darks_pattern=dark_patterns)
+    file_flat = fileList.get_flatmap_file(flat_patterns)
+    file_wave = fileList.get_wavemap_file(wave_patterns)
 
-    flat = compute_flat(flats_with_dark)
+    flatMap =  FlatMap(file_flat) if file_flat is not None else None
+    waveMap =  WaveMap(file_wave) if file_wave is not None else None
 
-    ### run_create_coupling_maps function
-    
-    plt.close("all")
+    datalist : List[DataCube] = fileList.extract_data_from_list(flatMap = flatMap, waveMap = waveMap, center = False)
 
-    #Input preproc
-    #clean and sum all data
-    datalist: List[DataCube] = extract_datalist(files_with_dark, Nsmooth=wavelength_smooth, Nbin=wavelength_bin, flat=flat)  # List of DataCube objects
-    
     flux = np.concatenate([d.flux for d in datalist])
     datacube=np.concatenate([d.data for d in datalist])
     datacube_var=np.concatenate([d.variance for d in datalist])
@@ -517,46 +512,52 @@ Output:
     hdu += [fits.ImageHDU(data=QT_pyramids, name='QT_P')]
     hdu += [fits.ImageHDU(data=R_pyramids, name='R_P')]
     hdu += [fits.ImageHDU(data=center_pyramids, name='XY_P')]
-    hdu += [fits.ImageHDU(data=flat, name='FLAT')]
     hdu += [fits.ImageHDU(data=spectra, name='SPECTRA')]
+    hdu += [fits.open(datalist[-1].filename)['MODULATION']]
+    
+    new_header = datalist[-1].header.copy()
+    if flatMap is not None:
+        hdu += flatMap.return_hdu_list()
+        flat_header = flatMap.return_header()
+        new_header.extend(flat_header, strip=True)
+    if waveMap is not None:
+        hdu += waveMap.return_hdu_list()
+        wave_header = waveMap.return_header()
+        new_header.extend(wave_header, strip=True)
+    new_header = new_header.copy()
 
-    modulation_hdu = fits.open(datalist[-1].filename)['MODULATION']
-
-    header = datalist[-1].header
     # Définir le chemin complet du sous-dossier "output/couplingmaps"
     folder = datalist[-1].dirname
     output_dir = os.path.join(folder,"../couplingmaps")
 
-    header['X_FIRTYP'] = 'COUPLINGMAP'
-    header['X_FIRWOL'] = header.get('X_FIRWOL', 'IN')
+    new_header['X_FIRTYP'] = 'COUPLINGMAP'
 
     # Add date and time to the header
     current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-    header['DATE-PRO'] = current_time
-    if 'DATE' not in header:
-        header['DATE'] = current_time
+    new_header['DATE-PRO'] = current_time
+    if 'DATE' not in new_header:
+        new_header['DATE'] = current_time
 
     # Add input parameters to the header
-    header['Q_CMWSMO'] = (wavelength_smooth,  'wavelength smoothing factor')
-    header['Q_CMWBIN'] = (wavelength_bin, 'wavelength binning factor')
-    header['Q_CMSING'] = (Nsingular, 'number of singular values')
-    header['Q_CM_FT'] = (flux_threshold, 'flux threshold')
-    # header['CHI2THR'] = chi2_threshold  # Add chi2 threshold
-    header['Q_CM_CK'] = (np.random.randint(0, 2**32, dtype=np.uint32), 'checksum')
+    new_header['Q_CMWSMO'] = (wavelength_smooth,  'wavelength smoothing factor')
+    new_header['Q_CMWBIN'] = (wavelength_bin, 'wavelength binning factor')
+    new_header['Q_CMSING'] = (Nsingular, 'number of singular values')
+    new_header['Q_CM_FT'] = (flux_threshold, 'flux threshold')
+    # new_header['CHI2THR'] = chi2_threshold  # Add chi2 threshold
+    new_header['Q_CM_CK'] = (np.random.randint(0, 2**32, dtype=np.uint32), 'checksum')
     for i, filename in enumerate(filenames):
-        header['Q_CM_F%i' % i] = (filename, 'filename of the extracted flux')
+        new_header['Q_CM_F%i' % i] = (filename, 'filename of the extracted flux')
 
-    header['Q_CMNAME'] = (runlib_io.create_output_filename(header), 'name of the coupling map file')
-
+    new_header['Q_CMNAME'] = (runlib_io.create_output_filename(new_header), 'name of the coupling map file')
     # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
     os.makedirs(output_dir, exist_ok=True)
 
-    hdu_primary.header.extend(header, strip=True)
+    hdu_primary.header.extend(new_header, strip=True)
 
     # Combine all HDUs into an HDUList
-    hdul = fits.HDUList([hdu_primary, *hdu, modulation_hdu])
+    hdul = fits.HDUList([hdu_primary, *hdu])
 
-    output_filename = os.path.join(output_dir, header['Q_CMNAME'])
+    output_filename = os.path.join(output_dir, new_header['Q_CMNAME'])
 
     # Write to a FITS file
     print(f"Saving data to {output_filename}")
@@ -568,13 +569,16 @@ Output:
     # Diagnostic plots
     ###############################################
 
+    if flatMap is not None:
+        runlib_plots.plot_detector_field(flatMap.flat, title="Flat Map for file"+flatMap.file)
+
+
     dark = np.array([d.dark for d in datalist]).mean(axis=0)
     if dark.ndim == 0 or dark.shape == ():
-        dark = np.full_like(flat, dark)
+        dark = np.full_like(datalist[0].data[0,0], dark)
     elif dark.ndim == 1:
-        dark = np.tile(dark, (flat.shape[0], 1))
+        dark = np.tile(dark, (datalist[0].data.shape[2], 1))
 
-    runlib_plots.plot_detector_field(flat, title="Flat Field")
     runlib_plots.plot_detector_field(dark, title="Dark Field")
 
 
@@ -638,8 +642,10 @@ Output:
     # Covariance and correlation matrix plot
     ###############################################
 
-    runlib_plots.plot_covariance(flux_2_data_triangles,center_triangles,"Triangles")
-    runlib_plots.plot_covariance(flux_2_data_pyramids,center_pyramids,"Pyramids")
+    if len(center_triangles) > 0:
+        runlib_plots.plot_covariance(flux_2_data_triangles,center_triangles,"Triangles")
+    if len(center_pyramids) > 0:
+        runlib_plots.plot_covariance(flux_2_data_pyramids,center_pyramids,"Pyramids")
 
     R_amplitude = np.linalg.norm(R_pyramids,axis=2)
 

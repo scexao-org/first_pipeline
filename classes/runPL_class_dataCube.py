@@ -59,7 +59,9 @@ class DataCube:
         THETA_OFFSET = 102.2  # degrees
         self.PAangle = -1 * (180.0 - THETA_OFFSET - self.get_parallactic_angle())[:,:,None]/180*np.pi
         # print(f"Image-rotation angle range: {self.PAangle.min()*180/np.pi} to {self.PAangle.max()*180/np.pi} degrees")
-
+        self.wave_label = "Pixel Index"
+        self.wave = np.arange(self.Nwave)
+        
     def add_modulation(self):
         """ 
         Adds modulation information to the data cube.
