@@ -17,6 +17,8 @@ import peakutils
 
 import getpass
 import matplotlib
+
+from classes.runPL_class_fileList import FileList
 if "VSCODE_PID" in os.environ:
     matplotlib.use('Qt5Agg')
 else:
@@ -386,6 +388,10 @@ Notes:
         """
     )
 
+    # needed to work in VSC:
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--f", help=argparse.SUPPRESS)
+
     # Add positional argument for files/directories
     parser.add_argument('files', nargs='*', default=['*.fits'],
                        help='Directory or FITS files to process (default: *.fits)')
@@ -393,8 +399,6 @@ Notes:
     # Add optional arguments
     parser.add_argument("--pixel_map", 
                        help="Specify which pixel map FITS file to use (default: auto-detect in directory)")
-    parser.add_argument("--loop", type=int, default=0,
-                       help="Loop and check for new files every X seconds (default: %(default)s, i.e., run once)")
     parser.add_argument("--object", 
                        help="Specify the OBJECT name of data to reduced based on the FITS header")
 
@@ -402,7 +406,6 @@ Notes:
     args = parser.parse_args()
     file_patterns = args.files if args.files else ['*.fits']
     pixel_map = args.pixel_map
-    loop = args.loop
     object = args.object
 
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
@@ -413,7 +416,8 @@ Notes:
             file_patterns = dir_files+"firstpl_2025-08-08T07:17:??_HIP84212_P.fits"
             dir_files = "/Users/slacour/DATA/LANTERNE/tmp/"
             file_patterns = dir_files + "*.fits"
-            pixel_map = dir_files + "../pixelmaps"
+            file_patterns=["/Users/slacour/DATA/LANTERNE/raw/20251119/firstpl"]
+        
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             pixel_map = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
@@ -421,24 +425,14 @@ Notes:
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
 
     if pixel_map is None:
-        pixel_map = file_patterns + ['../pixelmaps/*.fits']
-    if loop > 0:
-        plot_sum = False
-    else:
-        plot_sum = True
+        folder = os.path.dirname(file_patterns[0])
+        pixel_map = file_patterns + [os.path.join(folder,"../pixelmaps")]
+
+    fileList = FileList(file_patterns, first_type='RAW', object_name=object)
+    fileList.make_association(pixelMap=pixel_map)
 
 
-    time_start = time.time()
-    time_wait = 30 # in seconds
-
-    fits_keywords =  {'X_FIRTYP': ['RAW']}
-    
-    # Adding other constraints if asked by user
-    if object is not None:
-        fits_keywords['OBJECT'] = [object]
-
-    filelist = runlib_io.get_filelist( file_patterns , fits_keywords)
-    print(f"Found {len(filelist)} files to process in {file_patterns}")
+    print(f"Found {len(fileList.filelist)} files to process in {file_patterns}")
     # print(filelist)
     filelist_pixelmap = runlib_io.get_filelist( pixel_map , {'X_FIRTYP': ['PIXELMAP']},  name_search="pixel map")
     print(f"Found {len(filelist_pixelmap)} pixel map files in {pixel_map}")

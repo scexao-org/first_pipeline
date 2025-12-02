@@ -322,7 +322,7 @@ if __name__ == "__main__":
             """
         )
 
-    # needed to work in VLC:
+    # needed to work in VSC:
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--f", help=argparse.SUPPRESS)
 

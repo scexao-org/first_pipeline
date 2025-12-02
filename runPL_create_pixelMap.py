@@ -21,7 +21,8 @@ if "VSCODE_PID" in os.environ:
     matplotlib.use('Qt5Agg')
 else:
     matplotlib.use('Agg')
-     
+
+from classes.runPL_class_fileList import FileList     
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
@@ -31,7 +32,7 @@ import shutil
 from scipy.signal import find_peaks
 
 
-plt.ion()
+# plt.ion()
 
 # Add options
 usage = """
@@ -97,32 +98,15 @@ def raw_image_clean(filelist):
         By summing all cubes into one picture 
         '''
 
-        # Keys to keep only the RAW files
-        fits_keywords = {'X_FIRTYP': ['RAW'], }
-            
-        # Use the function to clean the filelist
-        filelist_cleaned = runlib_io.clean_filelist(fits_keywords, filelist)
-
-        wollaston = fits.getheader(filelist_cleaned[0]).get('X_FIRWOL', 'IN')
-
-        # Remove files that do not have the same status of the wollaston
-        filelist_filtered = []
-        for file in filelist_cleaned:
-            header = fits.getheader(file)
-            file_wollaston = header.get('X_FIRWOL', 'IN')
-            if file_wollaston == wollaston:
-                filelist_filtered.append(file)
-        filelist_cleaned = np.array(filelist_filtered)
-
         # raise an error if filelist_cleaned is empty
-        if len(filelist_cleaned) == 0:
+        if len(filelist) == 0:
             raise FileNotFoundError("No good file to process")
 
-        header = fits.getheader(filelist_cleaned[-1])
+        header = fits.getheader(filelist[-1])
 
         raw_image = np.zeros((header['NAXIS2'], header['NAXIS1']), dtype=np.double)
-        print("Processing files: ", filelist_cleaned)
-        for filename in tqdm(filelist_cleaned, desc="Co-adding files"):
+        print("Processing files: ", filelist)
+        for filename in tqdm(filelist, desc="Co-adding files"):
             if not "optim" in filename:
                 try:
                     data_summed = fits.getdata(filename).sum(axis=0)
@@ -483,6 +467,10 @@ Output:
         """
     )
 
+    # needed to work in VSC:
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--f", help=argparse.SUPPRESS)
+
     # Add positional argument for file patterns
     parser.add_argument('file_patterns', nargs='*', default=['*.fits'],
                        help='One or more glob patterns for FITS files (default: *.fits)')
@@ -490,7 +478,7 @@ Output:
     # Add optional arguments with better defaults and validation
     parser.add_argument("--pixel_min", type=int, default=100,
                        help="Minimum pixel value along wavelength axis (default: %(default)s)")
-    parser.add_argument("--pixel_max", type=int, default=1600,
+    parser.add_argument("--pixel_max", type=int, default=2100,
                        help="Maximum pixel value along wavelength axis (default: %(default)s)")
     parser.add_argument("--pixel_wide", type=int, default=2,
                        help="Window half width (default: %(default)s) (full width = 2*pixel_wide+1)")
@@ -514,6 +502,7 @@ Output:
             pixel_wide=2
             filter_files=True
             file_patterns=["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
+            file_patterns=["/Users/slacour/DATA/LANTERNE/raw/20251119/firstpl"]
             
             # Create clean argument list for development environment
             dev_args = [
@@ -527,34 +516,37 @@ Output:
             args = parser.parse_args(dev_args)
 
     
-    filelist, folder=runlib_io.get_filelist( file_patterns , {'X_FIRTYP': ['RAW']}, get_folder=True)
+    fileList = FileList(file_patterns, first_type='RAW')
+    filelist = fileList.filelist
 
-    if filter_files==True: 
-        print("Filtering files based on flux...")
-        filelist = filter_only_good_files(filelist, True)
+    wollastons = np.unique([fits.getheader(f).get('X_FIRWOL', 'UNKNOWN') for f in filelist])
 
-    wollastons = np.unique([fits.getheader(f).get('X_FIRWOL', 'IN') for f in filelist])
+    # Check for UNKNOWN wollaston status and raise error if found
+    valid_wollastons = {'IN', 'OUT'}
+    if not set(wollastons).issubset(valid_wollastons):
+        invalid_wollastons = set(wollastons) - valid_wollastons
+        unknown_files = [f for f in filelist if fits.getheader(f).get('X_FIRWOL', 'UNKNOWN') == 'UNKNOWN']
+        raise ValueError(f"Found {len(unknown_files)} files with UNKNOWN wollaston status. Update manually wollaston status with runPL_changeKeyword.py")
 
     for wollaston in wollastons:
         print(f"Processing files with wollaston status: {wollaston}")
         # Filter files based on wollaston status
-        filtered_files = [f for f in filelist if fits.getheader(f).get('X_FIRWOL', 'IN') == wollaston]
-        
-        if not filtered_files:
-            print(f"No files found with wollaston status: {wollaston}")
-            continue
+
+        fileList = FileList(file_patterns, first_type='RAW', wollaston=wollaston)
 
         if wollaston == 'IN':
             output_channels = 38
         else:
             output_channels = 19
 
-        raw_image, header = raw_image_clean(filtered_files)
+        raw_image, header = raw_image_clean(fileList.filelist)
         try:
-            traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filtered_files)
+            traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, fileList.filelist)
         except Exception as e:
             print(f"Error occurred while generating pixelmap: {e}")
             traces_loc, x_found,y_found, x_none, y_none = None, None, None, None, None
+        
+        folder = fileList.get_most_common_dir()
         save_fits_and_png(raw_image, traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder)
 
 # %%
