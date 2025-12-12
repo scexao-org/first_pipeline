@@ -184,6 +184,26 @@ def peaks_using_scipy(raw_image, sampling, Nsampling, output_channels):
 
 
 def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist):
+    """
+    Generate pixel map by detecting and tracing fiber peaks across wavelength range.
+    
+    This function analyzes a summed raw image to detect fiber peaks at different wavelength
+    positions, fits polynomial traces to connect the peaks, and creates a pixel map
+    for data preprocessing.
+    
+    :param raw_image: 2D numpy array of summed raw detector data (y-axis: spatial, x-axis: wavelength)
+    :param pixel_min: Minimum pixel value along wavelength axis to start peak detection
+    :param pixel_max: Maximum pixel value along wavelength axis to end peak detection  
+    :param output_channels: Number of expected fiber channels/peaks to detect (38 for wollaston IN, 19 for OUT)
+    :param filelist: List of input FITS files being processed (used for error reporting)
+    :return: Tuple of (traces_loc, x_found, y_found, x_none, y_none) where:
+             - traces_loc: 2D array mapping each wavelength pixel to spatial pixel for each channel
+             - x_found: List of wavelength positions where peaks were successfully detected
+             - y_found: List of spatial positions of detected peaks
+             - x_none: List with None values for outlier/rejected peak positions
+             - y_none: List with None values for outlier/rejected peak positions
+    """
+    
 
     pixel_length=raw_image.shape[1]
 

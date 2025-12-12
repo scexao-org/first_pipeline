@@ -82,6 +82,38 @@ neon_intensity = np.array([
 
 
 def calculate_pixel_peaks_and_aberations(neon):
+    """
+    Calculate pixel positions of spectral line peaks and fit optical aberrations in a neon calibration dataset.
+    This routine processes a 2D neon spectrum array to identify spectral line peaks across multiple 
+    photonic lantern outputs and fits a polynomial model to characterize optical aberrations as a 
+    function of pixel position and output fiber number.
+    The algorithm performs the following steps:
+    1. Identifies prominent peaks in the collapsed spectrum to establish reference lines
+    2. Applies coarse integer pixel shifts to align spectra across different outputs
+    3. Refines peak positions using subpixel parabolic interpolation
+    4. Filters out poorly behaved spectral lines based on consistency criteria
+    5. Fits a 2D polynomial model (1st order in pixel position, 2nd order in output number)
+       to characterize systematic aberrations
+    Parameters
+    ----------
+    neon : numpy.ndarray
+        2D array of neon calibration spectra with shape (n_outputs, n_pixels),
+        where each row represents the spectrum from one photonic lantern output
+    Returns
+    -------
+    ref_pixels_lines : numpy.ndarray
+        1D array of reference pixel positions for each good spectral line after
+        aberration correction
+    aberated_image : numpy.ndarray
+        2D array with same shape as input, containing the fitted aberration map
+        in pixel units across the entire detector
+    coeffs : numpy.ndarray
+        1D array of polynomial coefficients [c0, c1, c2, c3, c4] for the aberration
+        fit: c0 + c1*x + c2*y + c3*x*y + c4*y^2
+    fig : matplotlib.figure.Figure
+        Diagnostic plot showing the peak fitting results and aberration model
+    """
+
 
     def find_N_peaks(spectrum,N=1000):
 
@@ -220,6 +252,47 @@ def calculate_pixel_peaks_and_aberations(neon):
 
 
 def calculate_the_pixel_to_wavelength_mapping(ref_pixels_lines, neon_wavelengths, Nexclude):
+    """
+    Calculate the pixel-to-wavelength mapping for spectroscopic data using reference lines.
+    This function performs wavelength calibration by finding the best polynomial mapping
+    between pixel positions and known wavelengths from reference spectral lines (e.g., Neon).
+    It uses an iterative approach to test different combinations of reference lines and
+    fits a second-order polynomial to establish the pixel-to-wavelength relationship.
+    Parameters
+    ----------
+    ref_pixels_lines : array_like
+        Array of pixel positions where reference spectral lines are detected.
+    neon_wavelengths : array_like
+        Array of known wavelengths (in appropriate units) corresponding to reference
+        spectral lines from a calibration source (e.g., Neon lamp).
+    Nexclude : int
+        Number of worst outlier points to exclude when calculating the RMS error
+        during the fitting process.
+    Returns
+    -------
+    wave_1D_mapping : numpy.ndarray
+        1D array containing the wavelength value for each pixel position across
+        the entire detector/spectrum.
+    coeffs_poly : numpy.ndarray
+        Coefficients of the second-order polynomial used for the pixel-to-wavelength
+        mapping, in descending order of powers.
+    fig : matplotlib.figure.Figure
+        Figure object containing plots showing the results of line identification
+        and wavelength calibration quality.
+    Notes
+    -----
+    The function performs the following steps:
+    1. Tests multiple combinations of reference line pairs to establish initial linear fits
+    2. For each combination, predicts wavelengths for all detected lines
+    3. Matches predicted wavelengths to known reference wavelengths
+    4. Fits a second-order polynomial while excluding outliers
+    5. Selects the best fit based on minimum RMS error
+    6. Generates diagnostic plots showing calibration quality
+    The algorithm handles duplicate line assignments and enforces monotonic mapping
+    to ensure physical consistency of the wavelength solution.
+    """
+
+
 
     def fit_and_score(peak_ref, line_ref, ref_pixels_lines, neon_wavelengths,Nexclude):
         # Fit linear
