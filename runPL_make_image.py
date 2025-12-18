@@ -14,6 +14,7 @@ from glob import glob
 import argparse
 import numpy as np
 
+from typing import List
 from scipy.interpolate import griddata
 
 import getpass
@@ -29,11 +30,16 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
 from tqdm import tqdm
-import libraries.runPL_library_io as runlib_io
+from classes.runPL_class_flatMap import FlatMap
+from classes.runPL_class_waveMap import WaveMap
+from classes.runPL_class_fileList import FileList
+from classes.runPL_class_dataCube import DataCube 
+from classes.runPL_class_couplingMap import CouplingMap 
+
 import libraries.runPL_library_basic as runlib_basic
+import libraries.runPL_library_io as runlib_io
 import libraries.runPL_library_plots as runlib_plots
-from classes.runPL_class_dataCube import DataCube, extract_datalist
-from classes.runPL_class_couplingMap import CouplingMap
+import libraries.runPL_library_linalg as runlib_linalg
 
 from astropy.io import fits
 from astroplan import Observer
@@ -224,30 +230,41 @@ Output files:
                        help='FITS files to process (supports wildcards)')
 
     # Add optional arguments
-    parser.add_argument("--wollaston", 
-                       help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
-    parser.add_argument("--coupling_map", 
-                       help="Force to select which coupling map file to use (default: the one in the directory)")
+    parser.add_argument("--object_name", 
+                       help="Selection of the data by the Object name (default: first target in the list)")
     parser.add_argument("--dark_files", 
                        help="Select one or more specific dark(s) files to use")
-    parser.add_argument("--wavelength_smooth", type=int, default=1,
+    parser.add_argument("--coupling_map", 
+                       help="Force to select which coupling map file to use (default: the one in the directory)")
+    parser.add_argument("--wavelength_smooth", type=int, default=20,
                        help="Smoothing factor for wavelength (default: %(default)s)")
+    parser.add_argument("--modID", type=int, 
+                       help="Selection of the modulation pattern by user (default: first in the list)")
+    parser.add_argument("--modScale", type=int, 
+                       help="Selection of the modulation scale by user (default: first in the list)")
+    parser.add_argument("--wollaston", 
+                       help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
     parser.add_argument("--save_individual_frames", action="store_true", default=True,
                        help="Save individual frames (default: %(default)s)")
     parser.add_argument("--save_individual_wavelength", action="store_true", default=False,
                        help="Save individual wavelength (default: %(default)s)")
     
 
+    # Parse the arguments
     args = parser.parse_args()
-    file_patterns = args.files if args.files else ['*.fits']
+    file_patterns = args.files if args.files else ['*.fits','./preproc/*.fits']
 
+    # Extract the parsed arguments
+    modID = args.modID
+    modScale = args.modScale
+    object_name = args.object_name
+    wollaston = args.wollaston
     wavelength_smooth = args.wavelength_smooth
     dark_patterns = args.dark_files
-    wollaston = args.wollaston
-
+    flat_patterns = args.flatMap
+    wave_patterns = args.waveMap
     save_individual_frames = args.save_individual_frames
     save_individual_wavelength = args.save_individual_wavelength
-
     cmap_patterns = args.coupling_map
     
     if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or os.environ.get('SPYDER_DEBUG_FILEfile =')):
@@ -282,30 +299,45 @@ Output files:
         file_patterns = [file_patterns] if isinstance(file_patterns, str) else file_patterns
         cmap_patterns = [cmap_patterns] if isinstance(cmap_patterns, str) else cmap_patterns
 
-    # If the user specifies a coupling map, use it, otherwise use the science file pattern
-    if cmap_patterns is None:
-        folder = os.path.dirname(file_patterns[0])
-        flat_patterns = file_patterns + [os.path.join(folder,"../couplingmaps")]
     # If the user specify a dark, use it. Otherwise, use the science file pattern
     if dark_patterns is None:
         dark_patterns = file_patterns
+    # If the user specifies a specific map, use it, otherwise look into the arguments + default directories
+    if cmap_patterns is None:
+        folder = os.path.dirname(file_patterns[0])
+        flat_patterns = file_patterns + [os.path.join(folder,"../couplingmaps")]
 
 
-    files_with_dark, filelist_cmap = get_filelist(file_patterns, dark_patterns, cmap_patterns, wollaston)
+    fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
 
-    couplingMap = CouplingMap(filelist_cmap[0],pyramids = True)
+    # Adding constraints to make sure the dataset is coherent:
+    object_name = fileList.fits_keywords.get('OBJECT', [None])[0] if object_name is None else object_name
+    wollaston = fileList.fits_keywords.get('X_FIRWOL', [None])[0] if wollaston is None else wollaston
+    modID = fileList.fits_keywords.get('X_FIRMID', [0])[0] if modID is None else modID
+    modScale = fileList.fits_keywords.get('X_FIRMSC', [0])[0] if modScale is None else modScale
+
+    fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
+
+    fileList.make_association(darks_pattern=dark_patterns)
+
+    # reading all the calibration files that should be appended to the cmap files (including wavelength and flat)
+    file_flat = fileList.get_flatmap_file(cmap_patterns)
+    file_wave = fileList.get_wavemap_file(cmap_patterns)
+    file_coup = fileList.get_couplingmap_file(cmap_patterns)
+
+    flatMap =  FlatMap(file_flat) if file_flat is not None else None
+    waveMap =  WaveMap(file_wave) if file_wave is not None else None
+
+    datalist : List[DataCube] = fileList.extract_data_from_list(flatMap = flatMap, waveMap = waveMap, center = False)
+
+    couplingMap = CouplingMap(file_coup,pyramids = True)
+
+
     Npos = couplingMap.Npositions
     Npixels = 150
 
 
-    #Input preproc
-    #clean and sum all data
-
-
-    datalist : list[DataCube]=extract_datalist(files_with_dark,Nsmooth=wavelength_smooth,Nbin=couplingMap.wavelength_bin,flat = couplingMap.flat)
-
-   
-    for i,d in enumerate(datalist[:1]):
+    for i,d in enumerate(datalist[:]):
 
         flux = d.flux
         datacube= d.data 
