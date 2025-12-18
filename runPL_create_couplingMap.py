@@ -417,10 +417,10 @@ Output:
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
         if getpass.getuser() == "ehuby":
             file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
-            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
-            modID = 3
-            modScale = 50
-            object_name = 'TETCRB'
+            modID, modScale, object_name = 3, 50, 'TETCRB'
+            
+            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-07-14/preproc/VEGA_0.002sec/"
+            modID, modScale, object_name = 3, 80, 'VEGA'
         file_patterns = [file_patterns] if isinstance(file_patterns, str) else file_patterns
 
     # If the user specify a dark, use it. Otherwise, use the science file pattern
@@ -437,10 +437,10 @@ Output:
     fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
 
     # Adding constraints to make sure the dataset is coherent:
-    object_name = fileList[0].header.get('OBJECT', "None") if object_name is None else object_name
-    wollaston = fileList[0].header.get('X_FIRWOL', "None") if wollaston is None else wollaston
-    modID = fileList[0].header.get('X_FIRMID', 0) if modID is None else modID
-    modScale = fileList[0].header.get('X_FIRMSC', 0) if modScale is None else modScale
+    object_name = fileList.fits_keywords.get('OBJECT', "None")[0] if object_name is None else object_name
+    wollaston = fileList.fits_keywords.get('X_FIRWOL', "None")[0] if wollaston is None else wollaston
+    modID = fileList.fits_keywords.get('X_FIRMID', 0)[0] if modID is None else modID
+    modScale = fileList.fits_keywords.get('X_FIRMSC', 0)[0] if modScale is None else modScale
 
     fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
 
