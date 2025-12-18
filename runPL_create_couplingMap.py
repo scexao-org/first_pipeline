@@ -437,10 +437,10 @@ Output:
     fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
 
     # Adding constraints to make sure the dataset is coherent:
-    object_name = fileList.fits_keywords.get('OBJECT', "None")[0] if object_name is None else object_name
-    wollaston = fileList.fits_keywords.get('X_FIRWOL', "None")[0] if wollaston is None else wollaston
-    modID = fileList.fits_keywords.get('X_FIRMID', 0)[0] if modID is None else modID
-    modScale = fileList.fits_keywords.get('X_FIRMSC', 0)[0] if modScale is None else modScale
+    object_name = fileList.fits_keywords.get('OBJECT', [None])[0] if object_name is None else object_name
+    wollaston = fileList.fits_keywords.get('X_FIRWOL', [None])[0] if wollaston is None else wollaston
+    modID = fileList.fits_keywords.get('X_FIRMID', [0])[0] if modID is None else modID
+    modScale = fileList.fits_keywords.get('X_FIRMSC', [0])[0] if modScale is None else modScale
 
     fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
 
