@@ -434,7 +434,16 @@ Output:
         folder = os.path.dirname(file_patterns[0])
         wave_patterns = file_patterns + [os.path.join(folder,"../wavemaps")]
 
-    fileList = FileList(file_patterns, first_type='PREPROC', wollaston=wollaston)
+    fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
+
+    # Adding constraints to make sure the dataset is coherent:
+    object_name = fileList[0].header.get('OBJECT', "None") if object_name is None else object_name
+    wollaston = fileList[0].header.get('X_FIRWOL', "None") if wollaston is None else wollaston
+    modID = fileList[0].header.get('X_FIRMID', 0) if modID is None else modID
+    modScale = fileList[0].header.get('X_FIRMSC', 0) if modScale is None else modScale
+
+    fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
+
     fileList.make_association(darks_pattern=dark_patterns)
     file_flat = fileList.get_flatmap_file(flat_patterns)
     file_wave = fileList.get_wavemap_file(wave_patterns)
