@@ -22,7 +22,7 @@ class CouplingMap:
         self.QT = cmap_file['QT'+add_key].data
         self.R = cmap_file['R'+add_key].data
         self.position = cmap_file['XY'+add_key].data
-        self.flat = cmap_file['FLAT'].data
+        self.flat = cmap_file["FLAT"].data if "FLAT" in cmap_file else None 
         self.ref_spectra = cmap_file['SPECTRA'].data
 
         self.Npositions = self.position.shape[0]
