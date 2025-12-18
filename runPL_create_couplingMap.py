@@ -411,7 +411,7 @@ Output:
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*s"
             file_patterns = "/Users/slacour/Downloads/2025-07-14/"
             # dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20251125/preproc/firstpl_2025-11-25T06?23*s"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20251125/preproc/firstpl_2025-11-25T06?23*s"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
