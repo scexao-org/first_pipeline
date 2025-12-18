@@ -409,6 +409,7 @@ Output:
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-3]*TETCRB_P.fits"
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?21*TETCRB_P.fits"
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*s"
+            file_patterns = "/Users/slacour/Downloads/2025-07-14/"
             # dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
             file_patterns = "/Users/slacour/DATA/LANTERNE/20251125/preproc/firstpl_2025-11-25T06?23*s"
         if getpass.getuser() == "jsarrazin":
@@ -688,12 +689,16 @@ Output:
         
 
         datacube=np.concatenate([d.data for d in datalist])
-
+        datacube[np.isnan(datacube)] = 0
 
         datacube_T=datacube.transpose((3,2,0,1))
         # datacube_T=data_svdfiltered.transpose((3,2,0,1))
         Nwave, Noutput, Ncube, Nmod = datacube_T.shape
         Ntriangles = QT.shape[0]
+
+        if Ntriangles == 0:
+            print(f"No {coupling} to process for health check plots.")
+            continue
 
         datacube_T=datacube_T.reshape((datacube_T.shape[0], datacube_T.shape[1], -1))
         chi2_max = np.sum(datacube_T**2, axis=(0,1))
@@ -707,7 +712,7 @@ Output:
             k= QT[t] @ datacube_T
             chi2_map[t,:] -= np.sum(k ** 2, axis=(0,1))
 
-        chi2_argmin = chi2_map.argmin(axis=0)
+        chi2_argmin = np.nanargmin(chi2_map,axis=0)
         # chi2_argmin[300] = 395  # manual fix for a weird outlier
         # chi2_argmin[300] = 412  # manual fix for a weird outlier
 
@@ -743,6 +748,14 @@ Output:
                 x_hat_broadband, y_hat_broadband, k_hat_broadband, chi2_broadband, _ = runlib_linalg.fit_QR_6(QTdata_broadband, R_broadband[t])
             else:
                 x_hat_broadband, y_hat_broadband, k_hat_broadband, chi2_broadband, _ = runlib_linalg.solve_QR_3(QTdata_broadband, R_broadband[t])
+
+            # Add NaN checks and set to zero if needed
+            if np.isnan(x_hat_broadband):
+                x_hat_broadband = 0.0
+            if np.isnan(y_hat_broadband):
+                y_hat_broadband = 0.0
+            if np.isnan(k_hat_broadband):
+                k_hat_broadband = 0.0
 
             if Nqr == 6:
                 v = np.array([1.0, x_hat_broadband, y_hat_broadband, x_hat_broadband*y_hat_broadband, x_hat_broadband**2, y_hat_broadband**2])
