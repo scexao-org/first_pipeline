@@ -261,8 +261,6 @@ Output files:
     wollaston = args.wollaston
     wavelength_smooth = args.wavelength_smooth
     dark_patterns = args.dark_files
-    flat_patterns = args.flatMap
-    wave_patterns = args.waveMap
     save_individual_frames = args.save_individual_frames
     save_individual_wavelength = args.save_individual_wavelength
     cmap_patterns = args.coupling_map
@@ -305,25 +303,24 @@ Output files:
     # If the user specifies a specific map, use it, otherwise look into the arguments + default directories
     if cmap_patterns is None:
         folder = os.path.dirname(file_patterns[0])
-        flat_patterns = file_patterns + [os.path.join(folder,"../couplingmaps")]
+        cmap_patterns = file_patterns + [os.path.join(folder,"../couplingmaps")]
 
 
     fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
 
     # Adding constraints to make sure the dataset is coherent:
-    object_name = fileList.fits_keywords.get('OBJECT', [None])[0] if object_name is None else object_name
-    wollaston = fileList.fits_keywords.get('X_FIRWOL', [None])[0] if wollaston is None else wollaston
-    modID = fileList.fits_keywords.get('X_FIRMID', [0])[0] if modID is None else modID
-    modScale = fileList.fits_keywords.get('X_FIRMSC', [0])[0] if modScale is None else modScale
+    object_name = fileList.header.get('OBJECT', None)
+    wollaston = fileList.header.get('X_FIRWOL', None)
 
     fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
 
     fileList.make_association(darks_pattern=dark_patterns)
 
     # reading all the calibration files that should be appended to the cmap files (including wavelength and flat)
+    print("Coupling map patterns: ", cmap_patterns)
+    file_coup = fileList.get_couplingmap_file(cmap_patterns)
     file_flat = fileList.get_flatmap_file(cmap_patterns)
     file_wave = fileList.get_wavemap_file(cmap_patterns)
-    file_coup = fileList.get_couplingmap_file(cmap_patterns)
 
     flatMap =  FlatMap(file_flat) if file_flat is not None else None
     waveMap =  WaveMap(file_wave) if file_wave is not None else None

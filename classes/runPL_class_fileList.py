@@ -51,6 +51,8 @@ def get_filelist(file_patterns, fits_keywords, name_search=None):
 
     Returns:
         list: A list of files to process.
+
+        Note: If no files are found, a FileNotFoundError is raised.
     """
 
     if name_search is not None:
@@ -200,7 +202,8 @@ class FileList:
             self.fits_keywords['X_FIRMSC'] = [modScale]
 
         print("----------------")
-        # print(f"Searching in: {self.file_patterns}",self.fits_keywords)
+        # Note : get_filelist will raise FileNotFoundError if no files are found
+        # it can be caught by the calling function if needed
         filelist = get_filelist(self.file_patterns, self.fits_keywords)
 
         if wollaston is not None:
@@ -214,6 +217,7 @@ class FileList:
         print(f"Found {len(filelist)} files matching criteria.")
         print("----------------")
         self.filelist = filelist
+        self.header = fits.getheader(self.filelist[0])
 
     def get_most_common_dir(self):
         # now get the directory where most of the files are located
@@ -231,7 +235,7 @@ class FileList:
         --------
         str : flat map file path
         """
-        fits_keywords= {'X_FIRTYP': ['FLATMAP']}
+        fits_keywords= {'X_FIRTYP': ['FLATMAP','COUPLINGMAP']}
         if self.fits_keywords.get('X_FIRWOL') is not None:
             fits_keywords['X_FIRWOL'] = self.fits_keywords['X_FIRWOL']
 
@@ -276,7 +280,7 @@ class FileList:
         --------
         str : wavelength map file path
         """
-        fits_keywords= {'X_FIRTYP': ['WAVEMAP']}
+        fits_keywords= {'X_FIRTYP': ['WAVEMAP','COUPLINGMAP']}
         if self.fits_keywords.get('X_FIRWOL') is not None:
             fits_keywords['X_FIRWOL'] = self.fits_keywords['X_FIRWOL']
 

@@ -100,77 +100,6 @@ usage = """
     python runPL_createCouplingMaps.py preproc/*.fits --object_name HIP84212 --modScale 50
 """
 
-def get_filelist_cmap(file_patterns, dark_patterns, flat_patterns, modID, modScale, object_name, wollaston):
-
-        fits_keywords = {'X_FIRTYP': ['PREPROC'],
-                        'DATA-TYP': ['OBJECT','OJECT','TEST'],
-                        'X_FIRTRG': ['EXT'],
-                        }    
-        
-        # Adding other constraints if asked by user
-        if modID is not None:
-            fits_keywords['X_FIRMID'] = [modID]
-        if modScale is not None:
-            fits_keywords['X_FIRMSC'] = [modScale]
-        if object_name is not None:
-            fits_keywords['OBJECT'] = [object_name]
-        if wollaston is not None:
-            fits_keywords['X_FIRWOL'] = [wollaston]
-        
-        print(file_patterns)
-        filelist = runlib_io.get_filelist(file_patterns, fits_keywords)
-
-        # Adding new constraints if not asked by user
-        hd=fits.getheader(filelist[0])
-        modID = hd.get('X_FIRMID', 0)
-        modScale = hd.get('X_FIRMSC', 0)
-        object_name = hd.get('OBJECT', 'NONE')
-        wollaston = hd.get('X_FIRWOL', None)
-        fits_keywords['OBJECT'] = [object_name]
-        fits_keywords['X_FIRMID'] = [modID]
-        fits_keywords['X_FIRMSC'] = [modScale]
-        if wollaston is not None:
-            fits_keywords['X_FIRWOL'] = [wollaston]
-
-        print("----------------")
-        print(f"Selected object='{object_name}' with modScale={modScale}, modID={modID}, and wollaston={wollaston}")
-
-        filelist = runlib_io.get_filelist(file_patterns, fits_keywords)
-
-        print(f"Found {len(filelist)} files matching criteria.")
-        print("----------------")
-
-        # finding darks files
-        fits_keywords = {'X_FIRTYP': ['PREPROC'],
-                        'DATA-TYP': ['DARK'],
-                        }
-        if wollaston is not None:
-            fits_keywords['X_FIRWOL'] = [wollaston]
-
-        try:
-            filelist_dark = runlib_io.get_filelist(dark_patterns, fits_keywords,  name_search="dark")
-        except FileNotFoundError as e:
-            print(f"WARNING!!! {e}")
-            filelist_dark = []
-
-        # finding flats files
-        fits_keywords = {'X_FIRTYP': ['PREPROC'],
-                        'DATA-TYP': ['FLAT'],
-                        }    
-        if wollaston is not None:
-            fits_keywords['X_FIRWOL'] = [wollaston]
-
-        try:
-            filelist_flat = runlib_io.get_filelist(flat_patterns, fits_keywords,  name_search="flat")
-        except FileNotFoundError as e:
-            print(f"WARNING!!! {e}")
-            filelist_flat = filelist
-
-        files_with_dark = runlib_io.associate_dark(filelist, filelist_dark)
-        flats_with_dark = runlib_io.associate_dark(filelist_flat, filelist_dark)
-
-        return files_with_dark, flats_with_dark
-
 
 def singular_vector_basis(data_svdfiltered,goodData,indexes, centers, xmod, ymod):
 
@@ -437,10 +366,10 @@ Output:
     fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
 
     # Adding constraints to make sure the dataset is coherent:
-    object_name = fileList.fits_keywords.get('OBJECT', [None])[0] if object_name is None else object_name
-    wollaston = fileList.fits_keywords.get('X_FIRWOL', [None])[0] if wollaston is None else wollaston
-    modID = fileList.fits_keywords.get('X_FIRMID', [0])[0] if modID is None else modID
-    modScale = fileList.fits_keywords.get('X_FIRMSC', [0])[0] if modScale is None else modScale
+    object_name = fileList.header.get('OBJECT', None)
+    wollaston = fileList.header.get('X_FIRWOL', None)
+    modID = fileList.header.get('X_FIRMID', None)
+    modScale = fileList.header.get('X_FIRMSC', None)
 
     fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
 
