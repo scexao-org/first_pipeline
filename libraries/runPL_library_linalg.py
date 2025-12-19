@@ -103,7 +103,7 @@ def fit_QR_6(QTdata, R, init=None, bounds=None, lsq_kwargs=None):
     b = QTdata  # shape (6,)
     Nqr = len(b)  # should be 
     if Nqr !=6 :
-        raise ValueError("data and QT must have length 6")
+        raise ValueError("data and QT must have length 6 (pyramids)")
     
     # --- basis and helpers ---
     def phi_vec(x, y):
@@ -278,7 +278,7 @@ def solve_QR_3(QTdata, R):
     b = QTdata  # shape (6,)
     Nqr = len(b)  # should be 
     if Nqr !=3 :
-        raise ValueError("data and QT must have length 3")
+        raise ValueError("data and QT must have length 3 (triangles)")
     
     cs = solve_triangular(R, b, lower=False)  # shape (6,)
     t = cs / cs[0]

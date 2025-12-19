@@ -160,7 +160,7 @@ class DataCube:
 
     def compute_xy_sky(self,couplingMap):
         """
-            usa PA to project on sky the modulation
+            use PA to project on sky the modulation
         """
         x_sky = self.xmod[:,:,None] - couplingMap.position[:,0]
         y_sky = self.ymod[:,:,None] - couplingMap.position[:,1]
