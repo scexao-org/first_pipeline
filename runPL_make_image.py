@@ -265,7 +265,8 @@ Output files:
     save_individual_wavelength = args.save_individual_wavelength
     cmap_patterns = args.coupling_map
     
-    if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or os.environ.get('SPYDER_DEBUG_FILEfile =')):
+    if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') or 
+        os.environ.get('SPYDER_DEBUG_FILE')):
         print("Running in compiler")
         wollaston = None
         dark_patterns = None
@@ -292,8 +293,12 @@ Output files:
             # cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/../couplingmaps/firstpl_2025-06-14T01:48:57_HIP105966_CM.fits"
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/firstpl_2025-06-14T01:50*fits"
         if getpass.getuser() == "ehuby" :
-            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/firstpl_*.fits"
-            cmap_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/couplingmaps_TETCRB/"
+            # file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/firstpl_*.fits"
+            # cmap_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/couplingmaps_TETCRB/"
+            
+            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-07-14/preproc/VEGA_0.002sec/firstpl_2025-07-14T12*"
+            cmap_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-07-14/preproc/couplingmaps/firstpl_2025-07-14T13:29:43_VEGA_CM.fits"
+            
         file_patterns = [file_patterns] if isinstance(file_patterns, str) else file_patterns
         cmap_patterns = [cmap_patterns] if isinstance(cmap_patterns, str) else cmap_patterns
 
