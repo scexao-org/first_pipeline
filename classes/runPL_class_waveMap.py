@@ -1,11 +1,13 @@
 import numpy as np
 from astropy.io import fits
 from classes.runPL_class_dataCube import DataCube
+import os
 
 class WaveMap:
     def __init__(self, file):
 
         self.file = file
+        self.basename = os.path.basename(file)
 
             # Read the FITS file
         with fits.open(file) as hdul:

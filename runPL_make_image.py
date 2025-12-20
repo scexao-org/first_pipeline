@@ -273,25 +273,17 @@ Output files:
 
         if getpass.getuser() == "slacour":
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/firstpl_2025-06-14T01:38*fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T05?5*BETACMI_P.fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T05?53*BETACMI_P.fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-2]*TETCRB_P.fits"
-            cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/../couplingmaps/firstpl_2025-05-10T09:23:36_COUPLINGMAP.fits"
-            dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*s"
-            # Mathias Binary
-            cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/../couplingmaps/firstpl_2025-05-14T11:39:58_HIP85819_CM.fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T10:10?*s"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T10:06*s" # large FOV
-            dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
-
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20251125/preproc"
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T05?53*BETACMI_P.fits"
-            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?21*TETCRB_P.fits"
-            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/firstpl_2025-05-10T09:4[4-9]*_HIP81126_P.fits"
-            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/firstpl_2025-05-10T07:58*DELVIR_P.fits"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/*10T09?2[0-2]*TETCRB_P.fits"
+            # cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250510/preproc/../couplingmaps/firstpl_2025-05-10T09:23:36_COUPLINGMAP.fits"
+            # dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*s"
+            # # Mathias Binary
+            # cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/../couplingmaps/firstpl_2025-05-14T11:39:58_HIP85819_CM.fits"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T10:10?*s"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T10:06*s" # large FOV
 
-            # cmap_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/../couplingmaps/firstpl_2025-06-14T01:48:57_HIP105966_CM.fits"
-            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/firstpl_2025-06-14T01:50*fits"
         if getpass.getuser() == "ehuby" :
             # file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/firstpl_*.fits"
             # cmap_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/couplingmaps_TETCRB/"
@@ -308,7 +300,7 @@ Output files:
     # If the user specifies a specific map, use it, otherwise look into the arguments + default directories
     if cmap_patterns is None:
         folder = os.path.dirname(file_patterns[0])
-        cmap_patterns = file_patterns + [os.path.join(folder,"../couplingmaps")]
+        cmap_patterns = file_patterns + [os.path.join(folder,"../couplingmaps")] + [os.path.join(folder,"couplingmaps")]
 
 
     fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
@@ -324,15 +316,18 @@ Output files:
     # reading all the calibration files that should be appended to the cmap files (including wavelength and flat)
     print("Coupling map patterns: ", cmap_patterns)
     file_coup = fileList.get_couplingmap_file(cmap_patterns)
-    file_flat = fileList.get_flatmap_file(cmap_patterns)
-    file_wave = fileList.get_wavemap_file(cmap_patterns)
-
-    flatMap =  FlatMap(file_flat) if file_flat is not None else None
-    waveMap =  WaveMap(file_wave) if file_wave is not None else None
-
-    datalist : List[DataCube] = fileList.extract_data_from_list(flatMap = flatMap, waveMap = waveMap, center = False)
-
     couplingMap = CouplingMap(file_coup,pyramids = True)
+
+    # Get all extension names from the coupling map file
+    with fits.open(file_coup) as hdul:
+        extension_names = [hdu.name for hdu in hdul]
+        print(f"Extensions in coupling map file: {extension_names}")
+
+    flatMap = FlatMap(file_coup) if 'FLAT' in extension_names else None
+    waveMap =  WaveMap(file_coup) if 'WAVELENGTH' in extension_names else None
+
+    datalist : List[DataCube] = fileList.extract_data_from_list(Nsmooth=wavelength_smooth, Nbin = couplingMap.wavelength_bin, flatMap = flatMap, waveMap = waveMap, center = False)
+
 
 
     Npos = couplingMap.Npositions

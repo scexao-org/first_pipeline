@@ -1,9 +1,11 @@
 from astropy.io import fits
 import numpy as np
+import os
 
 class PixelMap:
     def __init__(self, file):
         self.file = file
+        self.basename = os.path.basename(file)
         self.header = fits.getheader(file)
         self.traces_loc = fits.getdata(file)
         # Check for required header keywords and raise error if not found

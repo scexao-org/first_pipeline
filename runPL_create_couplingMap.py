@@ -358,10 +358,10 @@ Output:
     # If the user specifies a specific map, use it, otherwise look into the arguments + default directories
     if flat_patterns is None:
         folder = os.path.dirname(file_patterns[0])
-        flat_patterns = file_patterns + [os.path.join(folder,"../flatmaps")]
+        flat_patterns = file_patterns + [os.path.join(folder,"../flatmaps")] + [os.path.join(folder,"flatmaps")]
     if wave_patterns is None:
         folder = os.path.dirname(file_patterns[0])
-        wave_patterns = file_patterns + [os.path.join(folder,"../wavemaps")]
+        wave_patterns = file_patterns + [os.path.join(folder,"../wavemaps")] + [os.path.join(folder,"wavemaps")]
 
     fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
 
@@ -380,7 +380,7 @@ Output:
     flatMap =  FlatMap(file_flat) if file_flat is not None else None
     waveMap =  WaveMap(file_wave) if file_wave is not None else None
 
-    datalist : List[DataCube] = fileList.extract_data_from_list(flatMap = flatMap, waveMap = waveMap, center = False)
+    datalist : List[DataCube] = fileList.extract_data_from_list(Nsmooth=wavelength_smooth, Nbin = wavelength_bin, flatMap = flatMap, waveMap = waveMap, center = False)
 
     flux = np.concatenate([d.flux for d in datalist])
     datacube=np.concatenate([d.data for d in datalist])

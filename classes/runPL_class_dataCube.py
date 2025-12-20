@@ -99,9 +99,9 @@ class DataCube:
         self.Nmod = len(xmod)
         self.Ncube = self.Ndit//self.Nmod
         if (self.Ncube*self.Nmod)!=self.Ndit:
+            self.Ncube += 1
             print(f"WARNING, CUBE not multiple of modulation pattern (Ncube={self.Ncube}, Nmod={self.Nmod}, Ndit={self.Ndit})")
             print("filling with zeros file: ",self.filename)
-            self.Ncube += 1
 
         size_new = (self.Ncube,self.Nmod,self.Noutput,self.Nwave)
         size_old = np.prod((self.Ndit,self.Noutput,self.Nwave))

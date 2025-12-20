@@ -1,10 +1,12 @@
 import numpy as np
 from astropy.io import fits
+import os
 
 class FlatMap:
     def __init__(self, file):
 
         self.file = file
+        self.basename = os.path.basename(file)
 
         with fits.open(file) as hdul:
             self.flat = hdul['FLAT'].data

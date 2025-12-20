@@ -351,6 +351,19 @@ class FileList:
 
         datalist=[]
 
+        # Print extraction parameters
+        print("\n" + "="*60)
+        print("EXTRACTING DATA WITH THE FOLLOWING PARAMETERS:")
+        print("="*60)
+        print(f"Number of files to process: {len(self.files_with_associated_files)}")
+        print(f"Wavelength smoothing factor (Nsmooth): {Nsmooth}")
+        print(f"Wavelength binning factor (Nbin): {Nbin}")
+        print(f"Flat field correction: {flatMap.basename if flatMap is not None else 'Not applied'}")
+        print(f"Wavelength mapping: {waveMap.basename if waveMap is not None else 'Not applied'}")
+        print(f"Flux centering: {'Enabled' if center else 'Disabled'}")
+        print("="*60)
+        print()
+
         for association in self.files_with_associated_files:
 
             data_file = association['file']
