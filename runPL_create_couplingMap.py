@@ -380,7 +380,7 @@ Output:
     flatMap =  FlatMap(file_flat) if file_flat is not None else None
     waveMap =  WaveMap(file_wave) if file_wave is not None else None
 
-    datalist : List[DataCube] = fileList.extract_data_from_list(Nsmooth=wavelength_smooth, Nbin = wavelength_bin, flatMap = flatMap, waveMap = waveMap, center = False)
+    datalist : List[DataCube] = fileList.extract_data_from_list(Nsmooth=wavelength_smooth, Nbin = wavelength_bin, flatMap = flatMap, waveMap = waveMap, center = True)
 
     flux = np.concatenate([d.flux for d in datalist])
     datacube=np.concatenate([d.data for d in datalist])

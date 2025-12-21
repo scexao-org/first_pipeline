@@ -316,7 +316,7 @@ Output files:
     # reading all the calibration files that should be appended to the cmap files (including wavelength and flat)
     print("Coupling map patterns: ", cmap_patterns)
     file_coup = fileList.get_couplingmap_file(cmap_patterns)
-    couplingMap = CouplingMap(file_coup,pyramids = True)
+    couplingMap = CouplingMap(file_coup,pyramids = False)
 
     # Get all extension names from the coupling map file
     with fits.open(file_coup) as hdul:
@@ -326,7 +326,7 @@ Output files:
     flatMap = FlatMap(file_coup) if 'FLAT' in extension_names else None
     waveMap =  WaveMap(file_coup) if 'WAVELENGTH' in extension_names else None
 
-    datalist : List[DataCube] = fileList.extract_data_from_list(Nsmooth=wavelength_smooth, Nbin = couplingMap.wavelength_bin, flatMap = flatMap, waveMap = waveMap, center = False)
+    datalist : List[DataCube] = fileList.extract_data_from_list(Nsmooth=wavelength_smooth, Nbin = couplingMap.wavelength_bin, flatMap = flatMap, waveMap = waveMap, center = True)
 
 
 
