@@ -6,6 +6,8 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import libraries.runPL_library_plots as runlib_plots
+import libraries.runPL_library_linalg as runlib_linalg
+
 
 class CouplingMap:
     def __init__(self, file, pyramids = False):
@@ -150,3 +152,129 @@ class CouplingMap:
         star_detected = chi2_goodData
         star_index = chi2_map_argmin
         return star_detected, star_index, star_radec, chi2_images
+
+    def get_star_position(self, datacube_T, star_index, Xmod, Ymod):
+        """
+        Estimate star positions from a spectrally resolved data cube using
+        QR-based coupling maps.
+    
+        The data are projected onto precomputed QR bases, a broadband QR fit
+        is used to estimate global (x, y) position offsets, and the result is
+        combined with the triangle reference centers. Both 3- and 6-parameter
+        QR models are supported.
+    
+        Parameters
+        ----------
+        datacube_T : np.ndarray
+            Transposed data cube of shape (Nwave, Noutputs, Nmod).
+    
+        star_index : np.ndarray
+            Triangle index associated with each modeled source (shape: Nmod).
+    
+        Xmod, Ymod : np.ndarray
+            Model x- and y-positions of the sources.
+    
+        Returns
+        -------
+        Xpos : np.ndarray
+            Estimated x-positions of the sources (shape: Nmod).
+    
+        Ypos : np.ndarray
+            Estimated y-positions of the sources (shape: Nmod).
+    
+        Xcen, Ycen : np.ndarray
+            Coordinates of the reference triangle centers.
+    
+        Xdiff, Ydiff : np.ndarray
+            Differences between estimated and model positions.
+        """
+        
+        Nwave, Noutputs, Nmod = datacube_T.shape
+        
+        QT= self.QT
+        spectra = self.ref_spectra
+        R= self.R * spectra[:,None,None]
+        centers = self.position
+        
+        wmin = QT.shape[1] // 4
+        wmax = 3 * QT.shape[1] // 4
+        QT_broadband, R_broadband = self.compute_broadband_QR(wmin, wmax, spectra)
+
+        QTdata = np.zeros((QT.shape[1],QT.shape[2],datacube_T.shape[2]))
+        for i in tqdm(range(Nmod), desc="Projection onto QT space"):
+            t = star_index[i]
+            data = datacube_T[:,:,i]
+            QTdata[:,:,i] = (QT[t] @ data[:,:,None])[:,:,0]
+
+        Xpos = np.zeros((Nmod))
+        Ypos = np.zeros((Nmod))
+        Xcen = np.zeros((Nmod))
+        Ycen = np.zeros((Nmod))
+        Xdiff = np.zeros((Nmod))
+        Ydiff = np.zeros((Nmod))
+
+        X_wave = np.zeros((Nwave, Nmod))
+        Y_wave = np.zeros((Nwave, Nmod))
+        Z_wave = np.zeros((Nwave, Nmod))
+        QTdata_dxy = np.zeros_like(QTdata)
+        Nqr = R.shape[2]
+        R_dxy = np.zeros((Nwave, Nqr, Nmod, 2))
+        
+        for i in tqdm(range(Nmod), desc="Computing XY positions"):
+            t = star_index[i]
+            center = centers[t]
+
+            QTdata_broadband = QT_broadband[t] @ QTdata[wmin:wmax,:,i].ravel()
+            
+            if Nqr == 6:
+                x_hat_broadband, y_hat_broadband, k_hat_broadband, chi2_broadband, _ = runlib_linalg.fit_QR_6(QTdata_broadband, R_broadband[t])
+            else:
+                x_hat_broadband, y_hat_broadband, k_hat_broadband, chi2_broadband, _ = runlib_linalg.solve_QR_3(QTdata_broadband, R_broadband[t])
+
+            # Add NaN checks and set to zero if needed
+            if np.isnan(x_hat_broadband):
+                x_hat_broadband = 0.0
+            if np.isnan(y_hat_broadband):
+                y_hat_broadband = 0.0
+            if np.isnan(k_hat_broadband):
+                k_hat_broadband = 0.0
+
+            if Nqr == 6:
+                v = np.array([1.0, x_hat_broadband, y_hat_broadband, x_hat_broadband*y_hat_broadband, x_hat_broadband**2, y_hat_broadband**2])
+                dv_dx = np.array([0.0, 1.0, 0.0, y_hat_broadband, 2.0*x_hat_broadband, 0.0])
+                dv_dy = np.array([0.0, 0.0, 1.0, x_hat_broadband, 0.0, 2.0*y_hat_broadband])
+            else:
+                v = np.array([1.0, x_hat_broadband, y_hat_broadband])
+                dv_dx = np.array([0.0, 1.0, 0.0])
+                dv_dy = np.array([0.0, 0.0, 1.0])
+
+            r = R[t] @ v
+            Kernel_v = np.identity(len(v)) - (r[:,:,None] @ r[:,None]) / (r[:,None] @ r[:,:,None])
+            QTdata_dxy[:,:,i] = (Kernel_v @ QTdata[:,:,i,None])[...,0]
+
+            dev_phi = np.array((dv_dx,dv_dy)).T
+            R_dxy[:,:,i] = Kernel_v @ (R[t] @ dev_phi)
+
+            # xy_dev = (np.linalg.pinv(R_dxy[:,:,i]) @ QTdata_dxy[:,:,i,None])[...,0]
+
+            # X_wave[:,i] = xy_dev[:,0]
+            # Y_wave[:,i] = xy_dev[:,1]
+
+            xd = x_hat_broadband + center[0] - Xmod.ravel()[i]
+            yd = y_hat_broadband + center[1] - Ymod.ravel()[i]
+
+            xmodmax, ymodmax = np.max(np.abs(Xmod)), np.max(np.abs(Ymod))
+        
+            Xpos.ravel()[i] = center[0]+x_hat_broadband if (np.abs(xd) < xmodmax) else Xmod[0,i]
+            Ypos.ravel()[i] = center[1]+y_hat_broadband if (np.abs(yd) < ymodmax) else Ymod[0,i]
+
+            Xcen.ravel()[i] = center[0]
+            Ycen.ravel()[i] = center[1]
+
+            Xdiff.ravel()[i] = xd
+            Ydiff.ravel()[i] = yd
+
+        # xy_dev = np.linalg.pinv(R_dxy.reshape((Nwave,-1,2))) @ QTdata_dxy.reshape((Nwave,-1,1))
+        # xy_dev = xy_dev[...,0]
+        
+        return Xpos, Ypos, Xcen, Ycen, Xdiff, Ydiff
