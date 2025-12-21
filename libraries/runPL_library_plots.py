@@ -386,24 +386,73 @@ def plot_detector_field(flat, title="Flat Field"):
     fig.tight_layout()
 
 
-def make_image_using_grid(ra_dec, fluxes, Npixels=150, desc = None):
+def make_image_using_grid(ra_dec, fluxes, Npixels=150, desc = "Making image using grid", 
+                          sumwave = True):
 
     Nimages = fluxes.shape[2]
+    Nwave   = fluxes.shape[0]
     grid_x, grid_y = make_image_grid(ra_dec, Npixels)
 
-    flux_maps = []
-    if desc is None:
-        for i in range(Nimages):
-                # Interpolate the fluxes onto the grid
-                flux_map = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), fluxes[:,:,i].sum(axis=0), (grid_x, grid_y), method='cubic')
-                flux_maps += [flux_map]
-    else:
+    if sumwave is True : 
+        flux_maps = []
         for i in tqdm(range(Nimages), desc=desc):
-                # Interpolate the fluxes onto the grid
-                flux_map = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), fluxes[:,:,i].sum(axis=0), (grid_x, grid_y), method='cubic')
-                flux_maps += [flux_map]
-    flux_maps = np.array(flux_maps)
+            # Interpolate the fluxes onto the grid
+            flux_map = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), fluxes[:,:,i].sum(axis=0), 
+                                (grid_x, grid_y), method='cubic')
+            flux_maps += [flux_map]
+        flux_maps = np.array(flux_maps)
+    else:
+        flux_maps = np.zeros((Nimages, Nwave, Npixels, Npixels))
+
+        for i in tqdm(range(Nimages), desc=desc):
+            # Interpolate the fluxes onto the grid
+            for l in range(Nwave):
+                flux_map = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), fluxes[l,:,i], 
+                                    (grid_x, grid_y), method='cubic')
+                flux_maps[i, l] = flux_map
 
     return flux_maps
-        
+
+def plot_star_fit_position(cmap_style, Xmod, Ymod, 
+                           Xpos, Ypos, Xcen, Ycen, Xdiff, Ydiff):
+    
+    fig, axs = plt.subplots(2,1, num="XY position -- using "+cmap_style, 
+                            clear=True, figsize=(7,12), squeeze=False)
+    axs[0,0].plot(Xcen,Ycen,'.',label='Center of '+cmap_style)
+    axs[0,0].set_ylim(axs[0,0].get_ylim()[0], axs[0,0].get_ylim()[1])
+    axs[0,0].set_xlim(axs[0,0].get_xlim()[0], axs[0,0].get_xlim()[1])
+    axs[0,0].plot((Xpos),(Ypos),'.-',label='Detected position')
+    axs[0,0].plot((Xcen,(Xpos)),(Ycen,(Ypos)),'-k',alpha=0.3,linewidth=0.5)
+    
+    # axs[0,0].plot((d.xmod[0],(Xpos)),(d.ymod[0],(Ypos)),'-c',alpha=0.3,linewidth=0.5)
+    # axs[0,0].plot((d.xmod[0],(Xcen)),(d.ymod[0],(Ycen)),'-m',alpha=0.3,linewidth=0.5)
+    axs[0,0].plot(Xmod,Ymod,'om',alpha=0.3,linewidth=0.5)
+    
+    # axs[0].set_title(basenames[i][8:])
+    axs[0,0].set_xlabel("X [mas]")
+    axs[0,0].set_ylabel("Y [mas]")
+    axs[0,0].legend()
+    axs[0,0].set_aspect('equal')
+
+    x_median = np.median(Xdiff)
+    y_median = np.median(Ydiff)
+    x_1sigma = np.percentile(Xdiff, [16, 84])
+    y_1sigma = np.percentile(Ydiff, [16, 84])
+    range_max = np.max((np.abs(x_1sigma), np.abs(y_1sigma))) * 2 +10
+    axs[1,0].hist(Xdiff, bins=51, alpha=0.5, color='b', label='Xdiff', range=(-range_max, range_max))
+    axs[1,0].hist(Ydiff, bins=51, alpha=0.5, color='r', label='Ydiff', range=(-range_max, range_max))
+    x_median = np.median(Xdiff)
+    y_median = np.median(Ydiff)
+    x_1sigma = np.percentile(Xdiff, [16, 84])
+    y_1sigma = np.percentile(Ydiff, [16, 84])
+    axs[1,0].axvline(x_median, color='b', linestyle='--', label=f'X median: {x_median:.2f}')
+    axs[1,0].axvline(y_median, color='r', linestyle='--', label=f'Y median: {y_median:.2f}')
+   # axs[1,0].axvspan(x_1sigma[0], x_1sigma[1], color='b', alpha=0.2, label=f'X 1σ: [{x_1sigma[0]:.2f}, {x_1sigma[1]:.2f}]')
+    # axs[1,0].axvspan(y_1sigma[0], y_1sigma[1], color='r', alpha=0.2, label=f'Y 1σ: [{y_1sigma[0]:.2f}, {y_1sigma[1]:.2f}]')
+    axs[1,0].set_xlabel('Difference [mas]')
+    axs[1,0].set_ylabel('Count')
+    axs[1,0].legend()
+    
+    plt.tight_layout()     
+
 # %%

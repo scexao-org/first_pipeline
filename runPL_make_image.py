@@ -236,7 +236,7 @@ Output files:
                        help="Select one or more specific dark(s) files to use")
     parser.add_argument("--coupling_map", 
                        help="Force to select which coupling map file to use (default: the one in the directory)")
-    parser.add_argument("--wavelength_smooth", type=int, default=20,
+    parser.add_argument("--wavelength_smooth", type=int, default=7,
                        help="Smoothing factor for wavelength (default: %(default)s)")
     parser.add_argument("--modID", type=int, 
                        help="Selection of the modulation pattern by user (default: first in the list)")
@@ -270,6 +270,8 @@ Output files:
         print("Running in compiler")
         wollaston = None
         dark_patterns = None
+        cmap_pyramids = True
+        cmap_style = "pyramids" if cmap_pyramids else "triangles"
 
         if getpass.getuser() == "slacour":
             # file_patterns = "/Users/slacour/DATA/LANTERNE/20250614/preproc/firstpl_2025-06-14T01:38*fits"
@@ -288,7 +290,11 @@ Output files:
             # file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/firstpl_*.fits"
             # cmap_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/couplingmaps_TETCRB/"
             
-            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-07-14/preproc/VEGA_0.002sec/firstpl_2025-07-14T13:21:12*"
+            # file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-07-14/preproc/VEGA_0.002sec/firstpl_2025-07-14T12*"
+            # file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-07-14/preproc/VEGA_0.002sec/firstpl_2025-07-14T13:05:52_VEGA_P"
+            # file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-07-14/preproc/firstpl_2025-07-14T11:20:58_KITALPHA_P*"
+            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-07-14/preproc/VEGA_0.002sec/firstpl_2025-07-14T13:21:12_VEGA_P*"
+
             cmap_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-07-14/preproc/couplingmaps/firstpl_2025-07-14T13:29:43_VEGA_CM.fits"
             
         file_patterns = [file_patterns] if isinstance(file_patterns, str) else file_patterns
@@ -326,12 +332,14 @@ Output files:
     flatMap = FlatMap(file_coup) if 'FLAT' in extension_names else None
     waveMap =  WaveMap(file_coup) if 'WAVELENGTH' in extension_names else None
 
-    datalist : List[DataCube] = fileList.extract_data_from_list(Nsmooth=wavelength_smooth, Nbin = couplingMap.wavelength_bin, flatMap = flatMap, waveMap = waveMap, center = True)
-
+    datalist : List[DataCube] = fileList.extract_data_from_list(Nsmooth=wavelength_smooth, 
+                                                                Nbin = couplingMap.wavelength_bin, 
+                                                                flatMap = flatMap, waveMap = waveMap, 
+                                                                center = False)
 
 
     Npos = couplingMap.Npositions
-    Npixels = 150
+    Npixels = 75
 
 
     for i,d in enumerate(datalist[:]):
@@ -350,6 +358,8 @@ Output files:
         Nimages = Ncube * Nmod
 
         ra_dec = ra_dec.reshape((-1, *ra_dec.shape[2:]))
+        # ra_dec0 = ra_dec.copy()
+
         datacube = datacube.reshape((-1, *datacube.shape[2:]))
         flux = flux.reshape((-1, *flux.shape[2:]))
         datacube_var = datacube_var.reshape((-1, *datacube_var.shape[2:]))
@@ -362,6 +372,19 @@ Output files:
         datacube_var_T=datacube_var.transpose((2,1,0))
         star_detected, star_index, star_radec, chi2 = couplingMap.chi2_filtering(datacube_T, ra_dec)
         print(f"* Percentage of data with star detected: {np.sum(star_detected)/len(star_detected)*100:.1f} % (flux, svd and chi2 threshold)")
+
+        ### Computing the XY star position
+        Xpos, Ypos, Xcen, Ycen, Xdiff, Ydiff = couplingMap.get_star_position(datacube_T, 
+                                                                             star_index, 
+                                                                             d.xmod, d.ymod)
+        runlib_plots.plot_star_fit_position(cmap_style, d.xmod[0], d.ymod[0], Xpos, Ypos, Xcen, Ycen, Xdiff, Ydiff)
+
+        ### Comuting the new ra_dec table, corrected from jitter
+        x_sky = Xpos[:,None] - couplingMap.position[:,0]
+        y_sky = Ypos[:,None] - couplingMap.position[:,1]
+        ra_dec = d.project_offsets(x_sky[None],y_sky[None])
+        ra_dec = ra_dec.reshape((-1, *ra_dec.shape[2:]))
+
 
         residuals = datacube_T.copy()
         for i in tqdm(range(residuals.shape[2]), desc="Calculating residuals of the 3D image"):

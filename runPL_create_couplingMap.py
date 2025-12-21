@@ -380,7 +380,9 @@ Output:
     flatMap =  FlatMap(file_flat) if file_flat is not None else None
     waveMap =  WaveMap(file_wave) if file_wave is not None else None
 
-    datalist : List[DataCube] = fileList.extract_data_from_list(Nsmooth=wavelength_smooth, Nbin = wavelength_bin, flatMap = flatMap, waveMap = waveMap, center = True)
+    datalist : List[DataCube] = fileList.extract_data_from_list(Nsmooth=wavelength_smooth, 
+                                                                Nbin = wavelength_bin, flatMap = flatMap, 
+                                                                waveMap = waveMap, center = False)
 
     flux = np.concatenate([d.flux for d in datalist])
     datacube=np.concatenate([d.data for d in datalist])
@@ -396,11 +398,11 @@ Output:
     filenames = [d.filename for d in datalist]
 
     flux_goodData,flux_threshold = runlib_basic.flux_filtering(flux)
-    print(f"* Percentage of good data: {np.sum(flux_goodData)/len(flux_goodData)*100:.1f} % (flux threshold)")
+    print(f"* Percentage of good data: {np.sum(flux_goodData)/len(flux_goodData.ravel())*100:.1f} % (flux threshold)")
 
     data_svdfiltered,fit_goodData,errors = runlib_basic.svd_filtering(datacube,flux_goodData,Nsingular)
     goodData = flux_goodData & fit_goodData
-    print(f"* Percentage of good data: {np.sum(goodData)/len(goodData)*100:.1f} % (flux and svd threshold)")
+    print(f"* Percentage of good data: {np.sum(goodData)/len(goodData.ravel())*100:.1f} % (flux and svd threshold)")
 
 
     runlib_plots.plot_flux_map(flux.mean(axis=(2))[0], xmod[0], ymod[0])
