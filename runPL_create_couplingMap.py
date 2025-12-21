@@ -300,9 +300,9 @@ Output:
                        help="Select a specific flat Map to use (default: most recent in the flatmaps folder)")
     parser.add_argument("--waveMap", 
                        help="Select a specific wave Map to use (default: most recent in the wavemaps folder)")
-    parser.add_argument("--wavelength_smooth", type=int, default=20,
+    parser.add_argument("--wavelength_smooth", type=int, default=7,
                        help="Smoothing factor for wavelength (default: %(default)s)")
-    parser.add_argument("--wavelength_bin", type=int, default=10,
+    parser.add_argument("--wavelength_bin", type=int, default=20,
                        help="Binning factor for wavelength (default: %(default)s)")
     parser.add_argument("--Nsingular", type=int, default=19*6,
                        help="Number of singular values to use (default: %(default)s)")

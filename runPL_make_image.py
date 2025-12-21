@@ -288,7 +288,7 @@ Output files:
             # file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/firstpl_*.fits"
             # cmap_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/couplingmaps_TETCRB/"
             
-            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-07-14/preproc/VEGA_0.002sec/firstpl_2025-07-14T12*"
+            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-07-14/preproc/VEGA_0.002sec/firstpl_2025-07-14T13:21:12*"
             cmap_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-07-14/preproc/couplingmaps/firstpl_2025-07-14T13:29:43_VEGA_CM.fits"
             
         file_patterns = [file_patterns] if isinstance(file_patterns, str) else file_patterns
