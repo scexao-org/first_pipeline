@@ -43,7 +43,7 @@ Usage: %prog [options] [files]
 Goal: Create a wavelength map from the provided FITS files.
 
 Summary:
-- Searches for FITS files with X_FIRTYP=PREPROC and DATA-TYP=COMPARAISON keywords.
+- Searches for FITS files with X_FIRTYP=PREPROC and DATA-TYP=COMPARISON keywords.
 - Finds corresponding dark files (X_FIRTYP=PREPROC, DATA-TYP=DARK).
 - Reads neon comparison files, subtracts the median of the dark files.
 - Detects emission peaks and fits a polynomial to create a wavelength map.
@@ -159,7 +159,7 @@ def calculate_pixel_peaks_and_aberations(neon):
         return np.array(subpixels)
     
     spectrum_0=neon.sum(axis=0)
-    peaks_0=find_N_peaks(spectrum_0,10)
+    peaks_0=find_N_peaks(spectrum_0,15)
 
     peaks_all=[]
     for spectrum in neon:
@@ -178,7 +178,7 @@ def calculate_pixel_peaks_and_aberations(neon):
     # Roll each spectrum in the neon array by its corresponding roll_index
     neon_rolled = np.array([np.roll(spectrum, -roll) for spectrum, roll in zip(neon, roll_index)])
     spectrum_0=neon_rolled.sum(axis=0)
-    peaks_0=find_N_peaks(spectrum_0,20)
+    peaks_0=find_N_peaks(spectrum_0,25)
     peaks_all=[]
     peaks_all_sub=[]
     for spectrum in neon_rolled:
@@ -422,7 +422,7 @@ if __name__ == "__main__":
 
     # Extract the parsed arguments
     dark_patterns = args.dark_files
-    flatMap = args.flatMap
+    flat_patterns = args.flatMap
     wollaston = args.wollaston
     Nexclude = args.Nexclude
 
@@ -442,13 +442,13 @@ if __name__ == "__main__":
     if dark_patterns is None:
         dark_patterns = file_patterns
     # If the user specifies a coupling map, use it, otherwise look into the arguments
-    if flatMap is None:
+    if flat_patterns is None:
         folder = os.path.dirname(file_patterns[0])
         flat_patterns = file_patterns + [os.path.join(folder,"../flatmaps")]
 
-    fileList = FileList(file_patterns, data_type='COMPARAISON', first_type='PREPROC', wollaston=wollaston)
+    fileList = FileList(file_patterns, data_type='COMPARISON', first_type='PREPROC', wollaston=wollaston)
     fileList.make_association(darks_pattern=dark_patterns)
-    file_flat = fileList.get_flatmap_file(flatMap)
+    file_flat = fileList.get_flatmap_file(flat_patterns)
 
     flatMap =  FlatMap(file_flat) if file_flat is not None else None
 

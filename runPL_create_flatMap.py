@@ -124,7 +124,7 @@ def compute_flat(datalist, intercept_at_zero = False):
     flats = flats[valid_mask]
     variance = variance[valid_mask]
     
-    Nflat_smooth = 25
+    Nflat_smooth = 100
     flats_smooth = np.zeros_like(flats)
     window = np.hanning(Nflat_smooth)
     window /= window.sum()
@@ -248,6 +248,8 @@ if __name__ == "__main__":
         print("Running in compiler")
         if getpass.getuser() == "slacour":
             file_patterns = "/Users/slacour/DATA/LANTERNE/20251125/preproc"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20251231/preproc/firstpl_2025-12-31T00?3*fits"
+            dark_patterns = "/Users/slacour/DATA/LANTERNE/20251231/preproc/firstpl_*fits"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"

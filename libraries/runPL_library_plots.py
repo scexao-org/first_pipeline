@@ -247,7 +247,7 @@ def save_pdf_in_file(output_filename):
     with PdfPages(pdf_filename) as pdf:
         for i in plt.get_fignums():
             fig = plt.figure(i)
-            pdf.savefig(fig)
+            pdf.savefig(fig,dpi=300)
     print(f"All figures saved to {pdf_filename}")
 
 
