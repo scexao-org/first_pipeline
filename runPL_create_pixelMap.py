@@ -324,6 +324,9 @@ def checking_wavelength_aligment_in_modes(x_none, y_none):
 
 def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder):
 
+    # Import PixelMap class
+    from classes.runPL_class_pixelMap import PixelMap
+    
     # Handle case when traces_loc is None (failed pixelmap generation)
     if traces_loc is None:
         print("Warning: traces_loc is None, creating empty pixelmap data for output")
@@ -332,23 +335,15 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
     else:
         traces_loc_data = traces_loc.copy()
 
-    # Save fits file with traces_loc inside
-    hdu = fits.PrimaryHDU(traces_loc_data)
-    header['X_FIRTYP'] = 'PIXELMAP'
-    # Add date and time to the header
-    current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-    header['DATE-PRO'] = current_time
-    if 'DATE' not in header:
-        header['DATE'] = current_time
-
-    # Add input parameters to the header
-    header['Q_PMXMIN'] = pixel_min
-    header['Q_PMXMAX'] = pixel_max
-    header['Q_PMWIDE'] = pixel_wide
-    header['Q_PMCHAN'] = output_channels
-    header['Q_PM_CK'] = np.random.randint(0, 2**32, dtype=np.uint32)
-    basename = runlib_io.create_output_filename(header)
-    header['Q_PMNAME'] = basename
+    # Create PixelMap object and save using the new save method
+    pixelMap = PixelMap()
+    pixelMap.create_from_data(traces_loc_data, pixel_min, pixel_max, pixel_wide, output_channels)
+    
+    # Prepare header with additional information
+    save_header = header.copy()
+    save_header['X_FIRTYP'] = 'PIXELMAP'
+    basename = runlib_io.create_output_filename(save_header)
+    save_header['Q_PMNAME'] = basename
 
     # Définir le chemin complet du sous-dossier
     if folder.endswith("*fits"):
@@ -358,14 +353,10 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
     # Créer le dossier "pixelmaps" s'il n'existe pas déjà
     os.makedirs(output_dir, exist_ok=True)
 
-    hdu.header.extend(header, strip=True)
-    hdul = fits.HDUList([hdu])
     filename_out = os.path.join(output_dir, basename)
 
     if traces_loc is not None:
-        hdul.writeto(filename_out, overwrite=True)
-        hdul.close()
-        print("File saved as: "+filename_out)
+        pixelMap.save(filename_out, save_header)
 
     traces_loc_for_plot = traces_loc_data
     fig,ax=runlib_io.make_figure_of_trace(raw_image,traces_loc_for_plot,pixel_wide,pixel_min,pixel_max)

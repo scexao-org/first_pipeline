@@ -320,13 +320,10 @@ any systematic issues with SuperK illumination or detector response.
     fig_flat=runlib_plots.plot_flat_fit_quality(poly_coeffs, fit_quality)
 
     ############### Save results ####################
-    # Save arrays into a FITS file
-
-    # Create a primary HDU with no data, just the header
-    hdu_primary = fits.PrimaryHDU()
-
-    # Create HDUs for each array
-    hdu = [fits.ImageHDU(data=1/poly_coeffs[:,:,0], name='FLAT')]
+    # Create FlatMap object and save using the new save method
+    
+    flatMap = FlatMap()
+    flatMap.create_from_data(1/poly_coeffs[:,:,0])
 
     header = datalist[-1].header
     # Définir le chemin complet du sous-dossier "output/couplingmaps"
@@ -334,10 +331,6 @@ any systematic issues with SuperK illumination or detector response.
     output_dir = os.path.join(folder,"../flatmaps")
 
     header['X_FIRTYP'] = 'FLATMAP'
-
-    # Add date and time to the header
-    current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-    header['DATE-PRO'] = current_time
 
     filenames = [d.filename for d in datalist]
     for i, filename in enumerate(filenames):
@@ -348,24 +341,17 @@ any systematic issues with SuperK illumination or detector response.
     # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
     os.makedirs(output_dir, exist_ok=True)
 
-    hdu_primary.header.extend(header, strip=True)
-
-    # Combine all HDUs into an HDUList
-    hdul = fits.HDUList([hdu_primary, *hdu])
-
     output_filename = os.path.join(output_dir, header['Q_FMNAME'])
 
-    # Write to a FITS file
-    print(f"Saving data to {output_filename}")
-    hdul.writeto(output_filename, overwrite=True)
-
+    # Save using the FlatMap save method
+    flatMap.save(output_filename, header)
 
     # checking all the flats for individual files
-
-    flatMap =  FlatMap(output_filename)
+    # Load the flat map from the saved file  
+    flatMap_loaded = FlatMap(output_filename)
 
     datalist_1 : List[DataCube] = fileList.extract_data_from_list(flatMap = None, center = False)
-    datalist_2 : List[DataCube] = fileList.extract_data_from_list(flatMap = flatMap, center = False)
+    datalist_2 : List[DataCube] = fileList.extract_data_from_list(flatMap = flatMap_loaded, center = False)
 
     data_noflat=np.array([np.nanmean(d.data,axis=(0,1)) for d in datalist_1])
     data_withflat=np.array([np.nanmean(d.data,axis=(0,1)) for d in datalist_2])

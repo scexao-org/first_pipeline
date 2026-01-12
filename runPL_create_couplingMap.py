@@ -491,47 +491,22 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
     QT_pyramids,R_pyramids = Q_and_R_matrices(vectors_all_pyramids)
 
     ############### Save results ####################
-    # Save arrays into a FITS file
-
-    # Create a primary HDU with no data, just the header
-    hdu_primary = fits.PrimaryHDU()
-
-    # Create HDUs for each array
-    hdu = [fits.ImageHDU(data=flux_2_data_triangles, name='F2DATA_T')]
-    hdu += [fits.ImageHDU(data=data_2_flux_triangles, name='DATA2F_T')]
-    hdu += [fits.ImageHDU(data=QT_triangles, name='QT_T')]
-    hdu += [fits.ImageHDU(data=R_triangles, name='R_T')]
-    hdu += [fits.ImageHDU(data=center_triangles, name='XY_T')]
-    hdu += [fits.ImageHDU(data=flux_2_data_pyramids, name='F2DATA_P')]
-    hdu += [fits.ImageHDU(data=data_2_flux_pyramids, name='DATA2F_P')]
-    hdu += [fits.ImageHDU(data=QT_pyramids, name='QT_P')]
-    hdu += [fits.ImageHDU(data=R_pyramids, name='R_P')]
-    hdu += [fits.ImageHDU(data=center_pyramids, name='XY_P')]
-    hdu += [fits.ImageHDU(data=spectra, name='SPECTRA')]
-    hdu += [fits.open(datalist[-1].filename)['MODULATION']]
+    # Create CouplingMap object and save using the new save method
+    
+    couplingMap = CouplingMap()
+    couplingMap.create_from_data(
+        flux_2_data_triangles, data_2_flux_triangles, QT_triangles, R_triangles, center_triangles,
+        flux_2_data_pyramids, data_2_flux_pyramids, QT_pyramids, R_pyramids, center_pyramids,
+        spectra, wavelength_bin
+    )
     
     new_header = datalist[-1].header.copy()
-    if flatMap is not None:
-        hdu += flatMap.return_hdu_list()
-        flat_header = flatMap.return_header()
-        new_header.extend(flat_header, strip=True)
-    if waveMap is not None:
-        hdu += waveMap.return_hdu_list()
-        wave_header = waveMap.return_header()
-        new_header.extend(wave_header, strip=True)
-    new_header = new_header.copy()
-
+    
     # Définir le chemin complet du sous-dossier "output/couplingmaps"
     folder = datalist[-1].dirname
     output_dir = os.path.join(folder,"../couplingmaps")
 
     new_header['X_FIRTYP'] = 'COUPLINGMAP'
-
-    # Add date and time to the header
-    current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-    new_header['DATE-PRO'] = current_time
-    if 'DATE' not in new_header:
-        new_header['DATE'] = current_time
 
     # Add input parameters to the header
     new_header['Q_CMWSMO'] = (wavelength_smooth,  'wavelength smoothing factor')
@@ -547,16 +522,13 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
     # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
     os.makedirs(output_dir, exist_ok=True)
 
-    hdu_primary.header.extend(new_header, strip=True)
-
-    # Combine all HDUs into an HDUList
-    hdul = fits.HDUList([hdu_primary, *hdu])
-
     output_filename = os.path.join(output_dir, new_header['Q_CMNAME'])
 
-    # Write to a FITS file
-    print(f"Saving data to {output_filename}")
-    hdul.writeto(output_filename, overwrite=True)
+    # Get modulation HDU
+    modulation_hdu = fits.open(datalist[-1].filename)['MODULATION']
+    
+    # Save using the CouplingMap save method
+    couplingMap.save(output_filename, new_header, flat_map=flatMap, wave_map=waveMap, modulation_hdu=modulation_hdu)
 
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 

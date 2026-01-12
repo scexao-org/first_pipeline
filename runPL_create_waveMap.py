@@ -527,15 +527,10 @@ Review diagnostic plots to ensure proper line detection and fitting.
     wave = wave_1D_mapping[good_index]
 
     ############### Save results ####################
-    # Save arrays into a FITS file
-
-    # Create a primary HDU with no data, just the header
-    hdu_primary = fits.PrimaryHDU()
-    header = datalist[-1].header
+    # Create WaveMap object and save using the new save method
     
-    hdu = [fits.ImageHDU(data=wave, name='WAVELENGTH')]
-    hdu += [fits.ImageHDU(data=index, name='INDEX')]
-    hdu += [fits.ImageHDU(data=weights, name='WEIGHT')]
+    waveMap = WaveMap()
+    waveMap.create_from_data(wave, index, weights)
 
     header = datalist[-1].header
     # Définir le chemin complet du sous-dossier "output/couplingmaps"
@@ -543,10 +538,6 @@ Review diagnostic plots to ensure proper line detection and fitting.
     output_dir = os.path.join(folder,"../wavemaps")
 
     header['X_FIRTYP'] = 'WAVEMAP'
-
-    # Add date and time to the header
-    current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-    header['DATE-PRO'] = current_time
 
     # Add input parameters to the header
     header['Q_WM1D'] = (coef_1d[2],  'wavelength 2nd order poly')
@@ -566,16 +557,10 @@ Review diagnostic plots to ensure proper line detection and fitting.
     # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
     os.makedirs(output_dir, exist_ok=True)
 
-    hdu_primary.header.extend(header, strip=True)
-
-    # Combine all HDUs into an HDUList
-    hdul = fits.HDUList([hdu_primary, *hdu])
-
     output_filename = os.path.join(output_dir, header['Q_WMNAME'])
 
-    # Write to a FITS file
-    print(f"Saving data to {output_filename}")
-    hdul.writeto(output_filename, overwrite=True)
+    # Save using the WaveMap save method
+    waveMap.save(output_filename, header)
 
     ############### Save figures ####################
     # Plot interpolation coefficients

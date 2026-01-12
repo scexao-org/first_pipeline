@@ -3,11 +3,31 @@ import numpy as np
 import os
 
 class PixelMap:
-    def __init__(self, file):
+    def __init__(self, file=None):
+        self.file = file
+        self.basename = os.path.basename(file) if file else None
+        self.header = None
+        self.traces_loc = None
+        self.pixel_min = None
+        self.pixel_max = None
+        self.pixel_wide = None
+        self.output_channels = None
+        self.pm_check = None
+        
+        if file is not None:
+            self.load(file)
+
+    def load(self, file):
+        """
+        Load the pixel map from a FITS file.
+        Args:
+            file (str): Path to the FITS file containing the pixel map.
+        """
         self.file = file
         self.basename = os.path.basename(file)
         self.header = fits.getheader(file)
         self.traces_loc = fits.getdata(file)
+        
         # Check for required header keywords and raise error if not found
         required_keys = ['Q_PMXMIN', 'Q_PMXMAX', 'Q_PMWIDE', 'Q_PMCHAN', 'Q_PM_CK']
         missing_keys = [key for key in required_keys if key not in self.header]
@@ -19,6 +39,126 @@ class PixelMap:
         self.pixel_wide = self.header['Q_PMWIDE']
         self.output_channels = self.header['Q_PMCHAN']
         self.pm_check = self.header['Q_PM_CK']
+
+    def create_from_data(self, traces_loc, pixel_min, pixel_max, pixel_wide, output_channels, pm_check=None, filename=None):
+        """
+        Create a pixel map from data arrays and parameters.
+        Args:
+            traces_loc (numpy.ndarray): The traces location data array.
+            pixel_min (int): Minimum pixel value.
+            pixel_max (int): Maximum pixel value.
+            pixel_wide (int): Pixel width.
+            output_channels (int): Number of output channels.
+            pm_check (int, optional): Pixel map check value. If None, a random value is generated.
+            filename (str, optional): Optional filename to associate with this pixel map.
+        """
+        self.traces_loc = traces_loc
+        self.pixel_min = pixel_min
+        self.pixel_max = pixel_max
+        self.pixel_wide = pixel_wide
+        self.output_channels = output_channels
+        self.pm_check = pm_check if pm_check is not None else np.random.randint(0, 2**32, dtype=np.uint32)
+        
+        # Create a basic header
+        self.header = fits.Header()
+        self.header['Q_PMXMIN'] = pixel_min
+        self.header['Q_PMXMAX'] = pixel_max
+        self.header['Q_PMWIDE'] = pixel_wide
+        self.header['Q_PMCHAN'] = output_channels
+        self.header['Q_PM_CK'] = self.pm_check
+        
+        if filename:
+            self.file = filename
+            self.basename = os.path.basename(filename)
+        else:
+            self.file = None
+            self.basename = None
+
+    def save(self, output_filename, header=None):
+        """
+        Save the pixel map to a FITS file.
+        Args:
+            output_filename (str): Path for the output FITS file.
+            header (astropy.io.fits.Header, optional): Header for the FITS file.
+        """
+        from datetime import datetime
+        
+        if self.traces_loc is None:
+            raise ValueError("No pixel map data to save. Load or create pixel map data first.")
+            
+        # Handle case when traces_loc is None (failed pixelmap generation)
+        traces_loc_data = self.traces_loc.copy()
+        
+        # Create HDU
+        hdu = fits.PrimaryHDU(traces_loc_data)
+        
+        # Use provided header or create from internal data
+        if header is not None:
+            save_header = header.copy()
+        elif self.header is not None:
+            save_header = self.header.copy()
+        else:
+            save_header = fits.Header()
+            
+        # Add required keywords
+        if 'X_FIRTYP' not in save_header:
+            save_header['X_FIRTYP'] = 'PIXELMAP'
+            
+        # Add date and time to the header if not present
+        if 'DATE-PRO' not in save_header:
+            current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+            save_header['DATE-PRO'] = current_time
+            
+        if 'DATE' not in save_header:
+            save_header['DATE'] = save_header.get('DATE-PRO', datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
+
+        # Add pixel map parameters
+        save_header['Q_PMXMIN'] = self.pixel_min
+        save_header['Q_PMXMAX'] = self.pixel_max
+        save_header['Q_PMWIDE'] = self.pixel_wide
+        save_header['Q_PMCHAN'] = self.output_channels
+        save_header['Q_PM_CK'] = self.pm_check
+        
+        # Add filename if not present
+        if 'Q_PMNAME' not in save_header:
+            import libraries.runPL_library_io as runlib_io
+            basename = runlib_io.create_output_filename(save_header)
+            save_header['Q_PMNAME'] = basename
+            
+        hdu.header.extend(save_header, strip=True)
+        hdul = fits.HDUList([hdu])
+        
+        # Write to a FITS file
+        print(f"Saving pixel map to {output_filename}")
+        hdul.writeto(output_filename, overwrite=True)
+        hdul.close()
+
+    def return_hdu_list(self):
+        """
+        Return a list of FITS HDUs representing the pixel map.
+        Returns:
+                list: List of FITS HDUs.
+        """
+        if self.traces_loc is None:
+            raise ValueError("No pixel map data available.")
+        hdu = [fits.ImageHDU(data=self.traces_loc, name='PIXELMAP')]
+        return hdu
+    
+    def return_header(self):
+        """
+        Return the header of the FITS file.
+        Returns:
+                astropy.io.fits.Header: The header of the FITS file.
+        """
+        if self.header is not None:
+            return self.header.copy()
+        elif self.file is not None:
+            with fits.open(self.file) as hdul:
+                header = hdul[0].header
+            return header
+        else:
+            # Return empty header if no file is loaded
+            return fits.Header()
 
     def preprocess_cutData(self, data, dark_calculation=False):
         """
