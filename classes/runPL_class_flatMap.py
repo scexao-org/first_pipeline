@@ -107,13 +107,11 @@ class FlatMap:
         hdu = [fits.ImageHDU(data=self.flat, name='FLAT')]
 
         if header is not None:
+            header['X_FIRTYP'] = 'FLATMAP'
             # Add date and time to the header if not present
             if 'DATE-PRO' not in header:
                 current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
                 header['DATE-PRO'] = current_time
-            
-            if 'X_FIRTYP' not in header:
-                header['X_FIRTYP'] = 'FLATMAP'
                 
             hdu_primary.header.extend(header, strip=True)
 
