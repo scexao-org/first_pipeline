@@ -25,6 +25,7 @@ import numpy as np
 from typing import List
 from scipy.signal import find_peaks
 import itertools
+import warnings
 
 import getpass
 import matplotlib
@@ -333,7 +334,9 @@ def calculate_the_pixel_to_wavelength_mapping(ref_pixels_lines, neon_wavelengths
         else:
             x = neon_wavelengths[idx]
             y = ref_pixels_lines
-            coeffs_poly = np.polyfit(x[~duplicate_mask], y[~duplicate_mask], 2)
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', np.exceptions.RankWarning)
+                coeffs_poly = np.polyfit(x[~duplicate_mask], y[~duplicate_mask], 2)
             p2w = np.poly1d(coeffs_poly)
             residuals = y - p2w(x)
             bad_idx = residuals >= np.sort(residuals)[-Nexclude]
