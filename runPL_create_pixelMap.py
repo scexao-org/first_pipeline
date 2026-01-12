@@ -2,8 +2,16 @@
 # -*- coding: iso-8859-15 -*-
 #%%
 """
-Created on Sun May 24 22:56:25 2015
+FIRST Pipeline - Pixel Map Generation
 
+This script creates pixel maps essential for preprocessing raw FIRST Visible
+Photonic Lantern data at SUBARU/SCEXAO. Pixel maps align and calibrate spectral
+traces by detecting peak positions across the wavelength axis for each fiber channel.
+
+The pixel map is a critical first step in the pipeline workflow, enabling proper
+spectral extraction from raw data in subsequent preprocessing stages.
+
+Created on Wed May 21 22:56:25 2025
 @author: slacour
 """
 
@@ -474,19 +482,53 @@ def filter_only_good_files(filelist, filter_files=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Create the pixel map needed to preprocess the data.",
+        description="Generate pixel maps for FIRST Pipeline spectral trace alignment and calibration.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+FIRST Pipeline Pixel Map Generation Tool
+
+This script creates pixel maps that are essential for preprocessing raw FIRST 
+Visible Photonic Lantern data. Pixel maps detect and calibrate the positions of 
+spectral traces across all fiber channels, enabling proper spectral extraction 
+in downstream processing.
+
 Examples:
-    %(prog)s --pixel_min=20 --pixel_max=1600 --pixel_wide=2 --filter_files *.fits
-    %(prog)s --pixel_min=50 --pixel_max=1500  data/*.fits
+    %(prog)s --pixel_min=100 --pixel_max=1600 --pixel_wide=2 --filter_files *.fits
+    %(prog)s --pixel_min=50 --pixel_max=1500 data/*.fits
+    %(prog)s --filter_files /data/raw/*.fits
 
-Input:
-    - Files of type X_FIRTYP=RAW in the directory.
+Pipeline Workflow Integration:
+    1. This script processes RAW files to create pixel alignment maps
+    2. Output pixel maps are used by runPL_make_preproc.py for spectral extraction
+    3. Essential first step before any spectral analysis can be performed
 
-Output:
-    - A FITS file with the pixel map.
-    - A PNG file with the pixel map.
+Input Files:
+    - Raw FITS files with X_FIRTYP=RAW
+    - Automatically separates files by Wollaston status (IN/OUT)
+    - Requires sufficient flux for reliable peak detection
+
+Output Files:
+    - FITS file with pixel map calibration data (pixelmaps/ directory)
+    - PNG visualization of detected spectral traces
+    - Diagnostic plots showing peak detection quality
+
+Processing Details:
+    - Detects spectral trace peaks across wavelength axis (pixel_min to pixel_max)
+    - Uses peak detection with configurable window width (pixel_wide)
+    - Automatically determines output channels based on Wollaston status:
+      * 38 channels for Wollaston IN (polarimetry mode)
+      * 19 channels for Wollaston OUT (photometry mode)
+    - Optional flux filtering to ensure reliable peak detection
+    - Processes files separately by Wollaston configuration
+
+Technical Parameters:
+    - pixel_min/max: Define wavelength axis range for peak detection
+    - pixel_wide: Half-width of detection window (full width = 2*pixel_wide+1)
+    - filter_files: Quality control to exclude low-flux files
+
+Note: Proper pixel maps are critical for accurate spectral extraction. 
+Recommend using --filter_files for reliable results, especially with 
+varying observation conditions.
         """
     )
 

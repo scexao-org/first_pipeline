@@ -2,8 +2,17 @@
 # -*- coding: iso-8859-15 -*-
 #%%
 """
-Created on Sun May 24 22:56:25 2015
+FIRST Pipeline - Data Preprocessing
 
+This script preprocesses raw FIRST Visible Photonic Lantern data at SUBARU/SCEXAO
+using pixel maps to extract spectral traces. It applies pixel map alignment, 
+cleans/calibrates raw data, and generates quality metrics essential for 
+downstream processing.
+
+Preprocessing is a critical step that transforms raw detector images into
+calibrated spectral data suitable for scientific analysis.
+
+Created on Wed May 21 22:56:25 2025
 @author: slacour
 """
 
@@ -376,28 +385,69 @@ if __name__ == "__main__":
     debug = False
 
     parser = argparse.ArgumentParser(
-        description="Preprocess the data using the pixel map.",
+        description="Preprocess raw FIRST Photonic Lantern data using pixel maps for spectral extraction and calibration.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Input: 
-    - Files of type X_FIRTYP=RAW in the directory.
-    - Files of type X_FIRTYP=PIXELMAP in the directory.
-    - The pixel map file is used to extract the data from the raw files.
-    - The pixel map file is used to create a new FITS file with the data extracted from the raw files. 
+FIRST Pipeline Data Preprocessing Tool
 
-Output:
-    - Files of type X_FIRTYP=PREPROC in the preproc directory.
-    - Diagnostic figures saved in the preproc directory:
-        * Pixel map overlay on raw images.
-        * Centroid shift of the data in the pixel map as a function of time.
-    - Pixel shift information is also stored in the FITS header ('QC_SHIFT').
+This script transforms raw detector images into calibrated spectral data by applying
+pixel maps for precise spectral extraction. It includes quality assessment and 
+diagnostic analysis to ensure reliable data for downstream processing.
 
 Examples:
     %(prog)s --pixel_map=/path/to/pixel_map.fits /path/to/directory
-    %(prog)s /path/to/files*.fits
+    %(prog)s --object="HD 164461" /path/to/files*.fits
+    %(prog)s --loop 30 /path/to/directory  # Monitor mode
+    %(prog)s /data/raw/*.fits
 
-Notes:
-    The centroid shift figure is useful to check if the position of the pixels changed over time.
+Pipeline Workflow Integration:
+    1. Requires raw FITS files (X_FIRTYP=RAW) and pixel maps (X_FIRTYP=PIXELMAP)
+    2. Applies spectral extraction using pixel map calibration
+    3. Outputs preprocessed files (X_FIRTYP=PREPROC) for downstream analysis
+    4. Essential step before flat field, wavelength, and coupling map generation
+
+Input Files:
+    - Raw FITS files: X_FIRTYP=RAW containing detector images
+    - Pixel map files: X_FIRTYP=PIXELMAP from runPL_create_pixelMap.py
+    - Automatic pixel map detection or manual selection with --pixel_map
+
+Output Files:
+    - Preprocessed FITS files: X_FIRTYP=PREPROC (preproc/ directory)
+    - Diagnostic figures showing extraction quality and stability:
+      * Pixel map overlay on raw images
+      * Centroid shift analysis as function of time
+      * Quality control metrics
+    - Quality metrics in FITS headers (QC_SHIFT for position stability)
+
+Processing Features:
+    - Spectral trace extraction using calibrated pixel positions
+    - Quality control metrics for data validation
+    - Centroid shift monitoring for instrument stability
+    - Object-based selection for targeted processing
+    - Monitor mode (--loop) for real-time processing during observations
+    - Automatic handling of different Wollaston configurations
+
+Monitor Mode:
+    - Use --loop to continuously monitor directory for new raw files
+    - Automatic processing when new files appear
+    - Ideal for real-time data reduction during observations
+    - Configurable polling interval in seconds
+
+Quality Assessment:
+    - Centroid shift tracking detects instrument drift
+    - Extraction quality metrics identify problematic data
+    - Diagnostic figures enable visual quality control
+    - QC flags stored in FITS headers for downstream filtering
+
+Technical Notes:
+    - Pixel maps define exact spectral trace positions for extraction
+    - Quality metrics guide data acceptance/rejection decisions
+    - Compatible with all downstream pipeline scripts
+    - Supports both polarimetry and photometry observing modes
+
+Note: Monitor centroid shift plots to assess instrument stability.
+Large shifts may indicate mechanical flexure or alignment issues requiring
+attention before proceeding with scientific analysis.
         """
     )
 

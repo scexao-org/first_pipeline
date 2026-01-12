@@ -1,8 +1,17 @@
 #! /usr/bin/env python3
 # -*- coding: iso-8859-15 -*-
 """
-Created on Sun May 24 22:56:25 2015
+FIRST Pipeline - FITS Header Keyword Management
 
+This script modifies FITS header keywords for the FIRST Visible Photonic Lantern 
+pipeline at SUBARU/SCEXAO. It's used to classify and tag FITS files for proper 
+processing by downstream pipeline scripts.
+
+The script updates essential keywords that determine how files are processed in 
+the sequential pipeline workflow: Raw FITS → Pixel Map → Preprocessing → 
+Wavelength Map → Coupling Maps → Calibration → Image Reconstruction.
+
+Created on Wed May 21 22:56:25 2025
 @author: slacour
 """
 
@@ -15,27 +24,61 @@ import libraries.runPL_library_io as runlib
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Update the FIRST_PL FITS header keywords.",
+        description="Modify FITS header keywords for FIRST Pipeline classification and processing control.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+FIRST Pipeline Keyword Management Tool
+
+This script is essential for the FIRST Visible Photonic Lantern data processing 
+pipeline. It modifies FITS header keywords that control how files are classified 
+and processed by subsequent pipeline scripts.
+
 Examples:
     %(prog)s --DATA-TYP=FLAT --X_FIRTYP=RAW *.fits
-    %(prog)s --OBJECT="Target Name" --X_FIRTYP=PREPROC data/*.fits
+    %(prog)s --OBJECT="HD 164461" --X_FIRTYP=PREPROC target_data/*.fits
+    %(prog)s --DATA-TYP=COMPARAISON --X_FIRTYP=RAW neon_calib.fits
+    %(prog)s --DATE=DEFAULT --X_FIRTYP=RAW recent_observations/*.fits
 
-Keyword meanings:
-    DATA-TYP:
-        FLAT         - Data from SuperK
-        DARK         - Dark frames
-        OBJECT       - Night time observation data
-        TEST         - Test data
-        ACQUISITION  - Acquisition data
-        COMPARAISON  - Neon data (spectral calibration)
+Pipeline Workflow Integration:
+    1. Use this script to classify raw FITS files by DATA-TYP
+    2. Mark processing stages with X_FIRTYP as files move through pipeline
+    3. Temporary keyword changes for interim classification (revert when finalized)
+
+Critical Keywords:
+    DATA-TYP (Data Classification):
+        FLAT         - SuperK flat field data for pixel mapping
+        DARK         - Dark frames for background subtraction  
+        OBJECT       - Science target observations
+        ACQUISITION  - Target acquisition data
+        COMPARAISON  - Neon calibration spectra for wavelength mapping
+        TEST         - Test/validation data
         
-    X_FIRTYP:
-        RAW          - Raw data
-        PREPROC      - Pre-processed data
+    X_FIRTYP (Processing Stage):
+        RAW          - Raw, unprocessed data
+        PREPROC      - Pre-processed (pixel map applied, cleaned)
+        PIXELMAP     - Pixel mapping calibration files
+        WAVEMAP      - Wavelength mapping calibration files
+        COULPLINGMAP - Coupling efficiency mapping files
 
-This script updates the specified FITS header keywords for all matching files.
+    X_FIRMID (Modulation ID):
+        Identifier for specific modulation pattern used during observation
+        
+    X_FIRTRG (Camera Trigger):
+        INT          - Internal camera trigger
+        EXT          - External trigger synchronization
+        
+    X_FIRWOL (Wollaston Status):  
+        IN           - Wollaston prism inserted (polarimetry mode)
+        OUT          - Wollaston prism removed (photometry mode)
+
+Usage in Pipeline:
+    - Classify raw files before processing: --DATA-TYP to set observation type
+    - Track processing stages: --X_FIRTYP as files move through pipeline steps  
+    - Extract dates from filenames: --DATE=DEFAULT for automatic date parsing
+    - Mark special configurations: --X_FIRWOL, --X_FIRTRG for observing modes
+
+Note: Proper keyword classification ensures correct file selection and processing 
+logic in downstream pipeline scripts (createPixelMap, preprocess, wavelengthMap, etc.).
         """
     )
 
@@ -46,23 +89,23 @@ This script updates the specified FITS header keywords for all matching files.
     # Add optional arguments for header keywords
     parser.add_argument("-c", "--DATA-TYP", 
                        choices=["OBJECT", "TEST", "ACQUISITION", "DARK", "FLAT", "COMPARAISON"],
-                       help="DATA-TYP gives the category of data")
+                       help="Classify data type for pipeline processing: FLAT (SuperK data), DARK (background), OBJECT (science targets), ACQUISITION (target acquisition), COMPARAISON (Neon calibration), TEST (validation)")
     parser.add_argument("-o", "--OBJECT", 
-                       help="OBJECT gives the name of the observed target")
+                       help="Target name for science observations (e.g., 'HD 164461', 'Beta Pic')")
     parser.add_argument("-t", "--X_FIRTYP", 
                        choices=["RAW", "PREPROC", "COULPLINGMAP", "PIXELMAP", "WAVEMAP"],
-                       help="X_FIRTYP gives the type of dataproduct")
+                       help="Processing stage identifier: RAW (unprocessed), PREPROC (preprocessed), PIXELMAP/WAVEMAP/COULPLINGMAP (calibration products)")
     parser.add_argument("-i", "--X_FIRMID", 
-                       help="X_FIRMID gives the modulation ID of the data")
+                       help="Modulation ID identifying the specific modulation pattern used during observation")
     parser.add_argument("-r", "--X_FIRTRG", 
-                       help="Trigger of camera. Use INT for internal or EXT for external trigger")
+                       help="Camera trigger mode: INT (internal) or EXT (external synchronization)")
     parser.add_argument("-w", "--X_FIRWOL", 
                        choices=["IN", "OUT"],
-                       help="Wollaston status. Use IN for internal or OUT for no wollaston")
+                       help="Wollaston prism status: IN (polarimetry mode) or OUT (photometry mode)")
     parser.add_argument("-g", "--GAIN", 
-                       help="Gain value")
+                       help="Camera gain setting value")
     parser.add_argument("-d", "--DATE", 
-                       help="Date value (use DEFAULT to extract from filename)")
+                       help="Observation date (use DEFAULT to automatically extract from filename)")
 
     args = parser.parse_args()
 

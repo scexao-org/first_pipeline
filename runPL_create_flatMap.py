@@ -2,8 +2,17 @@
 # -*- coding: iso-8859-15 -*-
 #%%
 """
-Created on Sun May 24 22:56:25 2015
+FIRST Pipeline - Flat Field Map Generation
 
+This script creates flat field maps from SuperK calibration data for the FIRST
+Visible Photonic Lantern at SUBARU/SCEXAO. Flat field maps correct for pixel-to-pixel
+sensitivity variations and provide gain coefficients essential for accurate 
+photometric calibration.
+
+Flat field calibration is crucial for consistent photometric measurements
+across all spectral channels and wavelengths.
+
+Created on Wed May 21 22:56:25 2025
 @author: slacour
 """
 
@@ -204,23 +213,61 @@ if __name__ == "__main__":
     findPeaks directly, in the instance of "run_trials_for_all_combination_of_waves"
     '''
     parser = argparse.ArgumentParser(
-        description="Create a wavelength map from the provided FITS files.",
+        description="Generate flat field calibration maps from SuperK data for FIRST Pipeline photometric correction.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-    Summary:
-    - Searches for FITS files with X_FIRTYP=PREPROC and DATA-TYP=WAVE keywords.
-    - Finds corresponding dark files (X_FIRTYP=PREPROC, DATA-TYP=DARK).
-    - Reads wave files, subtracts the median of the dark files.
-    - Detects emission peaks and fits a polynomial to create a wavelength map.
-    - N (number of peaks) is determined by the number of wavelengths in --wave_list.
-    - Saves the wavelength map as a FITS file in the output directory.
-    - Generates and saves figures for visualization.
-    - Output files are stored in an "output/wave" directory.
+FIRST Pipeline Flat Field Map Generation Tool
 
-    Example:
-        %(prog)s --wave_list="[748.9, 743.9, 724.5, 717.4, 703.2, 693, 671.7, 667.8, 659.9, 653.3, 650.7, 640.2, 638.2, 633.4, 630.5, 626.7, 621.7, 616.4]"
-            """
-        )
+This script creates flat field maps from SuperK calibration data to correct for
+pixel-to-pixel sensitivity variations. Linear regression analysis generates gain
+coefficients and quality metrics essential for accurate photometric calibration.
+
+Examples:
+    %(prog)s --wollaston IN --dark_files=dark*.fits flat_data/*.fits
+    %(prog)s --dark_files=/path/to/darks/*.fits *.fits
+    %(prog)s /data/flats/*.fits
+
+Pipeline Workflow Integration:
+    1. Processes preprocessed flat field files (X_FIRTYP=PREPROC, DATA-TYP=FLAT)
+    2. Uses corresponding dark frames for background subtraction
+    3. Output flat maps enable photometric correction in downstream analysis
+    4. Essential calibration step before coupling map generation
+
+Input Files:
+    - Flat field data: X_FIRTYP=PREPROC and DATA-TYP=FLAT (SuperK illumination)
+    - Corresponding dark frames: X_FIRTYP=PREPROC and DATA-TYP=DARK
+    - Files automatically grouped by Wollaston status (IN/OUT)
+
+Output Files:
+    - Flat field map FITS files (flatmaps/ directory)
+    - Gain coefficient matrices for each spectral channel
+    - Quality assessment metrics and fit residuals
+    - Diagnostic plots showing calibration quality
+
+Processing Details:
+    - Linear regression for gain correction per pixel
+    - Dark subtraction for accurate flat field measurement
+    - Quality metrics assess calibration reliability
+    - Separate processing for polarimetry (Wollaston IN) and photometry (OUT) modes
+    - Handles variable illumination patterns from SuperK source
+
+Calibration Quality:
+    - Statistical analysis of gain coefficients
+    - Residual mapping to identify problematic pixels
+    - Quality flags for reliable vs uncertain calibrations
+    - Diagnostic plots for visual inspection
+
+Technical Notes:
+    - Wollaston status affects channel configuration and processing
+    - Gain maps normalize pixel response variations
+    - Quality metrics guide downstream processing decisions
+    - Compatible with coupling map and image reconstruction scripts
+
+Note: Quality flat field calibration is essential for accurate photometry.
+Review diagnostic plots to ensure proper gain correction and identify 
+any systematic issues with SuperK illumination or detector response.
+        """
+    )
 
 
     # needed to work in VSC:

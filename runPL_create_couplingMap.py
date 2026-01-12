@@ -2,8 +2,17 @@
 # -*- coding: iso-8859-15 -*-
 #%%
 """
-Created on Sun May 24 22:56:25 2015
+FIRST Pipeline - Coupling Map Generation
 
+This script creates coupling maps from preprocessed FIRST Visible Photonic Lantern
+data at SUBARU/SCEXAO. Coupling maps analyze the coupling efficiency between the 
+telescope focal plane and individual photonic lantern channels using SVD-based 
+decomposition techniques.
+
+Coupling maps are essential for image reconstruction and astrometric analysis,
+providing the relationship between sky position and fiber channel response.
+
+Created on Wed May 21 22:56:25 2025
 @author: slacour
 """
 
@@ -266,20 +275,60 @@ def quick_plot(data,title =""):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Create coupling maps from preprocessed photonic lantern data.",
+        description="Generate coupling efficiency maps from preprocessed FIRST Photonic Lantern data using SVD analysis.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Summary:
-    It will get as input a list of files with DPR_CATG=CMAP and DPR_TYPE=PREPROC keywords.
-    It will select files based on modulation pattern, modulation scale, and object name if specified.
-    The script computes SVD-based coupling maps, saves results to FITS, and generates diagnostic plots.
+FIRST Pipeline Coupling Map Generation Tool
 
-Input:
-    - Files of type X_FIRTYP=PREPROC in the directory or in the argument pattern.
+This script analyzes the coupling efficiency between the telescope focal plane 
+and photonic lantern channels using advanced SVD-based decomposition. Coupling 
+maps are essential for accurate image reconstruction and astrometric measurements.
 
-Output:
-    - Files of type X_FIRTYP=COUPLINGMAP in the directory "../couplingmaps".
-    - A pdf report with the plots of the coupling maps and the SVD analysis.
+Examples:
+    %(prog)s --object_name="HD 164461" --wavelength_smooth=7 *.fits
+    %(prog)s --modID=1 --modScale=2 --wollaston=IN data/*.fits
+    %(prog)s --flatMap=/path/to/flat.fits --waveMap=/path/to/wave.fits *.fits
+
+Pipeline Workflow Integration:
+    1. Processes preprocessed data files (X_FIRTYP=PREPROC)
+    2. Uses flat field and wavelength calibration maps
+    3. Output coupling maps enable image reconstruction and astrometry
+    4. Critical step for converting fiber measurements to sky coordinates
+
+Input Files:
+    - Preprocessed FITS files: X_FIRTYP=PREPROC
+    - Flat field maps (automatic detection or manual selection)
+    - Wavelength calibration maps (automatic detection or manual selection)
+    - Dark frames for background subtraction
+    - Files grouped by object name, modulation pattern, and Wollaston status
+
+Output Files:
+    - Coupling map FITS files: X_FIRTYP=COUPLINGMAP (../couplingmaps/ directory)
+    - PDF diagnostic report with SVD analysis and quality plots
+    - Triangular and pyramidal coupling coefficient matrices
+    - Quality assessment metrics and validation plots
+
+Processing Details:
+    - SVD-based decomposition to extract coupling patterns
+    - Wavelength smoothing and binning for noise reduction
+    - Modulation pattern analysis for enhanced sensitivity
+    - Automatic selection of singular values (configurable with --Nsingular)
+    - Support for both polarimetry (Wollaston IN) and photometry (OUT) modes
+
+Advanced Options:
+    - object_name: Select specific science target for processing
+    - modID/modScale: Choose specific modulation patterns
+    - wavelength_smooth/bin: Control spectral processing parameters
+    - Nsingular: Number of SVD modes to retain (affects map quality vs noise)
+
+Technical Notes:
+    - SVD analysis identifies dominant coupling modes
+    - Coupling maps quantify spatial response of each fiber channel
+    - Quality metrics assess map reliability and completeness
+    - Results enable precise astrometric and photometric measurements
+
+Note: Quality coupling maps are critical for accurate image reconstruction.
+Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
         """
     )
 

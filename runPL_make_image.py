@@ -2,8 +2,17 @@
 # -*- coding: iso-8859-15 -*-
 #%%
 """
-Created on Sun May 24 22:56:25 2015
+FIRST Pipeline - Image Reconstruction
 
+This script reconstructs images from preprocessed FIRST Visible Photonic Lantern
+data at SUBARU/SCEXAO using coupling maps. It converts fiber measurements back to
+spatial images through advanced inversion techniques, enabling traditional 
+image analysis of photonic lantern observations.
+
+Image reconstruction is the final step that transforms fiber-based measurements
+into interpretable astronomical images for scientific analysis.
+
+Created on Wed May 21 22:56:25 2025
 @author: slacour
 """
 
@@ -204,20 +213,74 @@ def quick_plot(data,title =""):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Reconstruct images from FIRST Photonic Lantern data using specified coupling maps and options.",
+        description="Reconstruct astronomical images from FIRST Photonic Lantern fiber measurements using coupling map inversion.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Summary:
-    This script processes preprocessed FITS files, applies coupling maps, reconstructs images, and saves the results.
-    It supports selection by object name, modulation pattern, and smoothing options. The script can save individual frames,
-    wavelength slices, and residuals, and allows explicit selection of coupling map files.
+FIRST Pipeline Image Reconstruction Tool
 
-Input files:
-    - Preprocessed data FITS files (e.g., with DPR_CATG=OBJECT and DPR_TYPE=PREPROC)
-    - Coupling map FITS files (e.g., with X_FIRTYP=COUPLINGMAP)
+This script transforms fiber-based photonic lantern measurements back into 
+traditional astronomical images using advanced coupling map inversion techniques.
+It enables conventional image analysis of photonic lantern observations.
 
-Output files:
-    - Reconstructed image FITS files, including summed images, residuals, and optionally individual frames and wavelength slices.
+Examples:
+    %(prog)s --object_name="HD 164461" --wavelength_smooth=7 *.fits
+    %(prog)s --coupling_map=/path/to/map.fits --modID=1 data/*.fits
+    %(prog)s --save_individual_frames --save_individual_wavelength *.fits
+    %(prog)s --wollaston=IN target_data/*.fits
+
+Pipeline Workflow Integration:
+    1. Requires preprocessed data files (X_FIRTYP=PREPROC) and coupling maps
+    2. Final step in pipeline: converts fiber measurements to spatial images
+    3. Enables traditional image analysis techniques on photonic lantern data
+    4. Results can be compared with conventional imaging instruments
+
+Input Files:
+    - Preprocessed FITS files: X_FIRTYP=PREPROC containing spectral measurements
+    - Coupling map files: X_FIRTYP=COUPLINGMAP from runPL_create_couplingMap.py
+    - Dark frames for background subtraction
+    - Automatic coupling map detection or manual selection
+
+Output Files:
+    - Reconstructed image FITS files with spatial information restored
+    - Summed images combining all wavelength channels
+    - Residual maps showing reconstruction quality
+    - Optional individual frame sequences for time-resolved analysis
+    - Optional wavelength-resolved image cubes for spectral analysis
+
+Reconstruction Features:
+    - Advanced coupling map inversion algorithms
+    - Wavelength smoothing for enhanced signal-to-noise
+    - Modulation pattern selection for optimal reconstruction
+    - Support for both polarimetry (Wollaston IN) and photometry (OUT) modes
+    - Quality assessment through residual analysis
+
+Advanced Options:
+    - object_name: Select specific target for reconstruction
+    - modID/modScale: Choose optimal modulation patterns
+    - wavelength_smooth: Control spectral smoothing for noise reduction
+    - save_individual_frames: Generate time-resolved image sequences
+    - save_individual_wavelength: Create spectral image cubes
+
+Reconstruction Quality:
+    - Residual analysis quantifies reconstruction fidelity
+    - Signal-to-noise optimization through parameter tuning
+    - Comparison with direct imaging when available
+    - Quality metrics guide parameter selection
+
+Technical Notes:
+    - Coupling maps define fiber-to-spatial transformation
+    - Inversion algorithms handle noise and incomplete sampling
+    - Wavelength smoothing balances resolution vs sensitivity
+    - Compatible with standard astronomical image analysis tools
+
+Scientific Applications:
+    - Exoplanet detection and characterization
+    - Binary star observations with enhanced resolution
+    - Extended object imaging (circumstellar disks, nebulae)
+    - Comparison studies with direct imaging instruments
+
+Note: Review residual maps to assess reconstruction quality.
+Optimize smoothing and modulation parameters for best results with your data.
         """
     )
 

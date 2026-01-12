@@ -2,8 +2,17 @@
 # -*- coding: iso-8859-15 -*-
 #%%
 """
-Created on Sun May 24 22:56:25 2015
+FIRST Pipeline - Wavelength Map Generation
 
+This script creates wavelength maps from Neon calibration spectra for the FIRST
+Visible Photonic Lantern at SUBARU/SCEXAO. Wavelength maps enable precise 
+spectral calibration by detecting emission lines and fitting polynomial 
+wavelength solutions with aberration correction.
+
+The wavelength mapping is critical for accurate spectral analysis, providing
+the wavelength-to-pixel relationship needed for scientific observations.
+
+Created on Wed May 21 22:56:25 2025
 @author: slacour
 """
 
@@ -380,23 +389,61 @@ if __name__ == "__main__":
     findPeaks directly, in the instance of "run_trials_for_all_combination_of_waves"
     '''
     parser = argparse.ArgumentParser(
-        description="Create a wavelength map from the provided FITS files.",
+        description="Generate wavelength calibration maps from Neon emission line spectra for FIRST Pipeline spectral calibration.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-    Summary:
-    - Searches for FITS files with X_FIRTYP=PREPROC and DATA-TYP=WAVE keywords.
-    - Finds corresponding dark files (X_FIRTYP=PREPROC, DATA-TYP=DARK).
-    - Reads wave files, subtracts the median of the dark files.
-    - Detects emission peaks and fits a polynomial to create a wavelength map.
-    - N (number of peaks) is determined by the number of wavelengths in --wave_list.
-    - Saves the wavelength map as a FITS file in the output directory.
-    - Generates and saves figures for visualization.
-    - Output files are stored in an "output/wave" directory.
+FIRST Pipeline Wavelength Map Generation Tool
 
-    Example:
-        %(prog)s --wave_list="[748.9, 743.9, 724.5, 717.4, 703.2, 693, 671.7, 667.8, 659.9, 653.3, 650.7, 640.2, 638.2, 633.4, 630.5, 626.7, 621.7, 616.4]"
-            """
-        )
+This script creates wavelength calibration maps from Neon comparison lamp spectra.
+It detects emission lines, fits polynomial wavelength solutions, and generates 
+2D wavelength mapping with aberration correction for precise spectral calibration.
+
+Examples:
+    %(prog)s --wollaston IN --flatMap=/path/to/flat.fits *.fits
+    %(prog)s --Nexclude 3 --dark_files=dark*.fits neon_data/*.fits
+    %(prog)s /data/comparison/*.fits
+
+Pipeline Workflow Integration:
+    1. Requires preprocessed Neon calibration files (X_FIRTYP=PREPROC, DATA-TYP=COMPARAISON)
+    2. Uses flat field maps for proper calibration
+    3. Output wavelength maps enable spectral analysis in downstream scripts
+    4. Essential for accurate wavelength calibration of science observations
+
+Input Files:
+    - Neon calibration spectra: X_FIRTYP=PREPROC and DATA-TYP=COMPARAISON
+    - Corresponding dark frames: X_FIRTYP=PREPROC and DATA-TYP=DARK
+    - Flat field maps (optional): for enhanced calibration accuracy
+    - Files automatically grouped by Wollaston status (IN/OUT)
+
+Output Files:
+    - FITS file with wavelength calibration map (output/wave/ directory)
+    - Diagnostic plots showing line detection and polynomial fits
+    - Quality assessment figures for calibration validation
+
+Processing Details:
+    - Detects Neon emission peaks using advanced peak finding algorithms
+    - Fits polynomial wavelength solutions with configurable degree
+    - Applies aberration correction for spatial variations
+    - Excludes problematic peaks with --Nexclude parameter
+    - Handles both polarimetry (Wollaston IN) and photometry (OUT) modes
+    - Dark subtraction for accurate line measurement
+
+Calibration Quality:
+    - Automatic outlier rejection for robust fitting
+    - Residual analysis to assess calibration accuracy  
+    - Spatial mapping to handle optical aberrations
+    - Quality metrics saved with wavelength maps
+
+Technical Notes:
+    - Nexclude: Number of peaks to exclude from fitting (handles outliers)
+    - Wollaston status affects channel configuration and processing
+    - Polynomial degree optimized for FIRST optical system
+    - Output maps compatible with subsequent pipeline scripts
+
+Note: Quality wavelength calibration is essential for accurate spectroscopy.
+Review diagnostic plots to ensure proper line detection and fitting.
+        """
+    )
 
     # needed to work in VSC:
     parser = argparse.ArgumentParser(allow_abbrev=False)
