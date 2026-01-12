@@ -45,11 +45,12 @@ from scipy import linalg
 from matplotlib import animation
 from itertools import product
 from scipy.linalg import pinv
+# Import FIRST pipeline classes
 from classes.runPL_class_flatMap import FlatMap
 from classes.runPL_class_waveMap import WaveMap
 from classes.runPL_class_fileList import FileList
-from classes.runPL_class_dataCube import DataCube 
-from classes.runPL_class_couplingMap import CouplingMap 
+from classes.runPL_class_dataCube import DataCube
+from classes.runPL_class_couplingMap import CouplingMap
 
 import libraries.runPL_library_basic as runlib_basic
 import libraries.runPL_library_io as runlib_io

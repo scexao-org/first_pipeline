@@ -3,6 +3,16 @@ from astropy.io import fits
 import os
 
 class FlatMap:
+    """
+    A class to handle flat field maps for the FIRST Visible Photonic Lantern.
+    
+    Attributes:
+        file (str): Path to the FITS file containing the flat field map
+        basename (str): Base name of the file
+        flat (numpy.ndarray): The flat field data array
+        inv_flat (numpy.ndarray): Inverse of the flat field for normalization
+        inv_flat_squared (numpy.ndarray): Squared inverse for variance normalization
+    """
     def __init__(self, file=None):
 
         self.file = file
@@ -17,15 +27,28 @@ class FlatMap:
     def load(self, file):
         """
         Load the flat field map from a FITS file.
+        
         Args:
-            file (str): Path to the FITS file containing the flat field map.
+            file (str): Path to the FITS file containing the flat field map
+            
+        Raises:
+            FileNotFoundError: If the file doesn't exist
+            KeyError: If required FITS extensions are missing
         """
+        if not os.path.exists(file):
+            raise FileNotFoundError(f"Flat field map file not found: {file}")
+            
         self.file = file
         self.basename = os.path.basename(file)
         
         with fits.open(file) as hdul:
+            if 'FLAT' not in [hdu.name for hdu in hdul]:
+                raise KeyError("FITS file missing required 'FLAT' extension")
             self.flat = hdul['FLAT'].data
 
+        if self.flat is None or self.flat.size == 0:
+            raise ValueError("Flat field data is empty or invalid")
+            
         self.inv_flat = 1.0 / self.flat
         self.inv_flat_squared = 1.0 / self.flat**2
 
@@ -46,13 +69,31 @@ class FlatMap:
         else:
             self.file = None
             self.basename = None
+            
+    def _validate_data(self):
+        """
+        Validate that the flat field data is properly loaded and consistent.
+        
+        Raises:
+            ValueError: If data is invalid or inconsistent
+        """
+        if self.flat is None:
+            raise ValueError("No flat field data loaded")
+        if self.flat.size == 0:
+            raise ValueError("Flat field data is empty")
+        if np.any(self.flat <= 0):
+            raise ValueError("Flat field contains zero or negative values")
 
     def save(self, output_filename, header=None):
         """
         Save the flat field map to a FITS file.
+        
         Args:
-            output_filename (str): Path for the output FITS file.
-            header (astropy.io.fits.Header, optional): Header for the FITS file.
+            output_filename (str): Path for the output FITS file
+            header (astropy.io.fits.Header, optional): Additional header information
+            
+        Raises:
+            ValueError: If no flat field data is available to save
         """
         from datetime import datetime
         
@@ -95,18 +136,25 @@ class FlatMap:
     
     def return_hdu_list(self):
         """
-        Return a list of FITS HDUs representing the wavelength map.
+        Return a list of FITS HDUs representing the flat field map.
+        
         Returns:
-                list: List of FITS HDUs.
+            list: List of FITS HDUs containing flat field data
+            
+        Raises:
+            ValueError: If no flat field data is available
         """
+        if self.flat is None:
+            raise ValueError("No flat field data available")
         hdu = [fits.ImageHDU(data=self.flat, name='FLAT')]
         return hdu
     
     def return_header(self):
         """
         Return the header of the FITS file.
+        
         Returns:
-                astropy.io.fits.Header: The header of the FITS file.
+            astropy.io.fits.Header: The header of the FITS file or empty header if none available
         """
         if self.file is not None:
             with fits.open(self.file) as hdul:

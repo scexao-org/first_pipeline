@@ -40,6 +40,7 @@ from tqdm import tqdm
 
 import libraries.runPL_library_io as runlib_io
 import libraries.runPL_library_plots as runlib_plots
+# Import FIRST pipeline classes
 from classes.runPL_class_flatMap import FlatMap
 from classes.runPL_class_fileList import FileList
 from classes.runPL_class_dataCube import DataCube 

@@ -26,8 +26,9 @@ import peakutils
 
 import getpass
 import matplotlib
-
+# Import FIRST pipeline classes
 from classes.runPL_class_fileList import FileList
+
 if "VSCODE_PID" in os.environ:
     matplotlib.use('Qt5Agg')
 else:
@@ -44,6 +45,7 @@ from collections import defaultdict
 import time
 from astroplan import Observer
 from astropy.time import Time
+from classes.runPL_class_dataCube import DataCube
 from classes.runPL_class_pixelMap import PixelMap
 
 subaru = Observer.at_site("Subaru")
@@ -497,25 +499,8 @@ attention before proceeding with scientific analysis.
 
 
     print(f"Found {len(fileList.filelist)} files to process in {file_patterns}")
-    # print(filelist)
-    # filelist_pixelmap = runlib_io.get_filelist( pixel_map , {'X_FIRTYP': ['PIXELMAP']},  name_search="pixel map")
-    # print(f"Found {len(filelist_pixelmap)} pixel map files in {pixel_map}")
-    # # print(filelist_pixelmap)
-    # files_with_pixelmap = runlib_io.associate_pixelmap(filelist , filelist_pixelmap)
+    
     preprocess(fileList)
     
-    # while time.time()+time_wait < loop+time_start:
-    #     time.sleep(time_wait)
-    #     filelist_new=runlib_io.get_filelist( file_patterns , fits_keywords)
-    #     # Check for new files in filelist
-    #     new_files = [file for file in filelist_new if file not in filelist]
-    #     if new_files:
-    #         print(f"New files detected: {new_files}")
-    #         filelist.extend(new_files)
-    #         filelist_pixelmap,files_by_dir = runlib_io.associate_pixelmap(new_files , filelist_pixelmap, plot_sum= False)
-    #         preprocess(files_with_pixelmap)
-    #     else:
-    #         print("Waiting for new files for the next %i seconds"%(int(loop+time_start-time.time())), end="\r")
-
 
 # %%

@@ -10,6 +10,26 @@ import libraries.runPL_library_linalg as runlib_linalg
 
 
 class CouplingMap:
+    """
+    A class to handle coupling maps for the FIRST Visible Photonic Lantern.
+    
+    Attributes:
+        file (str): Path to the FITS file containing the coupling map
+        basename (str): Base name of the file
+        pyramids (bool): Whether using pyramid or triangle data mode
+        wavelength_bin (int): Wavelength binning factor
+        flux_2_data (numpy.ndarray): Flux to data transformation matrix
+        data_2_flux (numpy.ndarray): Data to flux transformation matrix
+        QT (numpy.ndarray): QT transformation matrices
+        R (numpy.ndarray): R matrices for coupling analysis
+        position (numpy.ndarray): Position data for coupling points
+        ref_spectra (numpy.ndarray): Reference spectra data
+        Npositions (int): Number of positions
+        Nqr (int): Number of QR components
+        Nwave (int): Number of wavelength channels
+        Ntriangles (int): Number of triangles
+        Noutput (int): Number of output channels
+    """
     def __init__(self, file=None, pyramids=False):
         self.pyramids = pyramids
         self.file = file
@@ -35,22 +55,42 @@ class CouplingMap:
     def load(self, file, pyramids=False):
         """
         Load the coupling map from a FITS file.
+        
         Args:
-            file (str): Path to the FITS file containing the coupling map.
-            pyramids (bool): Whether to load pyramid data (True) or triangle data (False).
+            file (str): Path to the FITS file containing the coupling map
+            pyramids (bool): Whether to load pyramid data (True) or triangle data (False)
+            
+        Raises:
+            FileNotFoundError: If the file doesn't exist
+            KeyError: If required FITS extensions are missing
         """
+        if not os.path.exists(file):
+            raise FileNotFoundError(f"Coupling map file not found: {file}")
+            
         self.file = file
         self.basename = os.path.basename(file)
         self.pyramids = pyramids
         
         cmap_file = fits.open(file)
         header = cmap_file[0].header
+        
+        if 'Q_CMWBIN' not in header:
+            raise KeyError("FITS header missing required 'Q_CMWBIN' keyword")
+            
         self.wavelength_bin = header['Q_CMWBIN']
         
         if pyramids:
             add_key = "_P"
         else:
             add_key = "_T"
+
+        required_extensions = [f'F2DATA{add_key}', f'DATA2F{add_key}', f'QT{add_key}', f'R{add_key}', f'XY{add_key}', 'SPECTRA']
+        available_extensions = [hdu.name for hdu in cmap_file]
+        missing_extensions = [ext for ext in required_extensions if ext not in available_extensions]
+        
+        if missing_extensions:
+            cmap_file.close()
+            raise KeyError(f"FITS file missing required extensions: {missing_extensions}")
 
         self.flux_2_data = cmap_file['F2DATA'+add_key].data
         self.data_2_flux = cmap_file['DATA2F'+add_key].data
@@ -59,6 +99,10 @@ class CouplingMap:
         self.position = cmap_file['XY'+add_key].data
         self.ref_spectra = cmap_file['SPECTRA'].data
 
+        if self.QT is None or self.QT.size == 0:
+            cmap_file.close()
+            raise ValueError("Coupling map data is empty or invalid")
+            
         self.Npositions = self.position.shape[0]
         self.Nqr = self.R.shape[2]
         self.Nwave = self.R.shape[1]
@@ -143,12 +187,16 @@ class CouplingMap:
     def save(self, output_filename, header=None, flat_map=None, wave_map=None, modulation_hdu=None):
         """
         Save the coupling map to a FITS file.
+        
         Args:
-            output_filename (str): Path for the output FITS file.
-            header (astropy.io.fits.Header, optional): Header for the FITS file.
-            flat_map (FlatMap, optional): FlatMap object to include in the FITS file.
-            wave_map (WaveMap, optional): WaveMap object to include in the FITS file.
-            modulation_hdu (fits.HDU, optional): Modulation HDU to include.
+            output_filename (str): Path for the output FITS file
+            header (astropy.io.fits.Header, optional): Additional header information
+            flat_map (FlatMap, optional): FlatMap object to include in the FITS file
+            wave_map (WaveMap, optional): WaveMap object to include in the FITS file
+            modulation_hdu (fits.HDU, optional): Modulation HDU to include
+            
+        Raises:
+            ValueError: If no coupling map data is available to save
         """
         from datetime import datetime
         
@@ -244,8 +292,12 @@ class CouplingMap:
     def return_hdu_list(self):
         """
         Return a list of FITS HDUs representing the coupling map.
+        
         Returns:
-                list: List of FITS HDUs.
+            list: List of FITS HDUs containing coupling map data
+            
+        Raises:
+            ValueError: If no coupling map data is available
         """
         if hasattr(self, 'flux_2_data_triangles'):
             # Created from data
@@ -274,8 +326,9 @@ class CouplingMap:
     def return_header(self):
         """
         Return the header of the FITS file.
+        
         Returns:
-                astropy.io.fits.Header: The header of the FITS file.
+            astropy.io.fits.Header: The header of the FITS file or empty header if none available
         """
         if self.file is not None:
             with fits.open(self.file) as hdul:

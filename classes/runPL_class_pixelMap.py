@@ -3,6 +3,20 @@ import numpy as np
 import os
 
 class PixelMap:
+    """
+    A class to handle pixel maps for the FIRST Visible Photonic Lantern.
+    
+    Attributes:
+        file (str): Path to the FITS file containing the pixel map
+        basename (str): Base name of the file
+        header (astropy.io.fits.Header): FITS header information
+        traces_loc (numpy.ndarray): Trace locations data array
+        pixel_min (int): Minimum pixel value
+        pixel_max (int): Maximum pixel value
+        pixel_wide (int): Pixel width parameter
+        output_channels (int): Number of output channels
+        pm_check (int): Pixel map checksum value
+    """
     def __init__(self, file=None):
         self.file = file
         self.basename = os.path.basename(file) if file else None
@@ -20,9 +34,17 @@ class PixelMap:
     def load(self, file):
         """
         Load the pixel map from a FITS file.
+        
         Args:
-            file (str): Path to the FITS file containing the pixel map.
+            file (str): Path to the FITS file containing the pixel map
+            
+        Raises:
+            FileNotFoundError: If the file doesn't exist
+            KeyError: If required FITS header keywords are missing
         """
+        if not os.path.exists(file):
+            raise FileNotFoundError(f"Pixel map file not found: {file}")
+            
         self.file = file
         self.basename = os.path.basename(file)
         self.header = fits.getheader(file)
@@ -33,6 +55,9 @@ class PixelMap:
         missing_keys = [key for key in required_keys if key not in self.header]
         if missing_keys:
             raise KeyError(f"FITS header keywords missing in Pixel Map: {missing_keys}")
+        
+        if self.traces_loc is None or self.traces_loc.size == 0:
+            raise ValueError("Pixel map data is empty or invalid")
         
         self.pixel_min = self.header['Q_PMXMIN']
         self.pixel_max = self.header['Q_PMXMAX']
@@ -77,9 +102,13 @@ class PixelMap:
     def save(self, output_filename, header=None):
         """
         Save the pixel map to a FITS file.
+        
         Args:
-            output_filename (str): Path for the output FITS file.
-            header (astropy.io.fits.Header, optional): Header for the FITS file.
+            output_filename (str): Path for the output FITS file
+            header (astropy.io.fits.Header, optional): Additional header information
+            
+        Raises:
+            ValueError: If no pixel map data is available to save
         """
         from datetime import datetime
         
@@ -136,8 +165,12 @@ class PixelMap:
     def return_hdu_list(self):
         """
         Return a list of FITS HDUs representing the pixel map.
+        
         Returns:
-                list: List of FITS HDUs.
+            list: List of FITS HDUs containing pixel map data
+            
+        Raises:
+            ValueError: If no pixel map data is available
         """
         if self.traces_loc is None:
             raise ValueError("No pixel map data available.")
@@ -147,8 +180,9 @@ class PixelMap:
     def return_header(self):
         """
         Return the header of the FITS file.
+        
         Returns:
-                astropy.io.fits.Header: The header of the FITS file.
+            astropy.io.fits.Header: The header of the FITS file or empty header if none available
         """
         if self.header is not None:
             return self.header.copy()
