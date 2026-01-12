@@ -37,21 +37,21 @@ def plot_wavefit_coeffs(peaks_all_sub, peaks_all_sub_good, aberations, aberation
 
     # Plot all peaks
     im1 = axes[0, 0].imshow(peaks_all_sub, aspect='auto', interpolation='none', rasterized=True, cmap='viridis')
-    fig.colorbar(im1, ax=axes[0, 0], label='Peak Position (pixels)')
+    fig.colorbar(im1, ax=axes[0, 0], label='Peak Position (x pixels)')
     axes[0, 0].set_title('All Detected Peaks')
     axes[0, 0].set_xlabel('Peak Index')
     axes[0, 0].set_ylabel('PL output')
 
     # Plot only good peaks
     im2 = axes[0, 1].imshow(peaks_all_sub_good, aspect='auto', interpolation='none', rasterized=True, cmap='viridis')
-    fig.colorbar(im2, ax=axes[0, 1], label='Peak Position (pixels)')
+    fig.colorbar(im2, ax=axes[0, 1], label='Peak Position (x pixels)')
     axes[0, 1].set_title('Good Peaks Only')
     axes[0, 1].set_xlabel('Good Peak Index')
     axes[0, 1].set_ylabel('PL output')
 
     # Plot aberrations
     im3 = axes[0, 2].imshow(aberations, aspect='auto', interpolation='none', rasterized=True, cmap='RdBu')
-    fig.colorbar(im3, ax=axes[0, 2], label='Aberration (pixels)')
+    fig.colorbar(im3, ax=axes[0, 2], label='Aberration (delta x pixels)')
     axes[0, 2].set_title('Aberrations')
     axes[0, 2].set_xlabel('Good Peak Index')
     axes[0, 2].set_ylabel('PL output')
@@ -59,7 +59,7 @@ def plot_wavefit_coeffs(peaks_all_sub, peaks_all_sub_good, aberations, aberation
     # Plot all peaks with median removed
     peaks_all_sub_centered = peaks_all_sub - np.median(peaks_all_sub, axis=0)[None, :]
     im4 = axes[1, 0].imshow(peaks_all_sub_centered, aspect='auto', interpolation='none', rasterized=True, cmap='viridis')
-    fig.colorbar(im4, ax=axes[1, 0], label='Peak Position Deviation (pixels)')
+    fig.colorbar(im4, ax=axes[1, 0], label='Peak Position Deviation (delta x pixels)')
     axes[1, 0].set_title('All Peaks (Median Removed)')
     axes[1, 0].set_xlabel('Peak Index')
     axes[1, 0].set_ylabel('PL output')
@@ -67,7 +67,7 @@ def plot_wavefit_coeffs(peaks_all_sub, peaks_all_sub_good, aberations, aberation
     # Plot good peaks with median removed
     peaks_all_sub_good_centered = peaks_all_sub_good - np.median(peaks_all_sub_good, axis=0)[None, :]
     im5 = axes[1, 1].imshow(peaks_all_sub_good_centered, aspect='auto', interpolation='none', rasterized=True, cmap='viridis')
-    fig.colorbar(im5, ax=axes[1, 1], label='Peak Position Deviation (pixels)')
+    fig.colorbar(im5, ax=axes[1, 1], label='Peak Position Deviation (delta x pixels)')
     axes[1, 1].set_title('Good Peaks (Median Removed)')
     axes[1, 1].set_xlabel('Good Peak Index')
     axes[1, 1].set_ylabel('PL output')
@@ -75,7 +75,7 @@ def plot_wavefit_coeffs(peaks_all_sub, peaks_all_sub_good, aberations, aberation
     # Plot residual aberrations (observed - fitted)
     aberations_residual = aberations - aberations_fit
     im6 = axes[1, 2].imshow(aberations_residual, aspect='auto', interpolation='none', rasterized=True, cmap='RdBu')
-    fig.colorbar(im6, ax=axes[1, 2], label='Residual Aberration (pixels)')
+    fig.colorbar(im6, ax=axes[1, 2], label='Residual Aberration (delta x pixels)')
     axes[1, 2].set_title('Residual Aberrations (obs - fit)')
     axes[1, 2].set_xlabel('Good Peak Index')
     axes[1, 2].set_ylabel('PL output')

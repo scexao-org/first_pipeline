@@ -573,20 +573,20 @@ Review diagnostic plots to ensure proper line detection and fitting.
 
     # Create text strings for the coefficients
     coef_1d_text = f"""1D Wavelength Mapping Coefficients:
-    λ(pixel) = {coef_1d[0]:.6e} × pixel² + {coef_1d[1]:.6e} × pixel + {coef_1d[2]:.6e}
+    lambda(x pixel) = {coef_1d[0]:.6e} * x^2 + {coef_1d[1]:.6e} * x + {coef_1d[2]:.6e}
 
-    a₂ = {coef_1d[0]:.6e}
-    a₁ = {coef_1d[1]:.6e} 
-    a₀ = {coef_1d[2]:.6e}"""
+    a2 = {coef_1d[0]:.6e}
+    a1 = {coef_1d[1]:.6e} 
+    a0 = {coef_1d[2]:.6e}"""
 
     coef_2d_text = f"""2D Aberration Coefficients:
-    Δpixel(x,y) = {coef_2d[0]:.6e} + {coef_2d[1]:.6e} × x + {coef_2d[2]:.6e} × y + {coef_2d[3]:.6e} × xy + {coef_2d[4]:.6e} × y²
+    Dpixel(x,y) = {coef_2d[0]:.6e} + {coef_2d[1]:.6e} * x + {coef_2d[2]:.6e} * y + {coef_2d[3]:.6e} * xy + {coef_2d[4]:.6e} * y^2
 
-    c₀ = {coef_2d[0]:.6e}
-    c₁ = {coef_2d[1]:.6e}
-    c₂ = {coef_2d[2]:.6e}
-    c₃ = {coef_2d[3]:.6e}
-    c₄ = {coef_2d[4]:.6e}"""
+    c0 = {coef_2d[0]:.6e}
+    c1 = {coef_2d[1]:.6e}
+    c2 = {coef_2d[2]:.6e}
+    c3 = {coef_2d[3]:.6e}
+    c4 = {coef_2d[4]:.6e}"""
 
     # Display the text
     ax.text(0.02, 0.98, coef_1d_text, transform=ax.transAxes, fontsize=10, 
