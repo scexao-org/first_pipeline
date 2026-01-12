@@ -37,6 +37,8 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import axis, plot,hist,clf,figure,legend,imshow, xlim
 from datetime import datetime
 from tqdm import tqdm
+import matplotlib as mpl
+mpl.rcParams['figure.max_open_warning'] = 0
 
 import libraries.runPL_library_io as runlib_io
 import libraries.runPL_library_plots as runlib_plots
@@ -44,7 +46,7 @@ import libraries.runPL_library_plots as runlib_plots
 from classes.runPL_class_flatMap import FlatMap
 from classes.runPL_class_fileList import FileList
 from classes.runPL_class_dataCube import DataCube 
-figure.max_open_warning = 100
+
 
 #plt.ion()
 # Add options
