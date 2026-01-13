@@ -350,7 +350,7 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
                        help="Select a specific flat Map to use (default: most recent in the flatmaps folder)")
     parser.add_argument("--waveMap", 
                        help="Select a specific wave Map to use (default: most recent in the wavemaps folder)")
-    parser.add_argument("--wavelength_smooth", type=int, default=7,
+    parser.add_argument("--wavelength_smooth", type=int, default=1,
                        help="Smoothing factor for wavelength (default: %(default)s)")
     parser.add_argument("--wavelength_bin", type=int, default=20,
                        help="Binning factor for wavelength (default: %(default)s)")
@@ -390,7 +390,7 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*s"
             file_patterns = "/Users/slacour/Downloads/2025-07-14/"
             # dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
-            # file_patterns = "/Users/slacour/DATA/LANTERNE/20251125/preproc/firstpl_2025-11-25T06?23*s"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20251230/preproc"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"

@@ -107,7 +107,6 @@ class FlatMap:
         hdu = [fits.ImageHDU(data=self.flat, name='FLAT')]
 
         if header is not None:
-            header['X_FIRTYP'] = 'FLATMAP'
             # Add date and time to the header if not present
             if 'DATE-PRO' not in header:
                 current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
@@ -115,6 +114,7 @@ class FlatMap:
                 
             hdu_primary.header.extend(header, strip=True)
 
+        hdu_primary.header['X_FIRTYP'] = 'FLATMAP'
         # Combine all HDUs into an HDUList
         hdul = fits.HDUList([hdu_primary, *hdu])
 

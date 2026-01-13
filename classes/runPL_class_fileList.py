@@ -187,19 +187,18 @@ class FileList:
         self.file_patterns = file_patterns or ['*.fits']
 
         self.fits_keywords = {}
-
         if data_type is not None:
-            self.fits_keywords['DATA-TYP'] = [data_type]
+            self.fits_keywords['DATA-TYP'] = [data_type] if not isinstance(data_type, list) else data_type
         if first_type is not None:
-            self.fits_keywords['X_FIRTYP'] = [first_type]
+            self.fits_keywords['X_FIRTYP'] = [first_type] if not isinstance(first_type, list) else first_type
         if wollaston is not None:
-            self.fits_keywords['X_FIRWOL'] = [wollaston]
+            self.fits_keywords['X_FIRWOL'] = [wollaston] if not isinstance(wollaston, list) else wollaston
         if object_name is not None:
-            self.fits_keywords['OBJECT'] = [object_name]
+            self.fits_keywords['OBJECT'] = [object_name] if not isinstance(object_name, list) else object_name
         if modID is not None:
-            self.fits_keywords['X_FIRMID'] = [modID]
+            self.fits_keywords['X_FIRMID'] = [modID] if not isinstance(modID, list) else modID
         if modScale is not None:
-            self.fits_keywords['X_FIRMSC'] = [modScale]
+            self.fits_keywords['X_FIRMSC'] = [modScale] if not isinstance(modScale, list) else modScale
 
         print("----------------")
         # Note : get_filelist will raise FileNotFoundError if no files are found

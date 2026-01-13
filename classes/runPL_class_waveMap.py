@@ -127,12 +127,10 @@ class WaveMap:
             if 'DATE-PRO' not in header:
                 current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
                 header['DATE-PRO'] = current_time
-            
-            if 'X_FIRTYP' not in header:
-                header['X_FIRTYP'] = 'WAVEMAP'
-                
+
             hdu_primary.header.extend(header, strip=True)
 
+        hdu_primary.header['X_FIRTYP'] = 'WAVEMAP'
         # Combine all HDUs into an HDUList
         hdul = fits.HDUList([hdu_primary, *hdu])
 

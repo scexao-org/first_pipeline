@@ -541,8 +541,6 @@ Review diagnostic plots to ensure proper line detection and fitting.
     folder = fileList.get_most_common_dir()
     output_dir = os.path.join(folder,"../wavemaps")
 
-    header['X_FIRTYP'] = 'WAVEMAP'
-
     # Add input parameters to the header
     header['Q_WM1D'] = (coef_1d[2],  'wavelength 2nd order poly')
     header['Q_WM1DX'] = (coef_1d[1],  'wavelength 2nd order poly')

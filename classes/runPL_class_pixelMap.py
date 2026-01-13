@@ -130,8 +130,7 @@ class PixelMap:
             save_header = fits.Header()
             
         # Add required keywords
-        if 'X_FIRTYP' not in save_header:
-            save_header['X_FIRTYP'] = 'PIXELMAP'
+        save_header['X_FIRTYP'] = 'PIXELMAP'
             
         # Add date and time to the header if not present
         if 'DATE-PRO' not in save_header:
