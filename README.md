@@ -8,12 +8,17 @@ The scripts are designed to run sequentially, each handling a specific stage of 
 ### Directory Organization
 ```
 first_pipeline/
+├── __init__.py       # Package initialization
+├── setup.py          # Package setup and installation
+├── requirements.txt  # Python dependencies
 ├── classes/          # Data structure classes
+│   ├── __init__.py
 │   ├── runPL_class_couplingMap.py
 │   ├── runPL_class_dataCube.py
 │   ├── runPL_class_pixelMap.py
 │   └── runPL_class_flatMap.py
 ├── libraries/        # Utility functions
+│   ├── __init__.py
 │   ├── runPL_library_basic.py
 │   ├── runPL_library_io.py
 │   ├── runPL_library_linalg.py
@@ -26,6 +31,59 @@ first_pipeline/
 - **Data flow**: Raw FITS files → Pixel Map → Preprocessing → Flat Map → Wavelength Map → Coupling Maps → Astrometry → Image Reconstruction
 - **Script chaining**: Output from one script is often input for the next
 - **Modern CLI**: All scripts use `argparse` for professional command-line interfaces
+
+## Installation
+
+There are two ways to install and use the FIRST Pipeline:
+
+### Option 1: Development Installation (Recommended)
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/scexao-org/first_pipeline.git
+   cd first_pipeline
+   ```
+
+2. **Install the package in development mode:**
+   ```bash
+   pip install -e .
+   ```
+   
+3. **Install ESO FITS Tools (required for `runPL_dfits`):**
+   ```bash
+   # On macOS with Homebrew:
+   brew install cfitsio
+   
+   # Or install from source:
+   # See: https://github.com/granttremblay/eso_fits_tools
+   ```
+
+### Option 2: Using Scripts Directly
+
+If you prefer to run scripts directly without package installation:
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/scexao-org/first_pipeline.git
+   cd first_pipeline
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Run scripts from the first_pipeline directory:**
+   ```bash
+   # Run from the first_pipeline/ directory
+   python runPL_changeKeyword.py [options] [files...]
+   python runPL_create_pixelMap.py [options] [files...]
+   # etc.
+   ```
+
+**Note**: 
+- **Option 1** allows you to run commands from anywhere as `runPL_changeKeyword`, `runPL_create_pixelMap`, etc.
+- **Option 2** requires you to be in the `first_pipeline/` directory and use `python script_name.py`
 
 ## Essential Scripts & Usage
 
@@ -46,13 +104,17 @@ Essential tool for classifying files and tracking their processing stages throug
 
 **Usage:**
 ```bash
+# After package installation (Option 1):
+runPL_changeKeyword [options] [files...]
+
+# Or running directly (Option 2):
 python runPL_changeKeyword.py [options] [files...]
 
-# Examples:
-python runPL_changeKeyword.py --DATA-TYP=FLAT --X_FIRTYP=RAW *.fits
-python runPL_changeKeyword.py --OBJECT="HD 164461" --X_FIRTYP=PREPROC target_data/*.fits
-python runPL_changeKeyword.py --DATA-TYP=COMPARAISON --X_FIRTYP=RAW neon_calib.fits
-python runPL_changeKeyword.py --DATE=DEFAULT --X_FIRTYP=RAW recent_observations/*.fits
+# Examples (using installed commands):
+runPL_changeKeyword --DATA-TYP=FLAT --X_FIRTYP=RAW *.fits
+runPL_changeKeyword --OBJECT="HD 164461" --X_FIRTYP=PREPROC target_data/*.fits
+runPL_changeKeyword --DATA-TYP=COMPARAISON --X_FIRTYP=RAW neon_calib.fits
+runPL_changeKeyword --DATE=DEFAULT --X_FIRTYP=RAW recent_observations/*.fits
 ```
 
 **Key Options:**
@@ -79,12 +141,12 @@ Pixel maps detect and calibrate the positions of spectral traces across all fibe
 
 **Usage:**
 ```bash
-python runPL_create_pixelMap.py [options] [file_patterns...]
+runPL_create_pixelMap [options] [file_patterns...]
 
 # Examples:
-python runPL_create_pixelMap.py --pixel_min=100 --pixel_max=1600 --pixel_wide=2 --filter_files *.fits
-python runPL_create_pixelMap.py --pixel_min=50 --pixel_max=1500 data/*.fits
-python runPL_create_pixelMap.py --filter_files /data/raw/*.fits
+runPL_create_pixelMap --pixel_min=100 --pixel_max=1600 --pixel_wide=2 --filter_files *.fits
+runPL_create_pixelMap --pixel_min=50 --pixel_max=1500 data/*.fits
+runPL_create_pixelMap --filter_files /data/raw/*.fits
 ```
 
 **Key Options:**
@@ -110,12 +172,12 @@ Transforms raw detector images into calibrated spectral data with quality assess
 
 **Usage:**
 ```bash
-python runPL_make_preproc.py [options] [files...]
+runPL_make_preproc [options] [files...]
 
 # Examples:
-python runPL_make_preproc.py --pixel_map=/path/to/pixel_map.fits /path/to/directory
-python runPL_make_preproc.py --object="HD 164461" /path/to/files*.fits
-python runPL_make_preproc.py --loop 30 /path/to/directory  # Monitor mode
+runPL_make_preproc --pixel_map=/path/to/pixel_map.fits /path/to/directory
+runPL_make_preproc --object="HD 164461" /path/to/files*.fits
+runPL_make_preproc --loop 30 /path/to/directory  # Monitor mode
 ```
 
 **Key Options:**
@@ -139,11 +201,11 @@ Creates gain coefficients and quality metrics for pixel-to-pixel sensitivity cor
 
 **Usage:**
 ```bash
-python runPL_create_flatMap.py [options] [files...]
+runPL_create_flatMap [options] [files...]
 
 # Examples:
-python runPL_create_flatMap.py --wollaston IN --dark_files=dark*.fits flat_data/*.fits
-python runPL_create_flatMap.py --dark_files=/path/to/darks/*.fits *.fits
+runPL_create_flatMap --wollaston IN --dark_files=dark*.fits flat_data/*.fits
+runPL_create_flatMap --dark_files=/path/to/darks/*.fits *.fits
 ```
 
 **Key Options:**
@@ -166,11 +228,11 @@ Detects emission lines, fits polynomial wavelength solutions, and generates 2D w
 
 **Usage:**
 ```bash
-python runPL_create_waveMap.py [options] [files...]
+runPL_create_waveMap [options] [files...]
 
 # Examples:
-python runPL_create_waveMap.py --wollaston IN --flatMap=/path/to/flat.fits *.fits
-python runPL_create_waveMap.py --Nexclude 3 --dark_files=dark*.fits neon_data/*.fits
+runPL_create_waveMap --wollaston IN --flatMap=/path/to/flat.fits *.fits
+runPL_create_waveMap --Nexclude 3 --dark_files=dark*.fits neon_data/*.fits
 ```
 
 **Key Options:**
@@ -195,11 +257,11 @@ Identifies emission lines and maps them to pixel positions for wavelength calibr
 
 **Usage:**
 ```bash
-python runPL_create_wavelengthMap.py [options] [files...]
+runPL_create_wavelengthMap [options] [files...]
 
 # Examples:
-python runPL_create_wavelengthMap.py --wave_list="[753.6, 748.9, 743.9]" *.fits
-python runPL_create_wavelengthMap.py --poly_degree=3 data/*.fits
+runPL_create_wavelengthMap --wave_list="[753.6, 748.9, 743.9]" *.fits
+runPL_create_wavelengthMap --poly_degree=3 data/*.fits
 ```
 
 **Input**: Files with `X_FIRTYP=WAVE`  
@@ -213,12 +275,12 @@ Analyzes coupling efficiency between telescope focal plane and photonic lantern 
 
 **Usage:**
 ```bash
-python runPL_create_couplingMap.py [options] [files...]
+runPL_create_couplingMap [options] [files...]
 
 # Examples:
-python runPL_create_couplingMap.py --object_name="HD 164461" --wavelength_smooth=7 *.fits
-python runPL_create_couplingMap.py --modID=1 --modScale=2 --wollaston=IN data/*.fits
-python runPL_create_couplingMap.py --flatMap=/path/to/flat.fits --waveMap=/path/to/wave.fits *.fits
+runPL_create_couplingMap --object_name="HD 164461" --wavelength_smooth=7 *.fits
+runPL_create_couplingMap --modID=1 --modScale=2 --wollaston=IN data/*.fits
+runPL_create_couplingMap --flatMap=/path/to/flat.fits --waveMap=/path/to/wave.fits *.fits
 ```
 
 **Key Options:**
@@ -245,12 +307,12 @@ Transforms fiber-based measurements into traditional astronomical images for con
 
 **Usage:**
 ```bash
-python runPL_make_image.py [options] [files...]
+runPL_make_image [options] [files...]
 
 # Examples:
-python runPL_make_image.py --object_name="HD 164461" --wavelength_smooth=7 *.fits
-python runPL_make_image.py --coupling_map=/path/to/map.fits --modID=1 data/*.fits
-python runPL_make_image.py --save_individual_frames --save_individual_wavelength *.fits
+runPL_make_image --object_name="HD 164461" --wavelength_smooth=7 *.fits
+runPL_make_image --coupling_map=/path/to/map.fits --modID=1 data/*.fits
+runPL_make_image --save_individual_frames --save_individual_wavelength *.fits
 ```
 
 **Key Options:**
@@ -278,12 +340,12 @@ Enables sub-milliarcsecond position measurements for binary stars, exoplanet det
 
 **Usage:**
 ```bash
-python runPL_make_astrometry.py [options] [files...]
+runPL_make_astrometry [options] [files...]
 
 # Examples:
-python runPL_make_astrometry.py --wollaston IN --wavelength_smooth=2 *.fits
-python runPL_make_astrometry.py --coupling_map=/path/to/map.fits --pyramids target_data/*.fits
-python runPL_make_astrometry.py --save_individual_frames --save_individual_wavelength *.fits
+runPL_make_astrometry --wollaston IN --wavelength_smooth=2 *.fits
+runPL_make_astrometry --coupling_map=/path/to/map.fits --pyramids target_data/*.fits
+runPL_make_astrometry --save_individual_frames --save_individual_wavelength *.fits
 ```
 
 **Key Options:**
@@ -307,36 +369,55 @@ python runPL_make_astrometry.py --save_individual_frames --save_individual_wavel
 
 ## Workflow Example
 
+Using installed commands (after `pip install -e .`):
 1. **Inspect FITS files**: `./runPL_dfits <file>`
-2. **Classify raw data**: `python runPL_changeKeyword.py --DATA-TYP=OBJECT --X_FIRTYP=RAW *.fits`
-3. **Create pixel map**: `python runPL_create_pixelMap.py --filter_files *.fits`
-4. **Preprocess data**: `python runPL_make_preproc.py /data/directory`
-5. **Mark preprocessed**: `python runPL_changeKeyword.py --X_FIRTYP=PREPROC preproc/*.fits`
-6. **Create flat field map**: `python runPL_create_flatMap.py *.fits`
-7. **Generate wavelength map**: `python runPL_create_waveMap.py *.fits`
-8. **Create coupling maps**: `python runPL_create_couplingMaps.py *.fits`
-9. **Perform astrometry**: `python runPL_make_astrometry.py *.fits`
-10. **Reconstruct images**: `python runPL_make_image.py *.fits`
+2. **Classify raw data**: `runPL_changeKeyword --DATA-TYP=OBJECT --X_FIRTYP=RAW *.fits`
+3. **Create pixel map**: `runPL_create_pixelMap --filter_files *.fits`
+4. **Preprocess data**: `runPL_make_preproc /data/directory`
+5. **Mark preprocessed**: `runPL_changeKeyword --X_FIRTYP=PREPROC preproc/*.fits`
+6. **Create flat field map**: `runPL_create_flatMap *.fits`
+7. **Generate wavelength map**: `runPL_create_waveMap *.fits`
+8. **Create coupling maps**: `runPL_create_couplingMap *.fits`
+9. **Perform astrometry**: `runPL_make_astrometry *.fits`
+10. **Reconstruct images**: `runPL_make_image *.fits`
+
+Or using scripts directly (from `first_pipeline/` directory):
+```bash
+python runPL_changeKeyword.py --DATA-TYP=OBJECT --X_FIRTYP=RAW *.fits
+python runPL_create_pixelMap.py --filter_files *.fits
+python runPL_make_preproc.py /data/directory
+# etc.
+```
 
 **Key Pipeline Notes:**
-- Use `runPL_changeKeyword.py` to classify files at each stage for proper downstream processing
+- Use `runPL_changeKeyword` to classify files at each stage for proper downstream processing
 - Proper keyword classification ensures correct file selection by subsequent pipeline scripts
 - Monitor processing stages with `X_FIRTYP` updates as data moves through the workflow
+- With package installation, commands can be run from any directory
 
 ## Requirements
 
 - **Python dependencies**: 
   - Core scientific stack: `numpy`, `scipy`, `matplotlib`
   - Astronomy libraries: `astropy`, `astroplan` 
-  - Utility libraries: `tqdm` (progress bars), `peakutils` (peak detection)
+  - Utility libraries: `tqdm` (progress bars)
 - **External tools**: `dfits` from ESO FITS Tools for FITS inspection
 - **FITS keywords**: Scripts rely on specific header keywords for file selection
 
 ## Getting Help
 
 All scripts provide detailed help information:
+
 ```bash
-python [script_name] --help
+# Using installed commands:
+runPL_changeKeyword --help
+runPL_create_pixelMap --help
+runPL_make_preproc --help
+
+# Or using scripts directly:
+python runPL_changeKeyword.py --help
+python runPL_create_pixelMap.py --help
+python runPL_make_preproc.py --help
 ```
 
 This displays:

@@ -22,7 +22,6 @@ from astropy.io import fits
 from glob import glob
 import argparse
 import numpy as np
-import peakutils
 
 import getpass
 import matplotlib

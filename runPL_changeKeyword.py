@@ -22,7 +22,8 @@ from glob import glob
 import argparse
 import libraries.runPL_library_io as runlib
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the script"""
     parser = argparse.ArgumentParser(
         description="Modify FITS header keywords for FIRST Pipeline classification and processing control.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -146,3 +147,7 @@ logic in downstream pipeline scripts (createPixelMap, preprocess, wavelengthMap,
                         filehandle[0].header[key] = value
                         string_print += f'   {key}={value}'
             print(string_print)
+
+
+if __name__ == "__main__":
+    main()

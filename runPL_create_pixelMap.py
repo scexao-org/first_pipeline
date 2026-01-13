@@ -21,7 +21,6 @@ from astropy.io import fits
 from glob import glob
 import argparse
 import numpy as np
-import peakutils
 
 import getpass
 import matplotlib
@@ -133,30 +132,6 @@ def quick_fits(data, title=""):
     date_time_str = now.strftime("%Y_%m_%d_%H_%M_%S")
     runlib_io.save_fits_file(data, "/home/jsarrazin/Bureau/test zone/coupling_maps/"+title+"_"+date_time_str+".fits")
     print("check")
-
-def loop_lowering_my_treshold( sampling, peaks_number, raw_image, peaks, output_channels, filelist, start = 0.01, stop = 0.1, num = 50):
-    # if instance==1:
-    #     print("Cant find flux at the moment.... Running additional tests on your files.")
-    #     filter_only_good_files(filelist)
-    threshold_array = np.linspace(start, stop, num)
-    solution_found=[]
-    for i in (range(sampling.shape[0])): #from 0 to the number of samples
-        #Sum 10 values of x (wavelenght=columns) of the pic
-        sum_image = raw_image[:,sampling[i]-25:sampling[i]+25].sum(axis=1)
-        detectedWavePeaks=np.zeros(output_channels)
-        found = False
-        #Search for the 38 modes expected
-        for t in threshold_array:
-            detectedWavePeaks_tmp = peakutils.peak.indexes(sum_image,thres=t, min_dist=7)
-            if len(detectedWavePeaks_tmp) == peaks_number:
-                detectedWavePeaks = detectedWavePeaks_tmp
-                found = True
-                break
-        solution_found+=[found]
-        #The values will be saved at the index i of the sample
-        peaks[:,i]=detectedWavePeaks
-
-    return solution_found, peaks
 
 
 def peaks_using_scipy(raw_image, sampling, Nsampling, output_channels):

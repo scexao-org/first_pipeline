@@ -1,0 +1,18 @@
+# Core scientific computing
+numpy
+scipy
+matplotlib
+
+# Astronomy libraries
+astropy
+astroplan
+
+# Utility libraries
+tqdm
+
+# Package management
+setuptools>=45.0.0
+
+# Optional: For enhanced functionality
+# If you need to install ESO FITS Tools for dfits:
+# See installation instructions at: https://github.com/granttremblay/eso_fits_tools
