@@ -256,7 +256,6 @@ def preprocess(fileList, plot_sum =False):
              if not subaru.is_night(obs_time):
                  header['OBJECT'] = "DAY"
 
-
         output_filename = runlib_io.create_output_filename(header)
         output_filename_full = os.path.join(preproc_dir_path, output_filename)
 
@@ -465,7 +464,7 @@ attention before proceeding with scientific analysis.
                        help="Specify which pixel map FITS file to use (default: auto-detect in directory)")
     parser.add_argument("--object", 
                        help="Specify the OBJECT name of data to reduced based on the FITS header")
-    parser.add_argument("--also_without_modulation", action="store_true",
+    parser.add_argument("--only_with_modulation", action="store_true",
                        help="Also preprocess files that do not have a MODULATION extension in the FITS file.")
     
     # Initialize default values
@@ -473,7 +472,7 @@ attention before proceeding with scientific analysis.
     file_patterns = args.files if args.files else ['*.fits']
     pixel_map = args.pixel_map
     object = args.object
-    also_without_modulation = not args.also_without_modulation
+    only_with_modulation = args.only_with_modulation
 
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
         os.environ.get('SPYDER_DEBUG_FILE')):
@@ -496,7 +495,7 @@ attention before proceeding with scientific analysis.
         print("Using pixel map folder: ",folder)
         pixel_map = file_patterns + [os.path.join(folder,"../pixelmaps")]
 
-    fileList = FileList(file_patterns, first_type='RAW', object_name=object, modID=None if also_without_modulation else [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20])
+    fileList = FileList(file_patterns, first_type='RAW', object_name=object, modID=[2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20] if only_with_modulation else None)
     
     fileList.make_association(pixelMap=pixel_map)
 

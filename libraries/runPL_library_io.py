@@ -113,12 +113,22 @@ def create_output_filename(header):
     name_extension = object
     data_type_extension = ["DARK", "WAVE", "WAVELENGTHMAP", "SKY"]
 
-    processing_extension = {"PIXELMAP": "PM", "COUPLINGMAP": "CM", "WAVELENGTHMAP": "WM", "PREPROC": "P", "SPECTRA": "S", "IMAGE": "I", "ASTROMETRY": "A"}
+    processing_extension = {"PIXELMAP": "PM", "COUPLINGMAP": "CM", "FLATMAP": "FM", "WAVEMAP": "WM", "PREPROC": "P", "SPECTRA": "S", "IMAGE": "I", "ASTROMETRY": "A"}
 
     if type in data_type_extension:
         name_extension = type
     if cat in processing_extension.keys():
         name_extension = name_extension + "_" + processing_extension[cat]
+
+    # remove the : in the name because that crash Elsa's computer :p
+    try:
+        if date[-3]==":":
+            date = date[:-3] + "m" + date[-2:]
+        if date[-6] ==":":
+            date = date[:-6] + "h" + date[-5:]
+        date=date+"s"
+    except:
+        pass
 
     output_filename = 'firstpl_' + date + '_' + name_extension + '.fits'
     return output_filename
