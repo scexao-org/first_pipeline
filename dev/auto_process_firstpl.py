@@ -12,9 +12,9 @@ def find_and_process_firstpl_directories(base_dir):
 def run_scripts_in_directory(directory):
     try:
         # Execute runPL_create_pixelMap.py
-        subprocess.run(["python3", "runPL_create_pixelMap.py"], cwd=directory, check=True)
+        subprocess.run(["runPL_create_pixelMap.py"], cwd=directory, check=True)
         # Execute runPL_make_preproc.py
-        subprocess.run(["python3", "runPL_make_preproc.py"], cwd=directory, check=True)
+        subprocess.run(["runPL_make_preproc.py"], cwd=directory, check=True)
     except subprocess.CalledProcessError as e:
         print(f"An error occurred while processing {directory}: {e}")
 
