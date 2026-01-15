@@ -284,7 +284,7 @@ def plot_flux_map(fluxes, xmod, ymod, desc = "Flux Map"):
 
     if plt.fignum_exists(desc):
         plt.close(desc)
-    fig,axs = plt.subplots(Ncube, 1, num=desc, figsize=(8, 1+5*Ncube), clear=True,squeeze=False)
+    fig,axs = plt.subplots(Ncube, 1, num=desc, figsize=(8, 1.5+4.5*Ncube), clear=True,squeeze=False)
     
     for c in range(Ncube):
         fluxes = flux_padded[c]
@@ -316,6 +316,8 @@ def plot_flux_map(fluxes, xmod, ymod, desc = "Flux Map"):
         axs[c,0].set_title("(Xmod,Ymod) maximum position: (%.3f,%.3f)"%(x_fit,y_fit))
         axs[c,0].contour(grid_x, grid_y, fitted_gaussian, levels=10, colors='red', linewidths=0.8)
         axs[c,0].set_aspect('equal')
+
+    fig.tight_layout()
     
     return fig
 
