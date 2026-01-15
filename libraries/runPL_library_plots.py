@@ -279,7 +279,7 @@ def plot_flux_map(fluxes, xmod, ymod, desc = "Flux Map"):
     size_old = Ndit
 
     flux_padded=np.zeros(np.prod(size_new))
-    flux_padded[:size_old]=fluxes
+    flux_padded[np.prod(size_new)-size_old:]=fluxes
     flux_padded=flux_padded.reshape(size_new)
 
     fig,axs = plt.subplots(Ncube, num=desc, figsize=(8, 6*Ncube), clear=True,squeeze=False)
