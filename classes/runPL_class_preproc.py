@@ -8,6 +8,7 @@ import libraries.runPL_library_io as runlib_io
 import libraries.runPL_library_plots as runlib_plots
 from astroplan import Observer
 from astropy.time import Time
+import time
 
 
 class Preproc:
@@ -116,6 +117,7 @@ class Preproc:
         Returns:
             True or False: 
         """
+        time = time.time()
         # Load pixel map
         # Verify pixelMap is of correct class
         if not isinstance(pixelMap, PixelMap):
@@ -127,8 +129,8 @@ class Preproc:
         # Read raw file header and data
         with fits.open(raw_file) as hdul:
             raw_header = hdul[0].header.copy()
-            raw_data = hdul[0].data
             
+            print(time.time()-time, " - Reading raw file")
             # Check for modulation data
             modulation_hdu = None
             if 'MODULATION' in [hdu.name for hdu in hdul]:
@@ -136,10 +138,6 @@ class Preproc:
         
             # Set up Subaru observer for day/night detection
             subaru = Observer.at_site("Subaru")
-            
-            # Process data dimensions
-            if len(raw_data.shape) == 2:
-                raw_data = raw_data[None]
                 
             # Create preprocessed header
             self.header = self._create_preproc_header(raw_header, pixelMap, raw_file)
@@ -158,6 +156,8 @@ class Preproc:
             # Generate output filename
             self.basename = runlib_io.create_basename(self.header)
             self.filename = os.path.join(output_dir, self.basename)
+
+            print(time.time()-time, " - Reading raw file")
             
             # Check if file already exists with same PM_CHECK
             if self._should_skip_processing(self.filename, pixelMap.pm_check, modulation_hdu):
@@ -168,6 +168,11 @@ class Preproc:
                 print(f"Skipping {raw_file} without modulation data...")
                 return False
                 
+            raw_data = hdul[0].data
+            # Process data dimensions
+            if len(raw_data.shape) == 2:
+                raw_data = raw_data[None]
+
             # Process data using pixel map
             self.data, self.quality_metrics = self._process_raw_data(raw_data, pixelMap)
 

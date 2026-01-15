@@ -282,7 +282,10 @@ def plot_flux_map(fluxes, xmod, ymod, desc = "Flux Map"):
     flux_padded[np.prod(size_new)-size_old:]=fluxes
     flux_padded=flux_padded.reshape(size_new)
 
-    fig,axs = plt.subplots(Ncube, num=desc, figsize=(8, 6*Ncube), clear=True,squeeze=False)
+    if plt.fignum_exists(desc):
+        plt.close(desc)
+    fig,axs = plt.subplots(Ncube, 1, num=desc, figsize=(8, 1+5*Ncube), clear=True,squeeze=False)
+    
     for c in range(Ncube):
         fluxes = flux_padded[c]
         popt = fit_gaussian_on_flux(fluxes, xmod, ymod)

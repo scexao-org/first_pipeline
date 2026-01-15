@@ -25,14 +25,13 @@ import numpy as np
 
 import getpass
 import matplotlib
-# Import FIRST pipeline classes
-from classes.runPL_class_fileList import FileList
 
 if "VSCODE_PID" in os.environ:
     matplotlib.use('Qt5Agg')
 else:
     matplotlib.use('Agg')
      
+
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
@@ -44,6 +43,7 @@ from collections import defaultdict
 import time
 from astroplan import Observer
 from astropy.time import Time
+from classes.runPL_class_fileList import FileList
 from classes.runPL_class_dataCube import DataCube
 from classes.runPL_class_pixelMap import PixelMap
 from classes.runPL_class_preproc import Preproc
