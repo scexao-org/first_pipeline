@@ -519,7 +519,7 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
     for i, filename in enumerate(filenames):
         new_header['Q_CM_F%i' % i] = (filename, 'filename of the extracted flux')
 
-    new_header['Q_CMNAME'] = (runlib_io.create_output_filename(new_header), 'name of the coupling map file')
+    new_header['Q_CMNAME'] = (runlib_io.create_basename(new_header), 'name of the coupling map file')
     # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
     os.makedirs(output_dir, exist_ok=True)
 

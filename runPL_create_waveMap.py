@@ -554,7 +554,7 @@ Review diagnostic plots to ensure proper line detection and fitting.
     # for i, filename in enumerate(filenames):
     #     header['Q_WM_F%i' % i] = (filename, 'filename of the extracted flux')
 
-    header['Q_WMNAME'] = (runlib_io.create_output_filename(header), 'name of the flatwave map file')
+    header['Q_WMNAME'] = (runlib_io.create_basename(header), 'name of the flatwave map file')
 
     # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
     os.makedirs(output_dir, exist_ok=True)

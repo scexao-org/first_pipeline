@@ -7,7 +7,7 @@ class PixelMap:
     A class to handle pixel maps for the FIRST Visible Photonic Lantern.
     
     Attributes:
-        file (str): Path to the FITS file containing the pixel map
+        filename (str): Path to the FITS file containing the pixel map
         basename (str): Base name of the file
         header (astropy.io.fits.Header): FITS header information
         traces_loc (numpy.ndarray): Trace locations data array
@@ -16,10 +16,11 @@ class PixelMap:
         pixel_wide (int): Pixel width parameter
         output_channels (int): Number of output channels
         pm_check (int): Pixel map checksum value
+        is_loaded (bool): Whether the pixel map data has been loaded
     """
-    def __init__(self, file=None):
-        self.file = file
-        self.basename = os.path.basename(file) if file else None
+    def __init__(self, filename=None):
+        self.filename = filename
+        self.basename = os.path.basename(filename) if filename else None
         self.header = None
         self.traces_loc = None
         self.pixel_min = None
@@ -27,28 +28,29 @@ class PixelMap:
         self.pixel_wide = None
         self.output_channels = None
         self.pm_check = None
+        self.is_loaded = False
         
-        if file is not None:
-            self.load(file)
+        if filename is not None:
+            self.load(filename)
 
-    def load(self, file):
+    def load(self, filename):
         """
         Load the pixel map from a FITS file.
         
         Args:
-            file (str): Path to the FITS file containing the pixel map
+            filename (str): Path to the FITS file containing the pixel map
             
         Raises:
             FileNotFoundError: If the file doesn't exist
             KeyError: If required FITS header keywords are missing
         """
-        if not os.path.exists(file):
-            raise FileNotFoundError(f"Pixel map file not found: {file}")
+        if not os.path.exists(filename):
+            raise FileNotFoundError(f"Pixel map file not found: {filename}")
             
-        self.file = file
-        self.basename = os.path.basename(file)
-        self.header = fits.getheader(file)
-        self.traces_loc = fits.getdata(file)
+        self.filename = filename
+        self.basename = os.path.basename(filename)
+        self.header = fits.getheader(filename)
+        self.traces_loc = fits.getdata(filename)
         
         # Check for required header keywords and raise error if not found
         required_keys = ['Q_PMXMIN', 'Q_PMXMAX', 'Q_PMWIDE', 'Q_PMCHAN', 'Q_PM_CK']
@@ -64,6 +66,12 @@ class PixelMap:
         self.pixel_wide = self.header['Q_PMWIDE']
         self.output_channels = self.header['Q_PMCHAN']
         self.pm_check = self.header['Q_PM_CK']
+        self.is_loaded = True
+
+    def _check_loaded(self):
+        """Check if the pixel map is properly loaded."""
+        if not self.is_loaded:
+            raise ValueError("Pixel map not loaded. Use load() or create_from_data() first.")
 
     def create_from_data(self, traces_loc, pixel_min, pixel_max, pixel_wide, output_channels, pm_check=None, filename=None):
         """
@@ -93,11 +101,13 @@ class PixelMap:
         self.header['Q_PM_CK'] = self.pm_check
         
         if filename:
-            self.file = filename
+            self.filename = filename
             self.basename = os.path.basename(filename)
         else:
-            self.file = None
+            self.filename = None
             self.basename = None
+        
+        self.is_loaded = True
 
     def save(self, output_filename, header=None):
         """
@@ -112,6 +122,7 @@ class PixelMap:
         """
         from datetime import datetime
         
+        self._check_loaded()
         if self.traces_loc is None:
             raise ValueError("No pixel map data to save. Load or create pixel map data first.")
             
@@ -150,7 +161,7 @@ class PixelMap:
         # Add filename if not present
         if 'Q_PMNAME' not in save_header:
             import libraries.runPL_library_io as runlib_io
-            basename = runlib_io.create_output_filename(save_header)
+            basename = runlib_io.create_basename(save_header)
             save_header['Q_PMNAME'] = basename
             
         hdu.header.extend(save_header, strip=True)
@@ -172,7 +183,8 @@ class PixelMap:
             ValueError: If no pixel map data is available
         """
         if self.traces_loc is None:
-            raise ValueError("No pixel map data available.")
+            raise ValueError("No pixel map data available")
+        self._check_loaded()
         hdu = [fits.ImageHDU(data=self.traces_loc, name='PIXELMAP')]
         return hdu
     
@@ -185,8 +197,8 @@ class PixelMap:
         """
         if self.header is not None:
             return self.header.copy()
-        elif self.file is not None:
-            with fits.open(self.file) as hdul:
+        elif self.filename is not None:
+            with fits.open(self.filename) as hdul:
                 header = hdul[0].header
             return header
         else:
@@ -197,6 +209,7 @@ class PixelMap:
         """
         Preprocesses and extracts specific pixel data from the input data array based on the pixel map.
         """
+        self._check_loaded()
         pixel_min = self.pixel_min
         pixel_max = self.pixel_max
         pixel_wide = self.pixel_wide

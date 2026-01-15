@@ -301,7 +301,7 @@ any systematic issues with SuperK illumination or detector response.
     for i, filename in enumerate(filenames):
         header['Q_FM_F%i' % i] = (filename, 'filename of the extracted flux')
 
-    header['Q_FMNAME'] = (runlib_io.create_output_filename(header), 'name of the flatwave map file')
+    header['Q_FMNAME'] = (runlib_io.create_basename(header), 'name of the flatwave map file')
 
     # Créer les dossiers "output" et "pixel" s'ils n'existent pas déjà
     os.makedirs(output_dir, exist_ok=True)

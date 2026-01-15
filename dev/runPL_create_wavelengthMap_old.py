@@ -259,7 +259,7 @@ def figure2(flux, its_a_match_peaks, its_a_match_waves, output_dir, header):
 
     hdu.header.extend(header, strip=True)
     hdul = fits.HDUList([hdu])
-    output_filename = os.path.join(output_dir, runlib.create_output_filename(header))
+    output_filename = os.path.join(output_dir, runlib.create_basename(header))
     hdul.writeto(output_filename, overwrite=True)
 
     # %%

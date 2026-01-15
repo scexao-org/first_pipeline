@@ -7,41 +7,43 @@ class FlatMap:
     A class to handle flat field maps for the FIRST Visible Photonic Lantern.
     
     Attributes:
-        file (str): Path to the FITS file containing the flat field map
+        filename (str): Path to the FITS file containing the flat field map
         basename (str): Base name of the file
         flat (numpy.ndarray): The flat field data array
         inv_flat (numpy.ndarray): Inverse of the flat field for normalization
         inv_flat_squared (numpy.ndarray): Squared inverse for variance normalization
+        is_loaded (bool): Whether the flat field map data has been loaded
     """
-    def __init__(self, file=None):
+    def __init__(self, filename=None):
 
-        self.file = file
-        self.basename = os.path.basename(file) if file else None
+        self.filename = filename
+        self.basename = os.path.basename(filename) if filename else None
         self.flat = None
         self.inv_flat = None
         self.inv_flat_squared = None
+        self.is_loaded = False
         
-        if file is not None:
-            self.load(file)
+        if filename is not None:
+            self.load(filename)
 
-    def load(self, file):
+    def load(self, filename):
         """
         Load the flat field map from a FITS file.
         
         Args:
-            file (str): Path to the FITS file containing the flat field map
+            filename (str): Path to the FITS file containing the flat field map
             
         Raises:
             FileNotFoundError: If the file doesn't exist
             KeyError: If required FITS extensions are missing
         """
-        if not os.path.exists(file):
-            raise FileNotFoundError(f"Flat field map file not found: {file}")
+        if not os.path.exists(filename):
+            raise FileNotFoundError(f"Flat field map file not found: {filename}")
             
-        self.file = file
-        self.basename = os.path.basename(file)
+        self.filename = filename
+        self.basename = os.path.basename(filename)
         
-        with fits.open(file) as hdul:
+        with fits.open(filename) as hdul:
             if 'FLAT' not in [hdu.name for hdu in hdul]:
                 raise KeyError("FITS file missing required 'FLAT' extension")
             self.flat = hdul['FLAT'].data
@@ -51,6 +53,7 @@ class FlatMap:
             
         self.inv_flat = 1.0 / self.flat
         self.inv_flat_squared = 1.0 / self.flat**2
+        self.is_loaded = True
 
     def create_from_data(self, flat_data, filename=None):
         """
@@ -64,12 +67,19 @@ class FlatMap:
         self.inv_flat_squared = 1.0 / self.flat**2
         
         if filename:
-            self.file = filename
+            self.filename = filename
             self.basename = os.path.basename(filename)
         else:
-            self.file = None
+            self.filename = None
             self.basename = None
+
+        self.is_loaded = True
             
+    def _check_loaded(self):
+        """Check if the flat field map is properly loaded."""
+        if not self.is_loaded:
+            raise ValueError("Flat field map not loaded. Use load() or create_from_data() first.")
+        
     def _validate_data(self):
         """
         Validate that the flat field data is properly loaded and consistent.
@@ -97,6 +107,7 @@ class FlatMap:
         """
         from datetime import datetime
         
+        self._check_loaded()
         if self.flat is None:
             raise ValueError("No flat field data to save. Load or create flat field data first.")
             
@@ -129,6 +140,7 @@ class FlatMap:
         Args:
                 dataCube (DataCube): The data cube to normalize.
         """
+        self._check_loaded()
         dataCube.data *= self.inv_flat
         dataCube.variance *= self.inv_flat_squared
     
@@ -144,6 +156,7 @@ class FlatMap:
         """
         if self.flat is None:
             raise ValueError("No flat field data available")
+        self._check_loaded()
         hdu = [fits.ImageHDU(data=self.flat, name='FLAT')]
         return hdu
     
@@ -154,8 +167,8 @@ class FlatMap:
         Returns:
             astropy.io.fits.Header: The header of the FITS file or empty header if none available
         """
-        if self.file is not None:
-            with fits.open(self.file) as hdul:
+        if self.filename is not None:
+            with fits.open(self.filename) as hdul:
                 header = hdul[0].header
             return header
         else:

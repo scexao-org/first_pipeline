@@ -490,7 +490,7 @@ for high-precision applications.
         # Combine all HDUs into an HDUList
         hdul = fits.HDUList(list_of_hdus)
 
-        output_filename = os.path.join(output_dir, runlib.create_output_filename(header))
+        output_filename = os.path.join(output_dir, runlib.create_basename(header))
 
         # Write to a FITS file
         hdul.writeto(output_filename, overwrite=True)

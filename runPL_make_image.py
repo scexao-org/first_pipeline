@@ -533,7 +533,7 @@ Optimize smoothing and modulation parameters for best results with your data.
         # Combine all HDUs into an HDUList
         hdul = fits.HDUList(list_of_hdus)
 
-        output_filename = os.path.join(output_dir, runlib_io.create_output_filename(header))
+        output_filename = os.path.join(output_dir, runlib_io.create_basename(header))
 
         # Write to a FITS file
         hdul.writeto(output_filename, overwrite=True)
@@ -607,7 +607,7 @@ Optimize smoothing and modulation parameters for best results with your data.
         fig.suptitle(f"{d.basename} : {Ncube} x {Nmod} x {d.dit:.3f}s - RA = {d.x_object:.2f}, Dec = {d.y_object:.2f}", fontsize=16)
         
         plt.tight_layout(rect=[0, 0, 1, 0.95])
-        png_filename = os.path.join(output_dir, runlib_io.create_output_filename(header).replace('.fits', '.png'))
+        png_filename = os.path.join(output_dir, runlib_io.create_basename(header).replace('.fits', '.png'))
         plt.savefig(png_filename, dpi=150)
         print(f"PNG image saved to {png_filename}")
         # plt.close(fig)

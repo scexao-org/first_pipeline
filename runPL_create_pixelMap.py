@@ -317,7 +317,7 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
     # Prepare header with additional information
     save_header = header.copy()
     save_header['X_FIRTYP'] = 'PIXELMAP'
-    basename = runlib_io.create_output_filename(save_header)
+    basename = runlib_io.create_basename(save_header)
     save_header['Q_PMNAME'] = basename
 
     # Définir le chemin complet du sous-dossier

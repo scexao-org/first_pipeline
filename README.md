@@ -16,7 +16,9 @@ first_pipeline/
 │   ├── runPL_class_couplingMap.py
 │   ├── runPL_class_dataCube.py
 │   ├── runPL_class_pixelMap.py
-│   └── runPL_class_flatMap.py
+│   ├── runPL_class_flatMap.py
+│   ├── runPL_class_waveMap.py
+│   └── runPL_class_preproc.py
 ├── libraries/        # Utility functions
 │   ├── __init__.py
 │   ├── runPL_library_basic.py
@@ -367,6 +369,13 @@ runPL_make_astrometry --save_individual_frames --save_individual_wavelength *.fi
 
 ---
 
+## Notes for Development
+
+- **Modern CLI**: All scripts use `argparse` with help messages
+- **Organized imports**: Classes in `classes/` directory, libraries in `libraries/`
+- **Consistent patterns**: Follow existing argument and naming conventions
+- **FITS compliance**: Maintain keyword conventions for pipeline compatibility
+
 ## Workflow Example
 
 Using installed commands (after `pip install -e .`):
@@ -394,6 +403,64 @@ python runPL_make_preproc.py /data/directory
 - Proper keyword classification ensures correct file selection by subsequent pipeline scripts
 - Monitor processing stages with `X_FIRTYP` updates as data moves through the workflow
 - With package installation, commands can be run from any directory
+
+## Pipeline Classes
+
+The FIRST Pipeline uses object-oriented design with specialized classes for different data products. Each class provides consistent interfaces for loading, creating, and saving pipeline data.
+
+### Available Classes
+
+#### Preproc Class
+**Purpose**: Handle preprocessed spectral data with quality metrics and modulation support  
+**File**: `classes/runPL_class_preproc.py`
+
+```python
+from classes.runPL_class_preproc import Preproc
+
+# Load existing preprocessed file
+preproc = Preproc("path/to/preproc_file.fits")
+print(f"Data shape: {preproc.data.shape}")
+print(f"Has modulation: {preproc.has_modulation_data()}")
+
+# Get quality metrics
+quality = preproc.get_quality_summary()
+print(quality['interpretations']['centroid_shift'])
+
+# Create from raw data
+preproc = Preproc()
+output_file = preproc.create_from_raw(raw_file, pixel_map_file, output_dir)
+
+# Save to new file
+preproc.save("new_preproc_file.fits")
+```
+
+#### Other Data Product Classes
+- **PixelMap**: Spectral trace positions and extraction parameters
+- **FlatMap**: Flat field calibration data and normalization
+- **WaveMap**: Wavelength calibration and spectral mapping
+- **CouplingMap**: Fiber coupling efficiency measurements
+- **DataCube**: Multi-dimensional spectral data containers
+
+### Class Design Patterns
+
+All pipeline classes follow consistent patterns:
+
+```python
+# Standard usage pattern for all classes
+data_product = ClassName()           # Create empty
+data_product = ClassName(file_path)  # Load existing from fits file
+data_product.create_from_X(...)      # Create from source data
+data_product.save(output_file)       # Save to FITS file
+data_product.return_hdu_list()       # Get FITS HDU list
+data_product.return_header()         # Get FITS header
+```
+
+**Key Benefits**:
+- **Encapsulation**: All related functionality in one place
+- **Consistency**: Same interface across all data products  
+- **Quality control**: Built-in validation and metrics
+- **Modularity**: Easy to use individually or in pipelines
+- **Maintainability**: Clear separation of concerns
 
 ## Requirements
 
@@ -426,10 +493,3 @@ This displays:
 - Input/output file requirements
 - Practical examples
 - Default values
-
-## Notes for Development
-
-- **Modern CLI**: All scripts use `argparse` with professional help messages
-- **Organized imports**: Classes in `classes/` directory, libraries in `libraries/`
-- **Consistent patterns**: Follow existing argument and naming conventions
-- **FITS compliance**: Maintain keyword conventions for pipeline compatibility

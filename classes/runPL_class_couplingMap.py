@@ -14,7 +14,7 @@ class CouplingMap:
     A class to handle coupling maps for the FIRST Visible Photonic Lantern.
     
     Attributes:
-        file (str): Path to the FITS file containing the coupling map
+        filename (str): Path to the FITS file containing the coupling map
         basename (str): Base name of the file
         pyramids (bool): Whether using pyramid or triangle data mode
         wavelength_bin (int): Wavelength binning factor
@@ -29,11 +29,12 @@ class CouplingMap:
         Nwave (int): Number of wavelength channels
         Ntriangles (int): Number of triangles
         Noutput (int): Number of output channels
+        is_loaded (bool): Whether the coupling map data has been loaded
     """
-    def __init__(self, file=None, pyramids=False):
+    def __init__(self, filename=None, pyramids=False):
         self.pyramids = pyramids
-        self.file = file
-        self.basename = os.path.basename(file) if file else None
+        self.filename = filename
+        self.basename = os.path.basename(filename) if filename else None
         
         # Initialize all attributes to None
         self.wavelength_bin = None
@@ -48,30 +49,31 @@ class CouplingMap:
         self.Nwave = None
         self.Ntriangles = None
         self.Noutput = None
+        self.is_loaded = False
         
-        if file is not None:
-            self.load(file, pyramids)
+        if filename is not None:
+            self.load(filename, pyramids)
 
-    def load(self, file, pyramids=False):
+    def load(self, filename, pyramids=False):
         """
         Load the coupling map from a FITS file.
         
         Args:
-            file (str): Path to the FITS file containing the coupling map
+            filename (str): Path to the FITS file containing the coupling map
             pyramids (bool): Whether to load pyramid data (True) or triangle data (False)
             
         Raises:
             FileNotFoundError: If the file doesn't exist
             KeyError: If required FITS extensions are missing
         """
-        if not os.path.exists(file):
-            raise FileNotFoundError(f"Coupling map file not found: {file}")
+        if not os.path.exists(filename):
+            raise FileNotFoundError(f"Coupling map file not found: {filename}")
             
-        self.file = file
-        self.basename = os.path.basename(file)
+        self.filename = filename
+        self.basename = os.path.basename(filename)
         self.pyramids = pyramids
         
-        cmap_file = fits.open(file)
+        cmap_file = fits.open(filename)
         header = cmap_file[0].header
         
         if 'Q_CMWBIN' not in header:
@@ -110,6 +112,7 @@ class CouplingMap:
         self.Noutput = self.QT.shape[3]
 
         cmap_file.close()
+        self.is_loaded = True
 
     def create_from_data(self, flux_2_data_triangles, data_2_flux_triangles, QT_triangles, R_triangles, 
                         center_triangles, flux_2_data_pyramids, data_2_flux_pyramids, QT_pyramids, 
@@ -142,11 +145,18 @@ class CouplingMap:
         self._set_active_data()
         
         if filename:
-            self.file = filename
+            self.filename = filename
             self.basename = os.path.basename(filename)
         else:
-            self.file = None
+            self.filename = None
             self.basename = None
+            
+        self.is_loaded = True
+
+    def _check_loaded(self):
+        """Check if the coupling map is properly loaded."""
+        if not self.is_loaded:
+            raise ValueError("Coupling map not loaded. Use load() or create_from_data() first.")
     
     def _set_active_data(self):
         """Set the active data based on pyramids flag"""
@@ -181,8 +191,8 @@ class CouplingMap:
         self.pyramids = pyramids
         if hasattr(self, 'flux_2_data_triangles'):  # Check if created from data
             self._set_active_data()
-        elif self.file is not None:  # Reload from file
-            self.load(self.file, pyramids)
+        elif self.filename is not None:  # Reload from file
+            self.load(self.filename, pyramids)
 
     def save(self, output_filename, header=None, flat_map=None, wave_map=None, modulation_hdu=None):
         """
@@ -200,6 +210,7 @@ class CouplingMap:
         """
         from datetime import datetime
         
+        self._check_loaded()
         # Check if we have the required data
         if hasattr(self, 'flux_2_data_triangles'):
             # Created from data - use stored arrays
@@ -214,18 +225,18 @@ class CouplingMap:
             R_pyramids = self.R_pyramids
             center_pyramids = self.center_pyramids
             spectra = self.ref_spectra
-        elif self.file is not None:
+        elif self.filename is not None:
             # Loaded from file - need to reload both triangle and pyramid data
             temp_pyramids = self.pyramids
             # Load triangles
-            self.load(self.file, pyramids=False)
+            self.load(self.filename, pyramids=False)
             flux_2_data_triangles = self.flux_2_data
             data_2_flux_triangles = self.data_2_flux
             QT_triangles = self.QT
             R_triangles = self.R
             center_triangles = self.position
             # Load pyramids
-            self.load(self.file, pyramids=True)
+            self.load(self.filename, pyramids=True)
             flux_2_data_pyramids = self.flux_2_data
             data_2_flux_pyramids = self.data_2_flux
             QT_pyramids = self.QT
@@ -233,7 +244,7 @@ class CouplingMap:
             center_pyramids = self.position
             spectra = self.ref_spectra
             # Restore original mode
-            self.load(self.file, pyramids=temp_pyramids)
+            self.load(self.filename, pyramids=temp_pyramids)
         else:
             raise ValueError("No coupling map data to save. Load or create coupling map data first.")
             
@@ -330,8 +341,8 @@ class CouplingMap:
         Returns:
             astropy.io.fits.Header: The header of the FITS file or empty header if none available
         """
-        if self.file is not None:
-            with fits.open(self.file) as hdul:
+        if self.filename is not None:
+            with fits.open(self.filename) as hdul:
                 header = hdul[0].header
             return header
         else:
@@ -339,6 +350,7 @@ class CouplingMap:
             return fits.Header()
 
     def compute_broadband_QR(self, wmin, wmax, spectra):
+        self._check_loaded()
         """
         Compute broadband QR matrices over a wavelength range.
         typically for Nqr=6
@@ -376,6 +388,7 @@ class CouplingMap:
         return QT_broadband, R_broadband
     
     def QT_dot_data(self, index , data):
+        self._check_loaded()
                 
         Nimages = data.shape[2]
         QTdata = np.zeros((self.Nwave,self.Nqr,Nimages))
@@ -386,6 +399,7 @@ class CouplingMap:
         return QTdata
 
     def Q_dot_QTdata(self, index , QTdata):
+        self._check_loaded()
 
         Nimages = QTdata.shape[2]
         data = np.zeros((self.Nwave,self.Noutput,Nimages))
@@ -397,6 +411,7 @@ class CouplingMap:
 
 
     def chi2_filtering(self, datacube_T, ra_dec = None, nx_min=0,nx_max=10000):
+        self._check_loaded()
 
         if ra_dec is None:
             ra_dec = np.zeros((datacube_T.shape[2],*self.position.shape))
@@ -458,6 +473,7 @@ class CouplingMap:
         return star_detected, star_index, star_radec, chi2_images
 
     def get_star_position(self, datacube_T, star_index, Xmod, Ymod):
+        self._check_loaded()
         """
         Estimate star positions from a spectrally resolved data cube using
         QR-based coupling maps.

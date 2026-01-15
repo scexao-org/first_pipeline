@@ -8,46 +8,48 @@ class WaveMap:
     A class to handle wavelength maps for the FIRST Visible Photonic Lantern.
     
     Attributes:
-        file (str): Path to the FITS file containing the wavelength map
+        filename (str): Path to the FITS file containing the wavelength map
         basename (str): Base name of the file
         Nwave (int): Number of wavelength channels
         wave (numpy.ndarray): Wavelength data array
         index (numpy.ndarray): Index data array for interpolation
         weights (numpy.ndarray): Weights data array for interpolation
         wave_label (str): Label for wavelength units
+        is_loaded (bool): Whether the wavelength map data has been loaded
     """
-    def __init__(self, file=None):
+    def __init__(self, filename=None):
 
-        self.file = file
-        self.basename = os.path.basename(file) if file else None
+        self.filename = filename
+        self.basename = os.path.basename(filename) if filename else None
         self.Nwave = None
         self.wave = None
         self.index = None
         self.weights = None
         self.wave_label = "Wavelength (nm)"
+        self.is_loaded = False
         
-        if file is not None:
-            self.load(file)
+        if filename is not None:
+            self.load(filename)
 
-    def load(self, file):
+    def load(self, filename):
         """
         Load the wavelength map from a FITS file.
         
         Args:
-            file (str): Path to the FITS file containing the wavelength map
+            filename (str): Path to the FITS file containing the wavelength map
             
         Raises:
             FileNotFoundError: If the file doesn't exist
             KeyError: If required FITS extensions are missing
         """
-        if not os.path.exists(file):
-            raise FileNotFoundError(f"Wavelength map file not found: {file}")
+        if not os.path.exists(filename):
+            raise FileNotFoundError(f"Wavelength map file not found: {filename}")
             
-        self.file = file
-        self.basename = os.path.basename(file)
+        self.filename = filename
+        self.basename = os.path.basename(filename)
         
         # Read the FITS file
-        with fits.open(file) as hdul:
+        with fits.open(filename) as hdul:
             required_extensions = ['WAVELENGTH', 'INDEX', 'WEIGHT']
             available_extensions = [hdu.name for hdu in hdul]
             missing_extensions = [ext for ext in required_extensions if ext not in available_extensions]
@@ -62,6 +64,8 @@ class WaveMap:
             
         if self.wave is None or self.wave.size == 0:
             raise ValueError("Wavelength map data is empty or invalid")
+        
+        self.is_loaded = True
 
     def create_from_data(self, wave, index, weights, filename=None):
         """
@@ -78,12 +82,19 @@ class WaveMap:
         self.Nwave = wave.shape[0] if wave is not None else None
         
         if filename:
-            self.file = filename
+            self.filename = filename
             self.basename = os.path.basename(filename)
         else:
-            self.file = None
+            self.filename = None
             self.basename = None
+
+        self.is_loaded = True
             
+    def _check_loaded(self):
+        """Check if the wavelength map is properly loaded."""
+        if not self.is_loaded:
+            raise ValueError("Wavelength map not loaded. Use load() or create_from_data() first.")
+    
     def _validate_data(self):
         """
         Validate that the wavelength map data is properly loaded and consistent.
@@ -111,6 +122,7 @@ class WaveMap:
         """
         from datetime import datetime
         
+        self._check_loaded()
         if self.wave is None or self.index is None or self.weights is None:
             raise ValueError("No wavelength map data to save. Load or create wavelength map data first.")
             
@@ -144,6 +156,7 @@ class WaveMap:
         Args:
                 dataCube (DataCube): The data cube to apply the wavelength map to.
         """
+        self._check_loaded()
         data = dataCube.data
         variance = dataCube.variance
         Ncube, Nmod, Noutput, Nwave = data.shape
@@ -170,6 +183,7 @@ class WaveMap:
         """
         if self.wave is None or self.index is None or self.weights is None:
             raise ValueError("No wavelength map data available")
+        self._check_loaded()
         hdu = [fits.ImageHDU(data=self.wave, name='WAVELENGTH')]
         hdu += [fits.ImageHDU(data=self.index, name='INDEX')]
         hdu += [fits.ImageHDU(data=self.weights, name='WEIGHT')]
@@ -182,8 +196,8 @@ class WaveMap:
         Returns:
             astropy.io.fits.Header: The header of the FITS file or empty header if none available
         """
-        if self.file is not None:
-            with fits.open(self.file) as hdul:
+        if self.filename is not None:
+            with fits.open(self.filename) as hdul:
                 header = hdul[0].header
             return header
         else:

@@ -104,7 +104,7 @@ def update_header_date(filelist):
     print("Date updated in all files")
 
 
-def create_output_filename(header):
+def create_basename(header):
     date = header.get('DATE', 'NODATE')
     object = header.get('OBJECT', "NONAME")
     type = header.get('DATA-TYP',None)
