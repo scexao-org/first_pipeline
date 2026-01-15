@@ -290,7 +290,7 @@ class Preproc:
             self.header.get('X_FIRMID', 0) > 1 and 
             len(self.modulation_data['XMOD']) > 9):
             
-            print("toto",self.data.shape)
+            # print("toto",self.data.shape)
             # Recompute cut pixels for coupling map
             fluxes = self.data.mean(axis=(1,2))
             
