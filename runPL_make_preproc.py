@@ -313,7 +313,7 @@ attention before proceeding with scientific analysis.
             dir_files = "/Users/slacour/DATA/LANTERNE/tmp/"
             file_patterns = dir_files + "*.fits"
             file_patterns=["/Users/slacour/DATA/LANTERNE/raw/20251119/firstpl"]
-            file_patterns = ["/Users/slacour/DATA/LANTERNE/raw/20251118/firstpl/"]
+            # file_patterns = ["/Users/slacour/DATA/LANTERNE/raw/20251118/firstpl/"]
         
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"

@@ -108,14 +108,14 @@ def plot_results_of_line_identification(spectrum, ref_pixels_lines, neon_wavelen
     axs[1].plot(p2w(ref_pixels_lines),neon_wavelengths[best_idx], "o", markersize=10, markerfacecolor='none', markeredgecolor='g', markeredgewidth=2)
     axs[1].plot(p2w(ref_pixels_lines)[best_valid_idx],neon_wavelengths[best_idx][best_valid_idx], "o", markersize=10, markerfacecolor='none', markeredgecolor='r', markeredgewidth=2)
     axs[1].set_title("Wavelengths for each peak")
-    axs[1].set_xlabel("Pixel")
+    axs[1].set_xlabel("Wavelength (nm)")
     axs[1].set_ylabel("Wavelength (nm)")
 
     axs[2].plot(wave,wave-wave,'k')
     # axs[2].plot(p2w(ref_pixels_lines),p2w(ref_pixels_lines)-neon_wavelengths[best_idx], "o", markersize=10, markerfacecolor='none', markeredgecolor='g', markeredgewidth=2)
     axs[2].plot(p2w(ref_pixels_lines)[best_valid_idx],p2w(ref_pixels_lines)[best_valid_idx]-neon_wavelengths[best_idx][best_valid_idx], "o", markersize=10, markerfacecolor='none', markeredgecolor='r', markeredgewidth=2)
     axs[2].set_title("Wavelengths error for each peak")
-    axs[2].set_xlabel("Pixel")
+    axs[2].set_xlabel("Wavelength (nm)")
     axs[2].set_ylabel("Wavelength error (nm)")
     plt.tight_layout()
 

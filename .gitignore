@@ -172,3 +172,6 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+.DS_Store
+flat_analysis_firstpl_2026-01-14T20h56m24s_DAY_P.fits_output10_zoom.pdf
+flat_analysis_firstpl_2026-01-14T20h56m24s_DAY_P.fits_output10.pdf

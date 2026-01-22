@@ -241,7 +241,8 @@ any systematic issues with SuperK illumination or detector response.
             file_patterns = "/Users/slacour/DATA/LANTERNE/20251125/preproc"
             file_patterns = "/Users/slacour/DATA/LANTERNE/20251231/preproc/firstpl_2025-12-31T00?3*fits"
             # dark_patterns = "/Users/slacour/DATA/LANTERNE/20251231/preproc/firstpl_*fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20251231/preproc"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/test_flat/preproc"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250613/preproc/*T21*s"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
@@ -265,13 +266,67 @@ any systematic issues with SuperK illumination or detector response.
 
     flat_full, flat_individual = compute_flat(datalist, Nflat_smooth)
 
+# #%%
+
+# filenumber = 8
+# basename = datalist[filenumber].basename
+
+# flats=np.array([np.nansum(d.data,axis=(0)) for d in datalist[6:12]])    
+# valid_mask = ~np.isnan(flats[:,0,0,0])
+# flats = flats[valid_mask]
+
+# # variance=np.array([np.nansum(d.variance,axis=(0,1)) for d in datalist])
+# # variance = variance[valid_mask]
+
+# flats_smooth = np.zeros_like(flats)
+# window = np.hanning(Nflat_smooth)
+# window[Nflat_smooth//2] = 0.0
+# window /= window.sum()
+# conv_ref = np.convolve(np.ones(len(flats[0,0,0])), window, mode='same')
+
+# for f in range(flats_smooth.shape[0]):
+#     for o in range(flats_smooth.shape[1]):
+#         for k in range(flats_smooth.shape[2]):
+#             flats_smooth[f, o, k, :] =  np.convolve(flats[f, o, k, :], window, mode='same') / conv_ref
+
+# flat_i = flats/flats_smooth
+# flat_f=flats.sum(axis=(0,1))/flats_smooth.sum(axis=(0,1))
+
+# # Create figure with flats[2,:,10] and flat_individual
+# fig, (ax1, ax2) = plt.subplots(2, 1, num=10, figsize=(12, 8), sharex=True, sharey=True,clear=True)
+
+# fig.suptitle(f'Flat Field Analysis for files {datalist[6].basename}')
+# # Upper plot: imshow of flats[2,:,10]
+# im1 = ax1.imshow(flats[2,:,10], origin='lower', aspect='auto', interpolation='none')
+# ax1.set_title('Output 10 - Raw flat field data')
+# ax1.set_xlabel('X pixel')
+# ax1.set_ylabel('Modulation Step (over 10mas)')
+# plt.colorbar(im1, ax=ax1)
+
+# # Lower plot: imshow of flat_individual
+# im2 = ax2.imshow(flat_i[2,:,10], origin='lower', aspect='auto', interpolation='none',vmax=1.1, vmin=0.9)
+# ax2.set_title('Output 10 - Normalized flat field')
+# ax2.set_xlabel('X pixel') 
+# ax2.set_ylabel('Modulation Step (over 10mas)')
+# plt.colorbar(im2, ax=ax2)
+
+# plt.tight_layout()
+# flat_f=flats.sum(axis=(0,1))/flats_smooth.sum(axis=(0,1))
+# fig.savefig(f'flat_analysis_{basename}_output10_zoom.pdf')
+
+
+
+
+# #%%
+
+
     fig=plt.figure("Flat Field Computation",clear=True,figsize=(18,6))
     plt.plot(flat_full.T+np.arange(flat_full.shape[0])*0.1)
     plt.xlim((0,len(flat_full.T)))
     plt.ylim((0.85,1.15+len(flat_full)*0.1))
     plt.title(fig.get_label())
     plt.xlabel("x pixel")
-    plt.ylabel("gain _ output * 5%")
+    plt.ylabel("gain _ output * 10%")
     plt.tight_layout()
     Noutput = len(flat_full)
     for o in range(Noutput):
