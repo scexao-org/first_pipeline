@@ -2,7 +2,6 @@ from astropy.io import fits
 import numpy as np
 import os
 from typing import Optional, Tuple, List
-from numpy.typing import NDArray
 
 class PixelMap:
     """
@@ -85,7 +84,7 @@ class PixelMap:
         if not self.is_loaded:
             raise ValueError("Pixel map not loaded. Use load() or create_from_data() first.")
 
-    def create_from_data(self, traces_loc: NDArray[np.integer], edge_coef: NDArray[np.floating], pixel_min: int, pixel_max: int, pixel_wide: int, output_channels: int, pm_check: Optional[int] = None, filename: Optional[str] = None) -> None:
+    def create_from_data(self, traces_loc: np.ndarray, edge_coef: np.ndarray, pixel_min: int, pixel_max: int, pixel_wide: int, output_channels: int, pm_check: Optional[int] = None, filename: Optional[str] = None) -> None:
         """
         Create a pixel map from data arrays and parameters.
         Args:
@@ -228,7 +227,7 @@ class PixelMap:
             # Return empty header if no file is loaded
             return fits.Header()
 
-    def preprocess_cutData(self, data: NDArray[np.integer], dark_calculation: bool = False) -> Tuple[NDArray[np.uint16], NDArray[np.uint16], NDArray[np.floating]]:
+    def preprocess_cutData(self, data: np.ndarray, dark_calculation: bool = False) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Preprocesses and extracts specific pixel data from the input data array based on the pixel map.
         """
