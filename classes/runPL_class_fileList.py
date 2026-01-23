@@ -350,6 +350,7 @@ class FileList:
             print(f"Files with pixelMap: {files_with_pixelmap} ({files_with_pixelmap/total_files*100:.1f}%)")
         if darks_pattern is not None and pixelMap is not None:
             print(f"Files with both dark and pixelMap: {files_with_both} ({files_with_both/total_files*100:.1f}%)")
+        print(f"\n")
 
         return self.files_with_associated_files
 
@@ -398,8 +399,8 @@ class FileList:
                     data_dark_std=data_dark.std(axis=0)
             else:
                 # using default values if we do not know the dark
-                data_dark=header["DETBIAS"]*(1+2*header["PIX_WIDE"])
-                data_dark_std=12*np.sqrt(1+2*header["PIX_WIDE"])
+                data_dark=header["DETBIAS"]*(2+2*header["PIX_WIDE"])
+                data_dark_std=12*np.sqrt(2+2*header["PIX_WIDE"])
 
             data-=data_dark
             gain=header['GAIN']

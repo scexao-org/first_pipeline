@@ -30,6 +30,7 @@ class Preproc:
         self.basename = os.path.basename(filename) if filename else None
         self.data = None
         self.header = None
+        self.modulation_hdu = None
         self.modulation_data = None
         self.quality_metrics = {}
         self.pixel_map_info = {}
@@ -63,10 +64,17 @@ class Preproc:
             
             # Load modulation data if present
             if 'MODULATION' in [hdu.name for hdu in hdul]:
-                self.modulation_data = hdul['MODULATION'].data
-            else:
-                self.modulation_data = None
+                self.modulation_hdu = hdul['MODULATION'].copy()
+            else:   
+                self.modulation_hdu = None
                 
+        self.modulation_data = None
+        # Handle modulation data
+        if self.modulation_hdu is not None:
+            self.modulation_data = self.modulation_hdu.data
+            self.header['MOD_LEN'] = self.modulation_hdu.header['NAXIS2']
+
+
         # Extract quality metrics from header
         self._extract_quality_metrics()
         
@@ -104,7 +112,7 @@ class Preproc:
             if key.startswith('P_PM'):
                 self.pixel_map_info[key] = self.header[key]
 
-    def create_from_raw(self, raw_file, pixelMap, output_dir=None):
+    def create_from_raw(self, raw_file, pixelMap, output_dir=None, check_if_exist= True):
         """
         Create preprocessed data from a raw FITS file using a pixel map.
         
@@ -112,9 +120,11 @@ class Preproc:
             raw_file (str): Path to the raw FITS file
             pixelMap (PixelMap): PixelMap object
             output_dir (str, optional): Output directory for preprocessed file
+            check_if_exist (bool, optional): Whether to check if the preprocessed file already exists and skip processing if so. Default is True.
+
             
         Returns:
-            True or False: 
+            bool: True if preprocessing was successful, False otherwise
         """
         # Load pixel map
         # Verify pixelMap is of correct class
@@ -129,9 +139,8 @@ class Preproc:
             raw_header = hdul[0].header.copy()
         
             # Check for modulation data
-            modulation_hdu = None
             if 'MODULATION' in [hdu.name for hdu in hdul]:
-                modulation_hdu = hdul['MODULATION']
+                self.modulation_hdu = hdul['MODULATION'].copy()
         
             # Set up Subaru observer for day/night detection
             subaru = Observer.at_site("Subaru")
@@ -154,12 +163,13 @@ class Preproc:
             self.basename = runlib_io.create_basename(self.header)
             self.filename = os.path.join(output_dir, self.basename)
             
-            # Check if file already exists with same PM_CHECK
-            if self._should_skip_processing(self.filename, pixelMap.pm_check, modulation_hdu):
-                print(f"Skipping {raw_file} - already processed with same pixel map")
-                return False
+            if check_if_exist:              
+                # Check if file already exists with same PM_CHECK
+                if self._should_skip_processing(self.filename, pixelMap.pm_check, self.modulation_hdu):
+                    print(f"Skipping {raw_file} - already processed with same pixel map")
+                    return False
             
-            if (modulation_hdu is None) & (self.header.get('X_FIRMID', 0) > 1):
+            if (self.modulation_hdu is None) & (self.header.get('X_FIRMID', 0) > 1):
                 print(f"Skipping {raw_file} without modulation data...")
                 return False
                 
@@ -181,9 +191,9 @@ class Preproc:
             self._add_pixel_map_info_to_header(pixelMap)
             
             # Handle modulation data
-            if modulation_hdu is not None:
-                self.modulation_data = modulation_hdu.data
-                self.header['MOD_LEN'] = modulation_hdu.header['NAXIS2']
+            if self.modulation_hdu is not None:
+                self.modulation_data = self.modulation_hdu.data
+                self.header['MOD_LEN'] = self.modulation_hdu.header['NAXIS2']
 
             self.is_loaded = True
         
@@ -196,6 +206,7 @@ class Preproc:
         header['X_FIRTYP'] = "PREPROC"
         header['X_FIRWOL'] = raw_header.get('X_FIRWOL', 'OUT')
         header['X_FIRMID'] = int(raw_header['X_FIRMID'])  # for old data reduction
+        header['PM_CHECK'] = pixelMap.pm_check
 
         # Add processing timestamp
         current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
@@ -227,10 +238,10 @@ class Preproc:
                 
         return True
 
-    def _process_raw_data(self, raw_data, pixelMap):
+    def _process_raw_data(self, raw_data, pixelMap: PixelMap):
         """Process raw data using the pixel map."""
         # Extract data using pixel map
-        data_cut_pixels, data_dark_pixels = pixelMap.preprocess_cutData(raw_data, True)
+        data_cut_pixels, data_dark_pixels, data_edge_pixels = pixelMap.preprocess_cutData(raw_data, True)
         
         # Calculate background statistics
         perc_background = np.percentile(data_dark_pixels.ravel(), [50-34.1, 50, 50+34.1], axis=0)
@@ -238,6 +249,9 @@ class Preproc:
         
         # Sum the cut data
         data_cut = np.sum(data_cut_pixels, axis=-1, dtype='uint32')
+
+        # add edge pixel
+        data_cut += data_edge_pixels.astype('uint32')
         
         # Calculate quality metrics
         flux_mean = np.mean(data_cut, axis=(0,1,2)) - perc_background[1] * (pixelMap.pixel_wide * 2 + 1)
@@ -334,9 +348,8 @@ class Preproc:
         hdu_list = [primary_hdu]
         
         # Add modulation data if available
-        if self.modulation_data is not None:
-            modulation_hdu = fits.BinTableHDU(data=self.modulation_data, name='MODULATION')
-            hdu_list.append(modulation_hdu)
+        if self.modulation_hdu is not None:
+            hdu_list.append(self.modulation_hdu)
         
         # Create HDU list
         hdul = fits.HDUList(hdu_list)

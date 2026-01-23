@@ -204,6 +204,7 @@ def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist
         raise ValueError("Too many runs, no solution found. Verify your pixelmap or run with --filter_files True.")
 
     traces_loc= np.ones([pixel_length,output_channels],dtype=int)
+    traces_loc_double= np.ones([pixel_length,output_channels],dtype=float)
 
     x_found=[]
     y_found=[]
@@ -256,7 +257,8 @@ def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist
             y_with_none = [yi if inlier else None for yi, inlier in zip(y, inliers)]
 
         # We stop considering solo pixels and consider the 1D polyfit to trace over all of them.
-        traces_loc[:,i] = np.polyval(poly_coeffs, np.arange(pixel_length))+0.5
+        traces_loc_double[:,i] = np.polyval(poly_coeffs, np.arange(pixel_length))+0.5
+        traces_loc[:,i] = traces_loc_double[:,i]
         # x is a list of all the pixels/wavelength at which 38 peaks were detected
         # y the corresponding positions of each peak/mode
         x_found += [x]
@@ -268,7 +270,7 @@ def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist
     imshow(raw_image, aspect='auto', origin='lower', cmap='viridis',vmax = 1e6)
     plot(traces_loc, '-', linewidth=2.5)
 
-    return traces_loc, x_found,y_found, x_none, y_none
+    return traces_loc, traces_loc_double, x_found,y_found, x_none, y_none
 
 
 def checking_wavelength_aligment_in_modes(x_none, y_none):
@@ -297,7 +299,7 @@ def checking_wavelength_aligment_in_modes(x_none, y_none):
     plt.show()
     print("buffer")
 
-def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder):
+def save_fits_and_png(raw_image,traces_loc, traces_loc_double, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder):
 
     # Import PixelMap class
     from classes.runPL_class_pixelMap import PixelMap
@@ -307,12 +309,16 @@ def save_fits_and_png(raw_image,traces_loc, header, x_found,y_found, pixel_min, 
         print("Warning: traces_loc is None, creating empty pixelmap data for output")
         # Create a dummy array with the same shape as the raw image
         traces_loc_data = np.zeros((raw_image.shape[1], output_channels), dtype=int)
+        edge_coef = None
     else:
         traces_loc_data = traces_loc.copy()
+        edge_coef = (traces_loc_double-traces_loc-0.5)
 
     # Create PixelMap object and save using the new save method
     pixelMap = PixelMap()
-    pixelMap.create_from_data(traces_loc_data, pixel_min, pixel_max, pixel_wide, output_channels)
+    pixelMap.create_from_data(traces_loc_data, edge_coef, pixel_min, pixel_max, pixel_wide, output_channels)
+
+
     
     # Prepare header with additional information
     save_header = header.copy()
@@ -572,12 +578,12 @@ varying observation conditions.
 
         raw_image, header = raw_image_clean(fileList.filelist)
         try:
-            traces_loc, x_found,y_found, x_none, y_none = generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, fileList.filelist)
+            traces_loc, traces_loc_double, x_found,y_found, x_none, y_none = generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, fileList.filelist)
         except Exception as e:
             print(f"Error occurred while generating pixelmap: {e}")
-            traces_loc, x_found,y_found, x_none, y_none = None, None, None, None, None
+            traces_loc, traces_loc_double , x_found,y_found, x_none, y_none = None, None, None, None, None, None
         
         folder = fileList.get_most_common_dir()
-        save_fits_and_png(raw_image, traces_loc, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder)
+        save_fits_and_png(raw_image, traces_loc, traces_loc_double, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder)
 
 # %%

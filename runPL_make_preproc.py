@@ -96,7 +96,7 @@ Notes:
 
 
 
-def preprocess(fileList, plot_sum=False):
+def preprocess(fileList, overwrite , plot_sum=False):
     """
     Preprocesses raw FITS files using provided pixel map(s), extracts and aggregates spectral
     traces, computes basic quality-control metrics, and writes preprocessed FITS files and
@@ -139,11 +139,12 @@ def preprocess(fileList, plot_sum=False):
 
         pixelmap = PixelMap(pixelmap_file)
             
-        try:
+        # try:
+        if True:
             # Create Preproc instance and process the file
             preproc = Preproc()
             
-            preproc_created = preproc.create_from_raw(file, pixelmap, output_dir)
+            preproc_created = preproc.create_from_raw(file, pixelmap, output_dir, check_if_exist=not overwrite)
             
             if preproc_created:
 
@@ -156,9 +157,9 @@ def preprocess(fileList, plot_sum=False):
                 # Save the preprocessed file
                 preproc.save()
 
-        except Exception as e:
-            print(f"Error processing {file}: {e}")
-            continue
+        # except Exception as e:
+        #     print(f"Error processing {file}: {e}")
+        #     continue
     
     if len(files_out) == 0:
         print(f"No files to process in {dir_path_0}.")
@@ -296,6 +297,8 @@ attention before proceeding with scientific analysis.
                        help="Specify the OBJECT name of data to reduced based on the FITS header")
     parser.add_argument("--only_with_modulation", action="store_true",
                        help="Also preprocess files that do not have a MODULATION extension in the FITS file.")
+    parser.add_argument("--overwrite", action="store_true",
+                       help="Overwrite existing preprocessed files if they exist.")
     
     # Initialize default values
     args = parser.parse_args()
@@ -303,6 +306,7 @@ attention before proceeding with scientific analysis.
     pixel_map = args.pixel_map
     object = args.object
     only_with_modulation = args.only_with_modulation
+    overwrite = args.overwrite
 
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
         os.environ.get('SPYDER_DEBUG_FILE')):
@@ -330,10 +334,10 @@ attention before proceeding with scientific analysis.
     
     fileList.make_association(pixelMap=pixel_map)
 
-
     print(f"Found {len(fileList.filelist)} files to process in {file_patterns}")
     
-    preprocess(fileList)
+    print ( "Overwrite existing already preprocessed files: ", overwrite)
+    preprocess(fileList, overwrite=overwrite, plot_sum=True)
     
 
 # %%
