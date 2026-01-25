@@ -242,7 +242,10 @@ any systematic issues with SuperK illumination or detector response.
             file_patterns = "/Users/slacour/DATA/LANTERNE/20251231/preproc/firstpl_2025-12-31T00?3*fits"
             # dark_patterns = "/Users/slacour/DATA/LANTERNE/20251231/preproc/firstpl_*fits"
             file_patterns = "/Users/slacour/DATA/LANTERNE/test_flat/preproc"
-            # file_patterns = "/Users/slacour/DATA/LANTERNE/20250613/preproc/*T21*s"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/raw/20260114/preproc"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/raw/20260114/preproc_noedge"
+            override_flat_keyword = True
+
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
@@ -268,10 +271,10 @@ any systematic issues with SuperK illumination or detector response.
 
 # #%%
 
-# filenumber = 8
+# filenumber = 6
 # basename = datalist[filenumber].basename
 
-# flats=np.array([np.nansum(d.data,axis=(0)) for d in datalist[6:12]])    
+# flats=np.array([np.nansum(d.data,axis=(0)) for d in datalist[2:4]])    
 # valid_mask = ~np.isnan(flats[:,0,0,0])
 # flats = flats[valid_mask]
 
@@ -297,14 +300,14 @@ any systematic issues with SuperK illumination or detector response.
 
 # fig.suptitle(f'Flat Field Analysis for files {datalist[6].basename}')
 # # Upper plot: imshow of flats[2,:,10]
-# im1 = ax1.imshow(flats[2,:,10], origin='lower', aspect='auto', interpolation='none')
+# im1 = ax1.imshow(flats[0,:,10], origin='lower', aspect='auto', interpolation='none')
 # ax1.set_title('Output 10 - Raw flat field data')
 # ax1.set_xlabel('X pixel')
 # ax1.set_ylabel('Modulation Step (over 10mas)')
 # plt.colorbar(im1, ax=ax1)
 
 # # Lower plot: imshow of flat_individual
-# im2 = ax2.imshow(flat_i[2,:,10], origin='lower', aspect='auto', interpolation='none',vmax=1.1, vmin=0.9)
+# im2 = ax2.imshow(flat_i[0,:,10], origin='lower', aspect='auto', interpolation='none',vmax=1.1, vmin=0.9)
 # ax2.set_title('Output 10 - Normalized flat field')
 # ax2.set_xlabel('X pixel') 
 # ax2.set_ylabel('Modulation Step (over 10mas)')
@@ -313,6 +316,7 @@ any systematic issues with SuperK illumination or detector response.
 # plt.tight_layout()
 # flat_f=flats.sum(axis=(0,1))/flats_smooth.sum(axis=(0,1))
 # fig.savefig(f'flat_analysis_{basename}_output10_zoom.pdf')
+
 
 
 
