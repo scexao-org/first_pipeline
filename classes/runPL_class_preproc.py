@@ -140,7 +140,8 @@ class Preproc:
         
             # Check for modulation data
             if 'MODULATION' in [hdu.name for hdu in hdul]:
-                self.modulation_hdu = hdul['MODULATION'].copy()
+                if raw_header.get('X_FIRMID', 0) > 0:
+                    self.modulation_hdu = hdul['MODULATION'].copy()
         
             # Set up Subaru observer for day/night detection
             subaru = Observer.at_site("Subaru")
