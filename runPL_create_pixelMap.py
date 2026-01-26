@@ -563,13 +563,17 @@ varying observation conditions.
     if not set(wollastons).issubset(valid_wollastons):
         invalid_wollastons = set(wollastons) - valid_wollastons
         unknown_files = [f for f in filelist if fits.getheader(f).get('X_FIRWOL', 'UNKNOWN') == 'UNKNOWN']
-        raise ValueError(f"Found {len(unknown_files)} files with UNKNOWN wollaston status. Update manually wollaston status with runPL_changeKeyword.py")
+        print(f"Found {len(unknown_files)} files with UNKNOWN wollaston status. Update manually wollaston status with runPL_changeKeyword.py")
 
-    for wollaston in wollastons:
+    for wollaston in ['IN', 'OUT']:
         print(f"Processing files with wollaston status: {wollaston}")
         # Filter files based on wollaston status
 
-        fileList = FileList(file_patterns, first_type='RAW', wollaston=wollaston)
+        try:
+            fileList = FileList(file_patterns, first_type='RAW', wollaston=wollaston)
+        except Exception as e:
+            print(f"Error occurred while creating FileList for wollaston status {wollaston}:\n {e}")
+            continue
 
         if wollaston == 'IN':
             output_channels = 38
