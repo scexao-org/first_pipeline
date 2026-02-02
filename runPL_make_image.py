@@ -361,6 +361,12 @@ Optimize smoothing and modulation parameters for best results with your data.
 
             cmap_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-07-14/preproc/couplingmaps/firstpl_2025-07-14T13:29:43_VEGA_CM.fits"
             
+            
+            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/20250808/preproc/firstpl_2025-08-08T07:19:*_HIP84212*"
+            # file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/20250808/preproc/firstpl_2025-08-08T07:03:18_HIP84212_P*"
+            # file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/20250808/preproc/firstpl_2025-08-08T07:02:08_HIP84212_P*"
+            cmap_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/20250808/couplingmaps/CP-3-40_01/firstpl_2025-08-08T07h23m00s_HIP84212_CM.fits"
+            
         file_patterns = [file_patterns] if isinstance(file_patterns, str) else file_patterns
         cmap_patterns = [cmap_patterns] if isinstance(cmap_patterns, str) else cmap_patterns
 
@@ -386,7 +392,7 @@ Optimize smoothing and modulation parameters for best results with your data.
     # reading all the calibration files that should be appended to the cmap files (including wavelength and flat)
     print("Coupling map patterns: ", cmap_patterns)
     file_coup = fileList.get_couplingmap_file(cmap_patterns)
-    couplingMap = CouplingMap(file_coup,pyramids = False)
+    couplingMap = CouplingMap(file_coup,pyramids = True)
 
     # Get all extension names from the coupling map file
     with fits.open(file_coup) as hdul:
@@ -437,6 +443,7 @@ Optimize smoothing and modulation parameters for best results with your data.
         star_detected, star_index, star_radec, chi2 = couplingMap.chi2_filtering(datacube_T, ra_dec)
         print(f"* Percentage of data with star detected: {np.sum(star_detected)/len(star_detected)*100:.1f} % (flux, svd and chi2 threshold)")
 
+        ### >> Comment from here -->
         ### Computing the XY star position
         Xpos, Ypos, Xcen, Ycen, Xdiff, Ydiff = couplingMap.get_star_position(datacube_T, 
                                                                              star_index, 
@@ -446,8 +453,10 @@ Optimize smoothing and modulation parameters for best results with your data.
         ### Comuting the new ra_dec table, corrected from jitter
         x_sky = Xpos[:,None] - couplingMap.position[:,0]
         y_sky = Ypos[:,None] - couplingMap.position[:,1]
-        ra_dec = d.project_offsets(x_sky[None],y_sky[None])
+        ra_dec = d.project_offsets(x_sky.reshape((Ncube,-1,x_sky.shape[1])),
+                                   y_sky.reshape((Ncube,-1,y_sky.shape[1])))
         ra_dec = ra_dec.reshape((-1, *ra_dec.shape[2:]))
+        ### --> to there, to remove jitter correction <<
 
 
         residuals = datacube_T.copy()
