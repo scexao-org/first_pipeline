@@ -620,6 +620,10 @@ Optimize smoothing and modulation parameters for best results with your data.
         plt.savefig(png_filename, dpi=150)
         print(f"PNG image saved to {png_filename}")
         # plt.close(fig)
+        
+        plt.figure(num="XY position -- using "+cmap_style)
+        png2_filename = os.path.join(output_dir, os.path.splitext(runlib_io.create_basename(header))[0]+'_XYpos.png')
+        plt.savefig(png2_filename, dpi=150)
 
 
 #         # Plot contrast vs separation
