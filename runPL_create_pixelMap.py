@@ -581,6 +581,19 @@ varying observation conditions.
             output_channels = 19
 
         raw_image, header = raw_image_clean(fileList.filelist)
+
+        ny,nx = raw_image.shape
+        # Validate and adjust pixel_min and pixel_max to be within bounds
+        if pixel_min < 0:
+            print(f"Warning: pixel_min ({pixel_min}) is below 0, setting to 0")
+            pixel_min = 0
+        if pixel_max >= nx:
+            print(f"Warning: pixel_max ({pixel_max}) is >= image width ({nx}), setting to {nx-1}")
+            pixel_max = nx - 1
+        if pixel_min >= pixel_max:
+            print(f"Warning: pixel_min ({pixel_min}) >= pixel_max ({pixel_max}), adjusting to maintain valid range")
+            pixel_min = max(0, pixel_max - 100)  # Ensure at least 100 pixel range
+
         try:
             traces_loc, traces_loc_double, x_found,y_found, x_none, y_none = generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, fileList.filelist)
         except Exception as e:
