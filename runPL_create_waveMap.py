@@ -27,6 +27,11 @@ from scipy.signal import find_peaks
 import itertools
 import warnings
 
+try:
+    RankWarning = np.exceptions.RankWarning  # numpy >=2
+except AttributeError:
+    RankWarning = np.RankWarning            # numpy <2
+
 import getpass
 import matplotlib
 if "VSCODE_PID" in os.environ:
@@ -335,7 +340,7 @@ def calculate_the_pixel_to_wavelength_mapping(ref_pixels_lines, neon_wavelengths
             x = neon_wavelengths[idx]
             y = ref_pixels_lines
             with warnings.catch_warnings():
-                warnings.simplefilter('ignore', np.exceptions.RankWarning)
+                warnings.simplefilter('ignore', RankWarning)
                 coeffs_poly = np.polyfit(x[~duplicate_mask], y[~duplicate_mask], 2)
             p2w = np.poly1d(coeffs_poly)
             residuals = y - p2w(x)
@@ -485,7 +490,7 @@ Review diagnostic plots to ensure proper line detection and fitting.
             file_patterns = ["/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"]
             file_patterns = ["/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"]
         if getpass.getuser() == "ehuby":
-            file_patterns = ["/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"]
+            file_patterns = ["/home/ehuby/WORK/DATA/FIRST-PL/20251231/preproc/"]
         file_patterns = [file_patterns] if isinstance(file_patterns, str) else file_patterns
 
 
