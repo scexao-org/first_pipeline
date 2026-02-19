@@ -1,5 +1,5 @@
-#! /usr/bin/env python3
-# -*- coding: iso-8859-15 -*-
+#%%
+
 """
 FIRST Pipeline - Wavelength Map Generation Core Algorithms
 
@@ -11,6 +11,13 @@ Created on Wed May 21 22:56:25 2025
 """
 
 import os
+import getpass
+import matplotlib
+if "VSCODE_PID" in os.environ:
+    matplotlib.use('Qt5Agg')
+else:
+    matplotlib.use('Agg')
+
 import numpy as np
 from typing import List, Tuple
 from scipy.signal import find_peaks
@@ -497,7 +504,7 @@ def create_coefficients_plot(coef_1d, coef_2d):
     return fig
 
 
-def process_wavelength_map_data(file_patterns=None, dark_patterns=None, flat_patterns=None,
+def run_createWaveMap(file_patterns=None, dark_patterns=None, flat_patterns=None,
                                wollaston=None, Nexclude=None):
     """
     Complete workflow for wavelength map generation from Neon calibration data.
@@ -528,6 +535,7 @@ def process_wavelength_map_data(file_patterns=None, dark_patterns=None, flat_pat
         - 'coef_2d': 2D aberration coefficients
         - 'figures': list of diagnostic figures
     """
+
     # Set up file patterns
     if dark_patterns is None:
         dark_patterns = file_patterns
@@ -601,22 +609,29 @@ if __name__ == "__main__":
     """
     print("Running createWaveMap core with development defaults...")
     
-    # Get development defaults first
-    defaults = get_development_defaults()
-    
-    # Run wavelength map processing with defaults
-    try:
-        result = process_wavelength_map_data()
+
+    if getpass.getuser() == "slacour":
+        dark_patterns = None
+        flat_patterns = None
+        wollaston = None
+        Nexclude = 5
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/raw/20260114/preproc/"]
         
-        print(f"Wavelength map creation completed successfully!")
-        print(f"Output file: {result['output_filename']}")
-        print(f"1D polynomial coefficients: {result['coef_1d']}")
-        print(f"2D polynomial coefficients shape: {result['coef_2d'].shape}")
-        
-    except Exception as e:
-        print(f"Error running wavelength map creation: {e}")
-        print("This may be due to missing Neon calibration data files in default paths")
-        
-        # Show default paths being used
-        print(f"Default file patterns: {defaults['file_patterns']}")
-        print("Note: Requires preprocessed files with DATA-TYP=COMPARAISON (Neon data)")
+        print(f"Development override: dark_patterns={dark_patterns}, flat_patterns={flat_patterns}, wollaston={wollaston}, Nexclude={Nexclude}")
+        print(f"Development file patterns: {file_patterns}")
+
+    # Process wavelength map data
+    result = run_createWaveMap(
+        file_patterns=file_patterns,
+        dark_patterns=dark_patterns,
+        flat_patterns=flat_patterns,
+        wollaston=wollaston,
+        Nexclude=Nexclude
+    )
+
+    print(f"Wavelength map created successfully: {result['output_filename']}")
+    print(f"1D coefficients: {result['coef_1d']}")
+    print(f"2D coefficients: {result['coef_2d']}")
+
+
+# %%

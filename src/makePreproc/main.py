@@ -133,7 +133,7 @@ attention before proceeding with scientific analysis.
     only_with_modulation = args.only_with_modulation
     overwrite = args.overwrite
 
-    from .core import run_preprocess
+    from .run_makePreproc import run_preprocess
 
     # Process files
     processed_files = run_preprocess(

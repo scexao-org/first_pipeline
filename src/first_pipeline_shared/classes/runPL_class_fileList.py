@@ -3,9 +3,9 @@ import numpy as np
 from astropy.io import fits
 from glob import glob
 from datetime import datetime
-from classes.runPL_class_dataCube import DataCube
-from classes.runPL_class_flatMap import FlatMap
-from classes.runPL_class_waveMap import WaveMap
+from .runPL_class_dataCube import DataCube
+from .runPL_class_flatMap import FlatMap
+from .runPL_class_waveMap import WaveMap
 
 def clean_filelist(fits_keywords, filelist):
     filelist_cleaned = []

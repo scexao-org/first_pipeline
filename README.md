@@ -38,35 +38,35 @@ first_pipeline/
     ├── changeKeyword/            # FITS keyword modification module
     │   ├── __init__.py
     │   ├── main.py              # CLI interface with argparse
-    │   └── core.py              # Core algorithms & development defaults
+    │   └── run_changeKeyword.py # Core algorithms & development defaults
     ├── createPixelMap/           # Pixel mapping module
     │   ├── __init__.py
     │   ├── main.py              # CLI interface with argparse
-    │   └── core.py              # Core algorithms & development defaults
+    │   └── run_createPixelMap.py # Core algorithms & development defaults
     ├── makePreproc/              # Data preprocessing module
     │   ├── __init__.py
     │   ├── main.py              # CLI interface with argparse
-    │   └── core.py              # Core algorithms & development defaults
+    │   └── run_makePreproc.py   # Core algorithms & development defaults
     ├── createFlatMap/            # Flat field mapping module
     │   ├── __init__.py
     │   ├── main.py              # CLI interface with argparse
-    │   └── core.py              # Core algorithms & development defaults
+    │   └── run_createFlatMap.py # Core algorithms & development defaults
     ├── createWaveMap/            # Wavelength mapping module
     │   ├── __init__.py
     │   ├── main.py              # CLI interface with argparse
-    │   └── core.py              # Core algorithms & development defaults
+    │   └── run_createWaveMap.py # Core algorithms & development defaults
     ├── createCouplingMap/        # Coupling efficiency mapping module
     │   ├── __init__.py
     │   ├── main.py              # CLI interface with argparse
-    │   └── core.py              # Core algorithms & development defaults
+    │   └── run_createCouplingMap.py # Core algorithms & development defaults
     ├── makeImage/                # Image reconstruction module
     │   ├── __init__.py
     │   ├── main.py              # CLI interface with argparse
-    │   └── core.py              # Core algorithms & development defaults
+    │   └── run_makeImage.py     # Core algorithms & development defaults
     └── makeAstrometry/           # Astrometric processing module
         ├── __init__.py
         ├── main.py              # CLI interface with argparse
-        └── core.py              # Core algorithms & development defaults
+        └── run_makeAstrometry.py # Core algorithms & development defaults
 ```
 
 ### Core/CLI Separation Benefits
@@ -89,14 +89,14 @@ runPL_make_preproc --object="HD 164461" /path/to/files*.fits
 runPL_create_couplingMap --wavelength_smooth=7 *.fits
 ```
 
-**Interactive Usage** (via `core.py`):
+**Interactive Usage** (via `run_*.py` modules):
 ```python
-# Import core functions directly
-from first_pipeline.src.makePreproc.core import process_with_monitoring
-from first_pipeline.src.createCouplingMap.core import process_coupling_map_data
+# Import functions directly from run_* modules
+from first_pipeline.src.makePreproc.run_makePreproc import run_preprocess
+from first_pipeline.src.createCouplingMap.run_createCouplingMap import process_coupling_map_data
 
 # Use with your own parameters
-results = process_with_monitoring(
+results = run_preprocess(
     file_patterns=["/path/to/data/*.fits"],
     pixel_map="/path/to/pixel_map.fits"
 )
@@ -105,9 +105,14 @@ results = process_with_monitoring(
 results = process_coupling_map_data()  # Uses defaults for your user automatically!
 ```
 
-### Development Defaults System
+### Autonomous Development Defaults System
 
-The pipeline automatically detects when running in development environments (VS Code, Spyder, Jupyter) and uses user-specific default parameters:
+Each `run_*.py` module contains user-specific development defaults that are automatically applied to:
+- **VS Code** with Python extension
+- **Spyder** IDE
+- **Jupyter** notebooks
+
+The pipeline auto-detects your username and loads corresponding default paths:
 
 ```python
 # Development defaults are automatically applied based on user:
@@ -115,8 +120,8 @@ The pipeline automatically detects when running in development environments (VS 
 # - jsarrazin: Uses /home/jsarrazin/Bureau/PLDATA/... paths  
 # - ehuby: Uses /home/ehuby/WORK/DATA/FIRST-PL/... paths
 
-# No parameters needed in development mode
-from first_pipeline.src.createPixelMap.core import run_createPixelMap
+# No parameters needed - functions work autonomously with defaults
+from first_pipeline.src.createPixelMap.run_createPixelMap import run_createPixelMap
 result = run_createPixelMap()  # Automatically uses your user's default paths!
 
 # You can still override any parameter as needed
@@ -125,9 +130,22 @@ result = run_createPixelMap(
     pixel_max=1600,
     file_patterns=["/custom/path/*.fits"]
 )
+
+# Each script can also be run directly from the command line for development
+# python -m first_pipeline.src.createPixelMap.run_createPixelMap
 ```
 
-### Benefits of the Modular Architecture
+### Code Organization: Separation of Concerns
+
+Each module folder contains:
+- **`main.py`**: CLI interface for command-line usage
+- **`run_*.py`**: Core processing logic with autonomous development defaults
+  - Can be imported and used programmatically
+  - Contains `if __name__ == "__main__":` block for direct execution
+  - Auto-detects development environment and applies user defaults
+  - Fully functional without requiring CLI
+
+This separation allows using functions interactively in notebooks or IDEs without CLI overhead.
 
 1. **Clear Separation of Concerns**: Each script is a self-contained module with its own namespace
 2. **Interactive Development**: Direct access to core algorithms without CLI overhead
@@ -140,7 +158,7 @@ result = run_createPixelMap(
 9. **Notebook Ready**: Perfect for research and algorithm development workflows
 
 ### Key Components & Workflow
-- **Modular scripts**: Each major step is now a separate subpackage module with CLI (`main.py`) and core algorithms (`core.py`)
+- **Modular scripts**: Each major step is now a separate subpackage module with CLI (`main.py`) and core algorithms (`run_*.py`)
 - **Interactive development**: Core functions available for direct use with automatic development defaults
 - **Shared components**: Common classes and libraries in `first_pipeline_shared`
 - **Data flow**: Raw FITS files → Pixel Map → Preprocessing → Flat Map → Wavelength Map → Coupling Maps → Astrometry → Image Reconstruction
@@ -224,15 +242,15 @@ The pipeline automatically detects when you're running in development environmen
 # No setup required - the pipeline detects your environment and user automatically!
 
 # VS Code Interactive Window
-from first_pipeline.src.makePreproc.core import process_with_monitoring
+from first_pipeline.src.makePreproc.run_makePreproc import process_with_monitoring
 results = process_with_monitoring()  # Uses your user's default paths automatically
 
 # Jupyter Notebook
-from first_pipeline.src.createCouplingMap.core import process_coupling_map_data  
+from first_pipeline.src.createCouplingMap.run_createCouplingMap import process_coupling_map_data  
 coupling_map = process_coupling_map_data()  # Automatic user detection & defaults
 
 # Python REPL/Script
-from first_pipeline.src.makeImage.core import process_image_reconstruction_data
+from first_pipeline.src.makeImage.run_makeImage import process_image_reconstruction_data
 images = process_image_reconstruction_data()  # Works out of the box!
 ```
 
@@ -250,7 +268,7 @@ Each module provides powerful core functions for interactive use:
 
 **Pixel Map Creation:**
 ```python
-from first_pipeline.src.createPixelMap.core import run_createPixelMap
+from first_pipeline.src.createPixelMap.run_createPixelMap import run_createPixelMap
 
 # Use development defaults
 raw_image, traces, header, x_found, y_found = run_createPixelMap()
@@ -266,7 +284,7 @@ result = run_createPixelMap(
 
 **Preprocessing:**
 ```python
-from first_pipeline.src.makePreproc.core import process_with_monitoring
+from first_pipeline.src.makePreproc.run_makePreproc import process_with_monitoring
 
 # Automatic development defaults
 processed_files = process_with_monitoring()
@@ -281,7 +299,7 @@ processed_files = process_with_monitoring(
 
 **Wavelength Calibration:**
 ```python
-from first_pipeline.src.createWaveMap.core import process_wavelength_map_data
+from first_pipeline.src.createWaveMap.run_createWaveMap import process_wavelength_map_data
 
 # Development defaults
 result = process_wavelength_map_data()
@@ -291,7 +309,7 @@ print(f"1D coefficients: {result['coef_1d']}")
 
 **Coupling Map Generation:**
 ```python
-from first_pipeline.src.createCouplingMap.core import process_coupling_map_data
+from first_pipeline.src.createCouplingMap.run_createCouplingMap import process_coupling_map_data
 
 # Full SVD analysis with defaults
 result = process_coupling_map_data()
@@ -301,7 +319,7 @@ print(f"Singular values shape: {result['singular_values'].shape}")
 
 **Image Reconstruction:**
 ```python
-from first_pipeline.src.makeImage.core import process_image_reconstruction_data
+from first_pipeline.src.makeImage.run_makeImage import process_image_reconstruction_data
 
 # Reconstruct images with automatic setup
 result = process_image_reconstruction_data()
@@ -314,7 +332,7 @@ figures = result['figures']  # Diagnostic plots
 
 **Astrometric Analysis:**
 ```python
-from first_pipeline.src.makeAstrometry.core import process_astrometric_data
+from first_pipeline.src.makeAstrometry.run_makeAstrometry import process_astrometric_data
 
 # High-precision astrometry
 result = process_astrometric_data()
@@ -349,7 +367,7 @@ runPL_make_preproc /large/dataset/*.fits
 
 ```python
 # Interactive analysis of CLI results
-from first_pipeline.src.createCouplingMap.core import process_coupling_map_data
+from first_pipeline.src.createCouplingMap.run_createCouplingMap import process_coupling_map_data
 
 # Process specific files interactively with custom parameters
 result = process_coupling_map_data(
@@ -686,13 +704,13 @@ Using core functions directly for development and exploration:
 
 ```python
 # Complete interactive workflow with automatic defaults
-from first_pipeline.src.createPixelMap.core import run_createPixelMap  
-from first_pipeline.src.makePreproc.core import process_with_monitoring
-from first_pipeline.src.createFlatMap.core import process_flat_field_data
-from first_pipeline.src.createWaveMap.core import process_wavelength_map_data
-from first_pipeline.src.createCouplingMap.core import process_coupling_map_data
-from first_pipeline.src.makeAstrometry.core import process_astrometric_data
-from first_pipeline.src.makeImage.core import process_image_reconstruction_data
+from first_pipeline.src.createPixelMap.run_createPixelMap import run_createPixelMap  
+from first_pipeline.src.makePreproc.run_makePreproc import process_with_monitoring
+from first_pipeline.src.createFlatMap.run_createFlatMap import process_flat_field_data
+from first_pipeline.src.createWaveMap.run_createWaveMap import process_wavelength_map_data
+from first_pipeline.src.createCouplingMap.run_createCouplingMap import process_coupling_map_data
+from first_pipeline.src.makeAstrometry.run_makeAstrometry import process_astrometric_data
+from first_pipeline.src.makeImage.run_makeImage import process_image_reconstruction_data
 
 # 1. Create pixel map (automatic user defaults)
 raw_image, traces, header, x_found, y_found = run_createPixelMap()
@@ -732,7 +750,7 @@ runPL_create_flatMap /large/dataset/preproc/*.fits
 
 ```python
 # Then interactive analysis for specific targets
-from first_pipeline.src.createCouplingMap.core import process_coupling_map_data
+from first_pipeline.src.createCouplingMap.run_createCouplingMap import process_coupling_map_data
 
 # Custom coupling map for specific target with fine-tuned parameters
 result = process_coupling_map_data(
@@ -772,11 +790,11 @@ Each module provides high-level processing functions that handle complete workfl
 
 ```python
 # High-level processing functions with development defaults
-from first_pipeline.src.makePreproc.core import process_with_monitoring  
-from first_pipeline.src.createWaveMap.core import process_wavelength_map_data
-from first_pipeline.src.createCouplingMap.core import process_coupling_map_data
-from first_pipeline.src.makeImage.core import process_image_reconstruction_data
-from first_pipeline.src.makeAstrometry.core import process_astrometric_data
+from first_pipeline.src.makePreproc.run_makePreproc import process_with_monitoring  
+from first_pipeline.src.createWaveMap.run_createWaveMap import process_wavelength_map_data
+from first_pipeline.src.createCouplingMap.run_createCouplingMap import process_coupling_map_data
+from first_pipeline.src.makeImage.run_makeImage import process_image_reconstruction_data
+from first_pipeline.src.makeAstrometry.run_makeAstrometry import process_astrometric_data
 
 # All functions support both development defaults and custom parameters
 result = process_wavelength_map_data()  # Uses defaults
@@ -879,9 +897,10 @@ This displays:
 
 ## Summary of Recent Improvements
 
-### 🔬 Interactive Development Revolution
-- **Core/CLI Separation**: Each module now has `core.py` (algorithms) and `main.py` (CLI interface)
-- **Development Defaults**: Automatic user detection with customized default file paths
+### 🔬 Interactive Development Architecture
+- **Module/CLI Separation**: Each module now has `run_*.py` (algorithms with autonomy) and `main.py` (CLI interface)
+- **Autonomous Functions**: Core functions can run standalone with auto-detected development defaults
+- **Development Defaults**: Automatic user detection with customized default file paths in `run_*.py`
 - **VS Code Ready**: Direct import and execution of core functions in interactive environments
 - **Jupyter Compatible**: Perfect for research notebooks and algorithm development
 - **Zero Configuration**: Functions work out-of-the-box in development environments

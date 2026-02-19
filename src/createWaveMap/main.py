@@ -14,7 +14,7 @@ Created on Wed May 21 22:56:25 2025
 import argparse
 import getpass
 import os
-from .core import process_wavelength_map_data
+from .run_createWaveMap import run_createWaveMap
 
 
 def main():
@@ -105,25 +105,11 @@ Review diagnostic plots to ensure proper line detection and fitting.
     wollaston = args.wollaston
     Nexclude = args.Nexclude
 
-    # Development environment file patterns
-    if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('SPYDER_DEBUG_FILE')):
-        print("Running in development environment")
-        
-        # Use core defaults
-        from .core import get_development_defaults
-        defaults = get_development_defaults()
-        file_patterns = defaults['file_patterns']
-        file_patterns = [file_patterns] if isinstance(file_patterns, str) else file_patterns
-
-    # Set default patterns if not specified
-    if dark_patterns is None:
-        dark_patterns = file_patterns
-    if flat_patterns is None:
-        folder = os.path.dirname(file_patterns[0])
-        flat_patterns = file_patterns + [os.path.join(folder,"../flatmaps")]
+    # Note: Development environment detection and default paths
+    # are handled autonomously in run_createWaveMap()
 
     # Process wavelength map data
-    result = process_wavelength_map_data(
+    result = run_createWaveMap(
         file_patterns=file_patterns,
         dark_patterns=dark_patterns,
         flat_patterns=flat_patterns,

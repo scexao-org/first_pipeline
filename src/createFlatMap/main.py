@@ -106,7 +106,7 @@ Quality assessment plots help identify systematic calibration issues.
     args = parser.parse_args()
     
     # Import core functions
-    from .core import process_flat_field_data
+    from .run_createFlatMap import run_createFlatMap
     
     # Extract arguments
     file_patterns = args.files if args.files else ['*.fits','./preproc/*.fits']
@@ -115,46 +115,20 @@ Quality assessment plots help identify systematic calibration issues.
     Nflat_smooth = args.Nflat_smooth
     override_flat_keyword = args.override_flat_keyword
 
-    # Development/interactive mode handling
-    if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
-        os.environ.get('SPYDER_DEBUG_FILE')):
-        print("Running in compiler")
-        if getpass.getuser() == "slacour":
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20251125/preproc"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20251231/preproc/firstpl_2025-12-31T00?3*fits"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/test_flat/preproc"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/raw/20260114/preproc"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/raw/20260114/preproc_noedge"
-            override_flat_keyword = True
-            
-            print(f"Development override - file_patterns: {file_patterns}")
-            print(f"Development override - override_flat_keyword: {override_flat_keyword}")
-
-        elif getpass.getuser() == "jsarrazin":
-            file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
-            file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
-            
-        elif getpass.getuser() == "ehuby":
-            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
-
-        # Ensure file_patterns is a list
-        file_patterns = [file_patterns] if isinstance(file_patterns, str) else file_patterns
+    # Note: Development environment detection and default paths
+    # are handled autonomously in run_createFlatMap()
 
     # Process flat field data
-    try:
-        output_filename = process_flat_field_data(
-            file_patterns=file_patterns,
-            dark_patterns=dark_patterns,
-            wollaston=wollaston,
-            Nflat_smooth=Nflat_smooth,
-            override_flat_keyword=override_flat_keyword
-        )
-        
-        print(f"Successfully created flat field map: {output_filename}")
-        
-    except Exception as e:
-        print(f"Error processing flat field data: {e}")
-        raise
+    output_filename = run_createFlatMap(
+        file_patterns=file_patterns,
+        dark_patterns=dark_patterns,
+        wollaston=wollaston,
+        Nflat_smooth=Nflat_smooth,
+        override_flat_keyword=override_flat_keyword
+    )
+    
+    print(f"Successfully created flat field map: {output_filename}")
+    
 
 
 if __name__ == "__main__":

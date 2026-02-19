@@ -17,6 +17,10 @@ Created on Wed May 21 22:56:25 2025
 
 import os
 import sys
+# Add src directory to path for imports to work in both interactive and package contexts
+if os.path.join(os.path.dirname(__file__), '..') not in sys.path:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from astropy.io import fits
 from glob import glob
 import argparse
@@ -111,7 +115,7 @@ logic in downstream pipeline scripts (createPixelMap, preprocess, wavelengthMap,
     args = parser.parse_args()
     
     # Import core functions
-    from .core import collect_files, update_fits_headers
+    from .run_changeKeyword import collect_files, run_changeKeyword
     
     # Collect files to process
     filelist = collect_files(args.files)
@@ -130,7 +134,7 @@ logic in downstream pipeline scripts (createPixelMap, preprocess, wavelengthMap,
 
     # Process files if any updates are needed
     if any(v is not None for v in header_updates.values()) or args.DATE == "DEFAULT":
-        messages = update_fits_headers(
+        messages = run_changeKeyword(
             filelist, 
             header_updates, 
             extract_date_from_filename=(args.DATE == "DEFAULT")

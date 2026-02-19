@@ -1,5 +1,5 @@
-#! /usr/bin/env python3
-# -*- coding: iso-8859-15 -*-
+#%%
+
 """
 FIRST Pipeline - Coupling Map Generation Core Algorithms
 
@@ -11,19 +11,20 @@ Created on Wed May 21 22:56:25 2025
 """
 
 import os
-import numpy as np
-from typing import List, Tuple
-from scipy.signal import correlate
-from scipy import linalg
-from scipy.linalg import solve_triangular, pinv
 import getpass
 import matplotlib
-if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode'):
+if "VSCODE_PID" in os.environ:
     matplotlib.use('Qt5Agg')
 elif os.environ.get('SPYDER_DEBUG_FILE'):
     print("Running in Spyder")
 else:
     matplotlib.use('Agg')
+
+import numpy as np
+from typing import List, Tuple
+from scipy.signal import correlate
+from scipy import linalg
+from scipy.linalg import solve_triangular, pinv
      
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -42,43 +43,6 @@ from first_pipeline_shared.libraries import runPL_library_plots as runlib_plots
 from first_pipeline_shared.libraries import runPL_library_linalg as runlib_linalg
 
 from astropy.io import fits
-
-
-def get_development_defaults():
-    """
-    Get development environment default parameters.
-    
-    Returns
-    -------
-    dict
-        Dictionary containing default parameters for development environment
-    """
-    defaults = {
-        'file_patterns': ['*.fits', './preproc/*.fits'],
-        'object_name': None,
-        'dark_patterns': None,
-        'flat_patterns': None,
-        'wave_patterns': None,
-        'Nsingular': 19*6,
-        'wavelength_smooth': 1,
-        'wavelength_bin': 1,
-        'use_pyramids': False,
-        'center_data': True
-    }
-    
-    # Check if running in development environment
-    if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
-        os.environ.get('SPYDER_DEBUG_FILE')):
-        
-        user = getpass.getuser()
-        if user == "slacour":
-            defaults['file_patterns'] = ["/Users/slacour/DATA/LANTERNE/20250808/preproc/firstpl_2025-08-08T06:4?:??_HIP84212_P.fits"]
-        elif user == "jsarrazin":
-            defaults['file_patterns'] = ["/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"]
-        elif user == "ehuby":
-            defaults['file_patterns'] = ["/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"]
-    
-    return defaults
 
 
 def singular_vector_basis(data_svdfiltered, goodData, indexes, xmod, ymod):
@@ -494,7 +458,7 @@ def save_coupling_map(couplingMap, header, output_dir, flatMap=None, waveMap=Non
     return output_filename
 
 
-def process_coupling_map_data(file_patterns=None, object_name=None, dark_patterns=None,
+def run_createCouplingMap(file_patterns=None, object_name=None, dark_patterns=None,
                              flat_patterns=None, wave_patterns=None, 
                              wavelength_smooth=None, wavelength_bin=None, 
                              Nsingular=None, modID=None, modScale=None,
@@ -546,22 +510,7 @@ def process_coupling_map_data(file_patterns=None, object_name=None, dark_pattern
         - 'center_all': triangle/pyramid centers
         - 'figures': list of diagnostic figures
     """
-    # Use development defaults if parameters are None
-    if any(param is None for param in [file_patterns, wavelength_smooth, wavelength_bin, Nsingular, use_pyramids, center_data]):
-        defaults = get_development_defaults()
-        if file_patterns is None:
-            file_patterns = defaults['file_patterns']
-        if wavelength_smooth is None:
-            wavelength_smooth = defaults['wavelength_smooth']
-        if wavelength_bin is None:
-            wavelength_bin = defaults['wavelength_bin']
-        if Nsingular is None:
-            Nsingular = defaults['Nsingular']
-        if use_pyramids is None:
-            use_pyramids = defaults['use_pyramids']
-        if center_data is None:
-            center_data = defaults['center_data']
-            
+
     # Set up default patterns
     if dark_patterns is None:
         dark_patterns = file_patterns
@@ -692,27 +641,50 @@ if __name__ == "__main__":
     """
     print("Running createCouplingMap core with development defaults...")
     
-    # Get development defaults first
-    defaults = get_development_defaults()
-    
-    # Run coupling map processing with defaults
-    try:
-        result = process_coupling_map_data()
+
+    # Development/interactive mode handling
+    print("Running in compiler")
+    if getpass.getuser() == "slacour":
+        object_name = None
+        dark_patterns = None
+        flat_patterns = None
+        wave_patterns = None
+        wavelength_smooth = 1
+        wavelength_bin = 1
+        Nsingular = 19*6
+        modID = None
+        modScale = None
+        wollaston = None
+        use_pyramids = False
+        center_data = True
+
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/raw/20260114/firstpl/*3.fits"]
         
-        print(f"Coupling map creation completed successfully!")
-        print(f"Output file: {result['output_filename']}")
-        print(f"Coupling map Q matrix shape: {result['couplingMap'].Q.shape}")
-        print(f"Coupling map R matrix shape: {result['couplingMap'].R.shape}")
-        print(f"Number of triangles/pyramids: {len(result['center_all'])}")
-        
-        # Show SVD analysis results
-        if 'singular_values' in result:
-            print(f"Singular values range: {result['singular_values'].min():.3e} to {result['singular_values'].max():.3e}")
-        
-    except Exception as e:
-        print(f"Error running coupling map creation: {e}")
-        print("This may be due to missing preprocessed science data files in default paths")
-        
-        # Show default paths being used
-        print(f"Default file patterns: {defaults['file_patterns']}")
-        print("Note: Requires preprocessed files and flat/wave maps")
+    print(f"Development override: wavelength_smooth={wavelength_smooth}, wavelength_bin={wavelength_bin}, Nsingular={Nsingular}")
+    print(f"Development file patterns: {file_patterns}")
+
+
+    # Process coupling map data
+    result = run_createCouplingMap(
+        file_patterns=file_patterns,
+        object_name=object_name,
+        dark_patterns=dark_patterns,
+        flat_patterns=flat_patterns,
+        wave_patterns=wave_patterns,
+        wavelength_smooth=wavelength_smooth,
+        wavelength_bin=wavelength_bin,
+        Nsingular=Nsingular,
+        modID=modID,
+        modScale=modScale,
+        wollaston=wollaston,
+        use_pyramids=use_pyramids,
+        center_data=center_data
+    )
+
+    print(f"Coupling map created successfully: {result['output_filename']}")
+    print(f"Number of triangles/pyramids: {result['QT'].shape[0]}")
+    print(f"QT shape: {result['QT'].shape}")
+    print(f"R shape: {result['R'].shape}")
+
+# %%

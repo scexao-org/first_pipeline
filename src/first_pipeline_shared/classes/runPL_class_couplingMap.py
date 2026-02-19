@@ -2,11 +2,9 @@ from astropy.io import fits
 import numpy as np
 from tqdm import tqdm
 from scipy.interpolate import griddata
-import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import libraries.runPL_library_plots as runlib_plots
-import libraries.runPL_library_linalg as runlib_linalg
+from ..libraries import runPL_library_plots as runlib_plots
+from ..libraries import runPL_library_linalg as runlib_linalg
 
 
 class CouplingMap:

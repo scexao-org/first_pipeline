@@ -24,7 +24,7 @@ class PixelMap:
         self.basename = os.path.basename(filename) if filename else None
         self.header = None
         self.traces_loc = None
-        self.edge_coef = None
+        self.traces_loc_double = None
         self.pixel_min = None
         self.pixel_max = None
         self.pixel_wide = None
@@ -67,8 +67,8 @@ class PixelMap:
         with fits.open(filename) as hdul:
             if len(hdul) > 1:
                 for hdu in hdul[1:]:
-                    if hdu.name == 'EDGE_COEF' and hdu.data is not None:
-                        self.edge_coef = hdu.data
+                    if hdu.name == 'TRACES_LOC_DOUBLE' and hdu.data is not None:
+                        self.traces_loc_double = hdu.data
                         break
 
 
@@ -84,12 +84,12 @@ class PixelMap:
         if not self.is_loaded:
             raise ValueError("Pixel map not loaded. Use load() or create_from_data() first.")
 
-    def create_from_data(self, traces_loc: np.ndarray, edge_coef: np.ndarray, pixel_min: int, pixel_max: int, pixel_wide: int, output_channels: int, pm_check: Optional[int] = None, filename: Optional[str] = None) -> None:
+    def create_from_data(self, traces_loc: np.ndarray, traces_loc_double: np.ndarray, pixel_min: int, pixel_max: int, pixel_wide: int, output_channels: int, pm_check: Optional[int] = None, filename: Optional[str] = None) -> None:
         """
         Create a pixel map from data arrays and parameters.
         Args:
             traces_loc (numpy.ndarray): The traces location data array.
-            edge_coef (numpy.ndarray): The edge coefficient data array.
+            traces_loc_double (numpy.ndarray): The sub-pixel precision traces location data array.
             pixel_min (int): Minimum pixel value.
             pixel_max (int): Maximum pixel value.
             pixel_wide (int): Pixel width.
@@ -101,7 +101,7 @@ class PixelMap:
         if traces_loc is None or traces_loc.size == 0:
             return
 
-        self.edge_coef = edge_coef
+        self.traces_loc_double = traces_loc_double
         self.traces_loc = traces_loc
         self.pixel_min = pixel_min
         self.pixel_max = pixel_max
@@ -145,7 +145,6 @@ class PixelMap:
             
         # Handle case when traces_loc is None (failed pixelmap generation)
         traces_loc_data = self.traces_loc.copy()
-        edge_coef = self.edge_coef
         
         # Create HDU
         hdu = fits.PrimaryHDU(traces_loc_data)
@@ -185,14 +184,17 @@ class PixelMap:
         hdu.header.extend(save_header, strip=True)
         hdul = fits.HDUList([hdu])
 
-        if edge_coef is not None:
-            edge_hdu = fits.ImageHDU(data=edge_coef, name='EDGE_COEF')
+        if self.traces_loc_double is not None:
+            edge_hdu = fits.ImageHDU(data=self.traces_loc_double, name='TRACES_LOC_DOUBLE')
             hdul.append(edge_hdu)
         
         # Write to a FITS file
         print(f"Saving pixel map to {output_filename}")
         hdul.writeto(output_filename, overwrite=True)
         hdul.close()
+
+        self.filename = output_filename
+        self.basename = os.path.basename(output_filename)
 
     def return_hdu_list(self) -> List[fits.ImageHDU]:
         """
@@ -227,7 +229,7 @@ class PixelMap:
             # Return empty header if no file is loaded
             return fits.Header()
 
-    def preprocess_cutData(self, data: np.ndarray, dark_calculation: bool = False) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def preprocess_cutData(self, data: np.ndarray, dark_calculation: bool = True) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Preprocesses and extracts specific pixel data from the input data array based on the pixel map.
         """
@@ -252,14 +254,15 @@ class PixelMap:
         data_dark_pixels = np.zeros((Nimages, output_channels - 1, Nwave), dtype='uint16')
 
         data_edge_pixels = np.zeros((Nimages, output_channels, Nwave))
-        if self.edge_coef is not None:
-            edge_pixel_below = traces_loc.copy() - pixel_wide - 1
-            edge_pixel_above = traces_loc.copy() + pixel_wide + 1
+        if self.traces_loc_double is not None:
+            center_double= self.traces_loc_double - self.traces_loc - 0.5
+            edge_pixel_below = self.traces_loc - pixel_wide - 1
+            edge_pixel_above = self.traces_loc + pixel_wide + 1
             edge_pixel_below[edge_pixel_below < 0] = 0
             edge_pixel_above[edge_pixel_above >= data.shape[1]] = data.shape[1] - 1
 
-            edge_coef_above = 0.5+self.edge_coef
-            edge_coef_below = 0.5-self.edge_coef
+            edge_coef_above = 0.5+center_double
+            edge_coef_below = 0.5-center_double
 
         for x in range(Nwave):
             for i in range(output_channels):
@@ -273,7 +276,7 @@ class PixelMap:
                 if (i > 0)&(dark_calculation):
                     t=(traces_loc[x + pixel_min, i-1]+traces_loc[x + pixel_min, i])//2+w-pixel_wide
                     data_dark_pixels[:,i-1,x] = data[:, t, x + pixel_min]
-                if self.edge_coef is not None:
+                if self.traces_loc_double is not None:
                     t=edge_pixel_below[x + pixel_min, i]
                     data_edge_pixels[:,i,x] = data[:, t, x + pixel_min] * edge_coef_below[x + pixel_min, i]
                     t=edge_pixel_above[x + pixel_min, i]

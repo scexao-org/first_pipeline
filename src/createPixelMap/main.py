@@ -13,6 +13,10 @@ Created on Wed May 21 22:56:25 2025
 #%%
 import os
 import sys
+# Add src directory to path for imports to work in both interactive and package contexts
+if os.path.join(os.path.dirname(__file__), '..') not in sys.path:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from astropy.io import fits
 import argparse
 import numpy as np
@@ -101,7 +105,7 @@ varying observation conditions.
     args = parser.parse_args()
     
     # Import core functions
-    from .core import run_createPixelMap
+    from .run_createPixelMap import run_createPixelMap
     
     # Extract the parsed arguments
     pixel_min = args.pixel_min

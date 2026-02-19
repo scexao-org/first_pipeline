@@ -1,5 +1,5 @@
-#! /usr/bin/env python3
-# -*- coding: iso-8859-15 -*-
+#%%
+
 """
 FIRST Pipeline - Flat Field Map Generation Core Algorithms
 
@@ -12,48 +12,24 @@ Created on Wed May 21 22:56:25 2025
 """
 
 import os
+import getpass
+import matplotlib
+if "VSCODE_PID" in os.environ:
+    matplotlib.use('Qt5Agg')
+else:
+    matplotlib.use('Agg')
+
 import numpy as np
 from typing import List
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure, xlim  
 from datetime import datetime
 from astropy.io import fits
-import getpass
 
 from first_pipeline_shared.classes.runPL_class_flatMap import FlatMap
 from first_pipeline_shared.classes.runPL_class_fileList import FileList
 from first_pipeline_shared.classes.runPL_class_dataCube import DataCube
 from first_pipeline_shared.libraries import runPL_library_io as runlib_io
-
-
-def get_development_defaults():
-    """
-    Get development environment default parameters.
-    
-    Returns
-    -------
-    dict
-        Dictionary containing default parameters for development environment
-    """
-    defaults = {
-        'file_patterns': ['*.fits', './preproc/*.fits'],
-        'dark_patterns': None,
-        'wollaston': None
-    }
-    
-    # Check if running in development environment
-    if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
-        os.environ.get('SPYDER_DEBUG_FILE')):
-        
-        user = getpass.getuser()
-        if user == "slacour":
-            defaults['file_patterns'] = ["/Users/slacour/DATA/LANTERNE/20251125/preproc"]
-        elif user == "jsarrazin":
-            defaults['file_patterns'] = ["/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"]
-        elif user == "ehuby":
-            defaults['file_patterns'] = ["/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"]
-    
-    return defaults
 from first_pipeline_shared.libraries import runPL_library_plots as runlib_plots
 
 
@@ -253,7 +229,7 @@ def create_flat_comparison_plots(datalist, flatMap_loaded, output_filename):
     runlib_plots.save_pdf_in_file(output_filename)
 
 
-def process_flat_field_data(file_patterns=None, dark_patterns=None, wollaston=None, 
+def run_createFlatMap(file_patterns=None, dark_patterns=None, wollaston=None, 
                            Nflat_smooth=25, override_flat_keyword=False):
     """
     Complete processing pipeline for flat field map generation.
@@ -276,11 +252,6 @@ def process_flat_field_data(file_patterns=None, dark_patterns=None, wollaston=No
     str
         Path to saved flat field map file
     """
-    
-    # Use development defaults if parameters are None
-    if file_patterns is None:
-        defaults = get_development_defaults()
-        file_patterns = defaults['file_patterns']
     
     # Set default dark patterns
     if dark_patterns is None:
@@ -336,7 +307,7 @@ def process_flat_field_data(file_patterns=None, dark_patterns=None, wollaston=No
 
     # Create flat field comparison plots
     flatMap_loaded = FlatMap(output_filename)
-    create_flat_comparison_plots(datalist, flatMap_loaded, output_filename)
+    # create_flat_comparison_plots(datalist, flatMap_loaded, output_filename)
 
     print(f"Flat field map saved to: {output_filename}")
     
@@ -348,22 +319,28 @@ if __name__ == "__main__":
     Run flat field map creation with development defaults.
     Perfect for testing and direct execution of core functionality.
     """
-    print("Running createFlatMap core with development defaults...")
+
+
+    if getpass.getuser() == "slacour":
+        dark_patterns = None
+        flat_patterns = None
+        wollaston = None
+        Nflat_smooth = 25
+        override_flat_keyword = True
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/raw/20260114/preproc/"]
+        
+        print(f"Development override: dark_patterns={dark_patterns}, flat_patterns={flat_patterns}, wollaston={wollaston}, Nflat_smooth={Nflat_smooth}")
+        print(f"Development file patterns: {file_patterns}")
+
+    # Process flat field data
+    output_filename = run_createFlatMap(
+        file_patterns=file_patterns,
+        dark_patterns=dark_patterns,
+        wollaston=wollaston,
+        Nflat_smooth=Nflat_smooth,
+        override_flat_keyword=override_flat_keyword
+    )
     
-    # Get development defaults first
-    defaults = get_development_defaults()
+    print(f"Successfully created flat field map: {output_filename}")
     
-    # Run flat field processing with defaults
-    try:
-        output_filename = process_flat_field_data()
-        
-        print(f"Flat field map creation completed successfully!")
-        print(f"Output file: {output_filename}")
-        
-    except Exception as e:
-        print(f"Error running flat field creation: {e}")
-        print("This may be due to missing preprocessed flat data files in default paths")
-        
-        # Show default paths being used
-        print(f"Default file patterns: {defaults['file_patterns']}")
-        print("Note: Requires preprocessed files with DATA-TYP=FLAT")
+# %%

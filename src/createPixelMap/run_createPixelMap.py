@@ -11,9 +11,20 @@ from CLI interface for interactive use and modularity.
 Created on Wed May 21 22:56:25 2025
 @author: slacour
 """
-
 import os
-import sys
+import getpass
+import matplotlib
+if "VSCODE_PID" in os.environ:
+    matplotlib.use('Qt5Agg')
+else:
+    matplotlib.use('Agg')
+
+# import sys
+# import os
+# # Add src directory to path for imports to work in both interactive and package contexts
+# if os.path.join(os.path.dirname(__file__), '..') not in sys.path:
+#     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from astropy.io import fits
 from glob import glob
 import numpy as np
@@ -22,12 +33,11 @@ from tqdm import tqdm
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import plot, hist, clf, figure, legend, imshow
-import getpass
 
 from first_pipeline_shared.classes.runPL_class_fileList import FileList
 from first_pipeline_shared.classes.runPL_class_pixelMap import PixelMap
 from first_pipeline_shared.libraries import runPL_library_io as runlib_io
-
+plt.ion()
 
 def process_files(folder=".", file_patterns=["**/*.fits"]):
     """
@@ -191,7 +201,7 @@ def generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, filelist
         print("Very low detection rate. Consider adjusting parameters or checking data quality.")
         return None, None, None, None, None, None
 
-    traces_loc = np.zeros((pixel_length, output_channels))
+    traces_loc = np.zeros((pixel_length, output_channels),dtype=int)
     traces_loc_double = np.zeros((pixel_length, output_channels))
 
     x_found = []
@@ -303,14 +313,14 @@ def save_fits_and_png(raw_image, traces_loc, traces_loc_double, header, x_found,
         print("Warning: traces_loc is None, creating empty pixelmap data for output")
         # Create a dummy array with the same shape as the raw image
         traces_loc_data = np.zeros((raw_image.shape[1], output_channels), dtype=int)
-        edge_coef = None
+        traces_loc_double = np.zeros((raw_image.shape[1], output_channels), dtype=float)
     else:
         traces_loc_data = traces_loc.copy()
-        edge_coef = (traces_loc_double - traces_loc - 0.5)
+        traces_loc_double = traces_loc_double.copy()
 
     # Create PixelMap object and save using the new save method
     pixelMap = PixelMap()
-    pixelMap.create_from_data(traces_loc_data, edge_coef, pixel_min, pixel_max, pixel_wide, output_channels)
+    pixelMap.create_from_data(traces_loc_data, traces_loc_double, pixel_min, pixel_max, pixel_wide, output_channels)
 
     # Prepare header with additional information
     save_header = header.copy()
@@ -352,6 +362,8 @@ def save_fits_and_png(raw_image, traces_loc, traces_loc_double, header, x_found,
     
     print(f"Pixel map saved: {filename_out}")
     print(f"Visualization saved: {png_filename}")
+
+    return pixelMap
 
 
 def get_fits_statistics(filepath):
@@ -477,9 +489,10 @@ def run_createPixelMap(pixel_min=None, pixel_max=None, pixel_wide=None, file_pat
         
         # Save results
         folder = fileList.get_most_common_dir()
-        save_fits_and_png(raw_image, traces_loc, traces_loc_double, header, x_found, y_found, 
+        pixelMap = save_fits_and_png(raw_image, traces_loc, traces_loc_double, header, x_found, y_found, 
                             pixel_min, pixel_max, pixel_wide, output_channels, folder)
 
+    return pixelMap, raw_image
 
 if __name__ == "__main__":
 
@@ -491,14 +504,17 @@ if __name__ == "__main__":
         pixel_wide = 2
         filter_files = True
         file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
-        file_patterns = ["/Users/slacour/DATA/LANTERNE/raw/20260114/firstpl"]
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/raw/20260114/firstpl/*3.fits"]
         
-        print(f"Development override: pixel_min={pixel_min}, pixel_max={pixel_max}, pixel_wide={pixel_wide}")
-        print(f"Development file patterns: {file_patterns}")
+        
+    print(f"Development override: pixel_min={pixel_min}, pixel_max={pixel_max}, pixel_wide={pixel_wide}")
+    print(f"Development file patterns: {file_patterns}")
 
-    run_createPixelMap(pixel_min=pixel_min, pixel_max=pixel_max, pixel_wide=pixel_wide, file_patterns=file_patterns)
+    pixelMap, raw_image = run_createPixelMap(pixel_min=pixel_min, pixel_max=pixel_max, pixel_wide=pixel_wide, file_patterns=file_patterns)
 
+    pixelMap2= PixelMap(pixelMap.filename)
 
+    data_cut_pixels, data_dark_pixels, data_edge_pixels = pixelMap2.preprocess_cutData(raw_image/1000, True)
 
 
 

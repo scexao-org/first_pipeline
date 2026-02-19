@@ -10,44 +10,19 @@ Created on Wed May 21 22:56:25 2025
 @author: slacour
 """
 
+import sys
 import os
+# Add src directory to path for imports to work in both interactive and package contexts
+if os.path.join(os.path.dirname(__file__), '..') not in sys.path:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from astropy.io import fits
 from glob import glob
 import getpass
 from first_pipeline_shared.libraries import runPL_library_io as runlib
 
 
-def get_development_defaults():
-    """
-    Get development environment default parameters.
-    
-    Returns
-    -------
-    dict
-        Dictionary containing default parameters for development environment
-    """
-    defaults = {
-        'files': ['*.fits'],
-        'header_updates': {},
-        'extract_date_from_filename': False
-    }
-    
-    # Check if running in development environment
-    if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
-        os.environ.get('SPYDER_DEBUG_FILE')):
-        
-        user = getpass.getuser()
-        if user == "slacour":
-            defaults['files'] = ["/Users/slacour/DATA/LANTERNE/tmp/*.fits"]
-        elif user == "jsarrazin":
-            defaults['files'] = ["/home/jsarrazin/Bureau/PLDATA/novembre/*.fits"]
-        elif user == "ehuby":
-            defaults['files'] = ["/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/*.fits"]
-    
-    return defaults
-
-
-def update_fits_headers(files=None, header_updates=None, extract_date_from_filename=None):
+def run_changeKeyword(files=None, header_updates=None, extract_date_from_filename=None):
     """
     Update FITS headers based on provided options.
     
@@ -65,16 +40,6 @@ def update_fits_headers(files=None, header_updates=None, extract_date_from_filen
     list of str
         List of processing messages for each file
     """
-    # Use development defaults if parameters are None
-    if any(param is None for param in [files, header_updates, extract_date_from_filename]):
-        defaults = get_development_defaults()
-        if files is None:
-            files = defaults['files']
-        if header_updates is None:
-            header_updates = defaults['header_updates']
-        if extract_date_from_filename is None:
-            extract_date_from_filename = defaults['extract_date_from_filename']
-    
     messages = []
     
     for filename in files:
@@ -129,27 +94,4 @@ if __name__ == "__main__":
     """
     print("Running changeKeyword core with development defaults...")
     
-    # Get development defaults
-    defaults = get_development_defaults()
-    
-    # Collect files using the existing collect_files function
-    files = collect_files(defaults['files'])
-    print(f"Found {len(files)} FITS files")
-    
-    if files:
-        # Example header updates
-        header_updates = {'X_FIRTYP': 'RAW', 'DATA-TYP': 'OBJECT'}
-        
-        # Update headers
-        messages = update_fits_headers(
-            files=files[:5],  # Process first 5 files only for safety
-            header_updates=header_updates,
-            extract_date_from_filename=defaults['extract_date_from_filename']
-        )
-        
-        print("Processing complete:")
-        for msg in messages:
-            print(f"  {msg}")
-    else:
-        print("No FITS files found with default patterns")
-        print(f"Searched patterns: {defaults['files']}")
+    # Get development default

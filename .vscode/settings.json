@@ -1,5 +1,7 @@
 {
+    "python.defaultInterpreterPath": "/Users/slacour/venv1/bin/python",
+    "python.analysis.extraPaths": ["${workspaceFolder}/src"],
     "python-envs.defaultPackageManager": "ms-python.python:conda",
     "python-envs.pythonProjects": [],
-    "python-envs.defaultEnvManager": "ms-python.python:conda"
+    "python-envs.defaultEnvManager": "ms-python.python:venv"
 }

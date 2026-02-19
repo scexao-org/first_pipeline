@@ -14,7 +14,7 @@ Created on Wed May 21 22:56:25 2025
 import argparse
 import getpass
 import os
-from .core import process_coupling_map_data
+from .run_createCouplingMap import run_createCouplingMap
 
 
 def main():
@@ -131,20 +131,8 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
     use_pyramids = args.use_pyramids
     center_data = args.center_data
     
-    # Development environment file patterns
-    if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('SPYDER_DEBUG_FILE')):
-        print("Running in development environment")
-        
-        # Use core defaults
-        from .core import get_development_defaults
-        defaults = get_development_defaults()
-        file_patterns = defaults['file_patterns']
-        
-        # User-specific overrides can still be set
-        if getpass.getuser() == "ehuby":
-            modID, modScale, object_name = 3, 50, 'TETCRB'
-            
-        file_patterns = [file_patterns] if isinstance(file_patterns, str) else file_patterns
+    # Note: Development environment detection and default paths
+    # are handled autonomously in run_createCouplingMap()
 
     # Set default patterns if not specified
     if dark_patterns is None:
@@ -157,7 +145,7 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
         wave_patterns = file_patterns + [os.path.join(folder,"../wavemaps")] + [os.path.join(folder,"wavemaps")]
 
     # Process coupling map data
-    result = process_coupling_map_data(
+    result = run_createCouplingMap(
         file_patterns=file_patterns,
         object_name=object_name,
         dark_patterns=dark_patterns,

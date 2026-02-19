@@ -2,10 +2,10 @@ import numpy as np
 from astropy.io import fits
 import os
 from datetime import datetime
-from classes.runPL_class_pixelMap import PixelMap
-from classes.runPL_class_dataCube import DataCube
-import libraries.runPL_library_io as runlib_io
-import libraries.runPL_library_plots as runlib_plots
+from .runPL_class_pixelMap import PixelMap
+from .runPL_class_dataCube import DataCube
+from ..libraries import runPL_library_io as runlib_io
+from ..libraries import runPL_library_plots as runlib_plots
 from astroplan import Observer
 from astropy.time import Time
 

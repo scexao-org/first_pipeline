@@ -14,7 +14,7 @@ import argparse
 import getpass
 import os
 
-from .core import process_astrometric_data, check_observatory_status
+from .run_makeAstrometry import process_astrometric_data, check_observatory_status
 
 
 def main():
@@ -98,35 +98,18 @@ for high-precision applications.
     parser.add_argument("--pyramids", action="store_true", default=False,
                        help="Use pyramids for data fitting by coupling map (default: %(default)s)")
 
-    # Check for interactive development environment
-    if (("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode') 
-        or os.environ.get('SPYDER_DEBUG_FILE')):
-        print("Running in development environment")
-        
-        # Use core defaults
-        from .core import get_development_defaults
-        defaults = get_development_defaults()
-        file_patterns = defaults['file_patterns']
-        dark_patterns = [defaults['dark_patterns']] if defaults['dark_patterns'] else None
-        coupling_map = defaults['coupling_map']
-        object_name = defaults['object_name']
-        wollaston = defaults['wollaston']
-        wavelength_smooth = defaults['wavelength_smooth']
-        save_individual_frames = defaults['save_individual_frames']
-        save_individual_wavelength = defaults['save_individual_wavelength']
-        pyramids = defaults['pyramids']
-    else:
-        # Parse command line arguments
-        args = parser.parse_args()
-        file_patterns = args.files if args.files else ['*.fits']
-        object_name = args.object_name
-        wavelength_smooth = args.wavelength_smooth
-        dark_patterns = [args.dark_files] if args.dark_files else None
-        wollaston = args.wollaston
-        save_individual_frames = args.save_individual_frames
-        save_individual_wavelength = args.save_individual_wavelength
-        pyramids = args.pyramids
-        coupling_map = args.coupling_map
+    # Parse command line arguments
+    # Development environment defaults are handled autonomously in run_makeAstrometry()
+    args = parser.parse_args()
+    file_patterns = args.files if args.files else ['*.fits']
+    object_name = args.object_name
+    wavelength_smooth = args.wavelength_smooth
+    dark_patterns = [args.dark_files] if args.dark_files else None
+    wollaston = args.wollaston
+    save_individual_frames = args.save_individual_frames
+    save_individual_wavelength = args.save_individual_wavelength
+    pyramids = args.pyramids
+    coupling_map = args.coupling_map
 
     try:
         # Check observatory status

@@ -1,5 +1,3 @@
-#! /usr/bin/env python3
-# -*- coding: iso-8859-15 -*-
 #%%
 
 """
@@ -13,8 +11,14 @@ Created on Wed May 21 22:56:25 2025
 @author: slacour
 """
 
-import getpass
 import os
+import getpass
+import matplotlib
+if "VSCODE_PID" in os.environ:
+    matplotlib.use('Qt5Agg')
+else:
+    matplotlib.use('Agg')
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
@@ -149,44 +153,6 @@ def create_centroid_summary_plot(files_out, centroid_data, dir_path_0):
         print(f"Error while plotting centroid shift summary: {e}")
 
 
-# def run_preprocess(folder=".", pixel_map_file=None):
-#     """
-#     High-level function to run preprocessing on a directory.
-    
-#     Parameters
-#     ----------
-#     folder : str
-#         Directory containing raw FITS files
-#     pixel_map_file : str, optional
-#         Path to pixel map file or directory. If None, auto-detect from pixelmaps folder.
-        
-#     Returns
-#     -------
-#     list
-#         List of processed filenames
-#     """
-#     # Default values
-#     filelist = runlib_io.get_filelist(folder, {'X_FIRTYP': ['RAW']})
-    
-#     if pixel_map_file is None:
-#         pixel_map_file = folder + "pixelmaps"
-
-#     pixel_map_file = runlib_io.get_filelist(pixel_map_file, {'X_FIRTYP': ['PIXELMAP']})
-#     files_with_pixelmap = runlib_io.associate_pixelmap(filelist, pixel_map_file)
-    
-#     # Create a mock FileList object for compatibility
-#     class MockFileList:
-#         def __init__(self, files_with_pixelmap):
-#             self.files_with_associated_files = files_with_pixelmap
-            
-#         def get_most_common_dir(self):
-#             if self.files_with_associated_files:
-#                 return os.path.dirname(self.files_with_associated_files[0]['file'])
-#             return "."
-    
-#     fileList = MockFileList(files_with_pixelmap)
-#     return preprocess_files(fileList)
-
 
 def run_preprocess(file_patterns=None, pixel_map=None, object_name=None,
                            only_with_modulation=None, overwrite=None):
@@ -236,6 +202,7 @@ def run_preprocess(file_patterns=None, pixel_map=None, object_name=None,
         if len(processed_files) > 5:
             print(f"... and {len(processed_files) - 5} more files")
 
+    return fileList
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import numpy as np
 from astropy.io import fits
-from classes.runPL_class_dataCube import DataCube
+from .runPL_class_dataCube import DataCube
 import os
 
 class WaveMap:

@@ -15,7 +15,7 @@ import argparse
 import getpass
 import os
 import numpy as np
-from .core import process_image_reconstruction_data
+from .run_makeImage import process_image_reconstruction_data
 
 
 def main():
@@ -140,19 +140,8 @@ Optimize smoothing and modulation parameters for best results with your data.
     save_individual_wavelength = args.save_individual_wavelength
     Npixels = args.Npixels
 
-    # Development environment file patterns
-    if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('SPYDER_DEBUG_FILE')):
-        print("Running in compiler")
-        if getpass.getuser() == "slacour":
-            file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*fits"
-            coupling_map = "/Users/slacour/DATA/LANTERNE/20250514/preproc/../couplingmaps/firstpl_2025-05-14T11:39:58_HIP85819_CM.fits"
-        if getpass.getuser() == "jsarrazin":
-            file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
-            file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
-        if getpass.getuser() == "ehuby":
-            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
-            coupling_map = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/couplingmaps/"
-        file_patterns = [file_patterns] if isinstance(file_patterns, str) else file_patterns
+    # Note: Development environment detection and default paths
+    # are handled autonomously in run_makeImage()
 
     # Process image reconstruction data
     result = process_image_reconstruction_data(

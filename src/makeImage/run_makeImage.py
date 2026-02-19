@@ -10,7 +10,12 @@ Created on Wed May 21 22:56:25 2025
 @author: slacour
 """
 
+import sys
 import os
+# Add src directory to path for imports to work in both interactive and package contexts
+if os.path.join(os.path.dirname(__file__), '..') not in sys.path:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 import numpy as np
 from typing import List, Tuple, Optional
 from scipy.interpolate import griddata
