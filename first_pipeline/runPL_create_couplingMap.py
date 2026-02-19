@@ -45,17 +45,18 @@ from scipy import linalg
 from matplotlib import animation
 from itertools import product
 from scipy.linalg import pinv
-# Import FIRST pipeline classes
-from classes.runPL_class_flatMap import FlatMap
-from classes.runPL_class_waveMap import WaveMap
-from classes.runPL_class_fileList import FileList
-from classes.runPL_class_dataCube import DataCube
-from classes.runPL_class_couplingMap import CouplingMap
 
-import libraries.runPL_library_basic as runlib_basic
-import libraries.runPL_library_io as runlib_io
-import libraries.runPL_library_plots as runlib_plots
-import libraries.runPL_library_linalg as runlib_linalg
+# Import FIRST pipeline classes
+from .classes.runPL_class_flatMap import FlatMap
+from .classes.runPL_class_waveMap import WaveMap
+from .classes.runPL_class_fileList import FileList
+from .classes.runPL_class_dataCube import DataCube
+from .classes.runPL_class_couplingMap import CouplingMap
+
+# Import FIRST pipeline libraries
+from .libraries import runPL_library_io as runlib_io
+from .libraries import runPL_library_plots as runlib_plots
+from .libraries import runPL_library_linalg as runlib_linalg
 
 from scipy.ndimage import zoom
 from astropy.io import fits
@@ -111,104 +112,71 @@ usage = """
 """
 
 
-def singular_vector_basis(data_svdfiltered,goodData,indexes, centers, xmod, ymod):
+def singular_vector_basis(data_svdfiltered,goodData,indexes, xmod, ymod):
 
     vectors_all_triangles = []
     center_all_triangles = []
-    Ntriangles,Nqr = indexes.shape
+    _,Nqr = indexes.shape
     if Nqr == 3:
         description = "Computing triangles singular vectors"
     else:
         description = "Computing pyramids singular vectors"
 
-    for i in tqdm(np.arange(len(indexes)), desc=description):
+    Ntriangles = 0
+    indexes_new = []
+    for t in tqdm(np.arange(len(indexes)), desc=description):
 
         # as a first step 
         # extract the singular vectors for each triangle or pyramid
-        t = indexes[i]
-        center = centers[i]
-        center_all_triangles.append(center)
+        i = indexes[t]
 
-        good_data_triangle=goodData[:,t]
-        data_triangle = data_svdfiltered[:,t][good_data_triangle]
-        data_triangle = data_triangle.reshape((data_triangle.shape[0], -1))
-        xmod_triangle = xmod[:,t][good_data_triangle] - center[0]
-        ymod_triangle = ymod[:,t][good_data_triangle] - center[1]
-        xymod_triangle = np.array([xmod_triangle, ymod_triangle])
+        data_triangle_svdfiltered, good_data_triangle ,_ = runlib_linalg.svd_filtering(data_svdfiltered[:,i],goodData[:,i],Nqr,verbose = False)
 
-        svd_res = runlib_linalg.robust_subspace(data_triangle, k=Nqr, center=False, k_sigma=3.5, max_refit=1)
-        V = svd_res["model"]["V"]
+        data_triangle_svdfiltered = data_svdfiltered[:,i] # TO REMOVE when the svd filtering will be good enough to be used for the coupling map analysis. For now, we use it only for the selection of good triangles, but not for the actual computation of the singular vector basis, because it is not good enough yet and remove too much data.
+        good_data_triangle = goodData[:,i] # TO REMOVE
 
-        # as a second step
-        # now that we have the basis V of singular vectors, we want to fit the polynomial model
-        # to get the coefficients of the polynomial for each singular vector
+        data_triangle = data_triangle_svdfiltered[good_data_triangle].reshape((data_triangle_svdfiltered[good_data_triangle].shape[0], -1))
+        xmod_triangle = xmod[:,i][good_data_triangle]
+        ymod_triangle = ymod[:,i][good_data_triangle]
 
+        x = xmod_triangle
+        y = ymod_triangle
+        if Nqr == 3:
+            X = np.array([x, y]).T
+        else:
+            X = np.array([x, y, x*y, x*x, y*y]).T
 
-        ############# Errors-in-Variables fitting #############
-        # We want to fit B = M.P where B = VT.D and P is the polynomial basis
-        # We have noisy measurements of B and P, so we use an alternating minim
-        # imization to estimate the true P and M
-        # see https://arxiv.org/abs/2305.17180 for details (reference from chatGPT)
-        
+        Y = data_triangle
 
-        def phi(xy):
-            Xv, Yv = xy[0], xy[1]
-            if Nqr == 6:
-                return np.vstack([np.ones_like(Xv), Xv, Yv, Xv*Yv, Xv**2, Yv**2 ])  # (6,)
-            elif Nqr == 3:
-                # return np.identity(3)
-                return np.vstack([np.ones_like(Xv), Xv, Yv])  # (3,)
-            else:
-                return None
+        # Centered copies for stats     
+        mu_x = X.mean(axis=0)
+        mu_y = Y.mean(axis=0)
+        Xc = X - mu_x
+        Yc = Y - mu_y
 
-        ## on a la relation D = V.M.P
-        ## que l'on peut ecrire B = M.P
-        ## avec B = VT.D
-        D = data_triangle.T
-        B = V.T @ D
-        ## et avec P la matrice des positions (x,y,xy,x^2,y^2)
+        # Covariance 
+        Sxx =  Xc.T @ Xc
+        Sxy =  Xc.T @ Yc
 
-        xy_new = xymod_triangle.copy()
+        # Check rank of Sxx
+        rank_sxx = np.linalg.matrix_rank(Sxx)
+        if rank_sxx < 2:
+            continue
 
-        # Errors-in-Variables alternating minimization.
-        # B       : (6,n) observations 
-        # xymod_triangle : (n,) mesures bruitées des entrées
-        # sigma : écart-types des erreurs sur X,Y
+        B = pinv(Sxx) @ Sxy
 
-        # initial estimate of M and P
-        P = phi(xymod_triangle)
-        M = B @ np.linalg.pinv(P)
-
-        # initial estimate of noise levels
-        sigma_B = (B-M @ P).std(axis=1) + 1
-        sigma_B = np.sqrt(np.mean(sigma_B)**2+sigma_B**2)/np.sqrt(2)
-        sigma_pos = np.linalg.norm(xymod_triangle-xymod_triangle.mean(axis=1)[:,None],axis=0).mean()/10
-        max_iter = 10
-        for it in range(max_iter):
-            for i in range(len(B[0])):   
-                def resid(z):
-                    r_model=(B[:,i] - M @ phi(z)[:,0])/sigma_B
-                    r_prior=(xymod_triangle[:,i]-z)/sigma_pos
-                    return np.concatenate([r_model,r_prior]) 
-                z = least_squares(resid, x0=xy_new[:,i])
-                if z.success:
-                    # print("success")
-                    xy_new[:,i] = z.x
-            P = phi(xy_new)
-            M = B @ np.linalg.pinv(P)
-            sigma_B = (B-M @ P).std(axis=1) + 1
-            sigma_B = np.sqrt(np.mean(sigma_B)**2+sigma_B**2)/np.sqrt(2)
-
-
-        Vectors_triangle = (V @ M) #(n,6)
+        Vectors_triangle = np.hstack([mu_y[:,None], B.T])
         vectors_all_triangles.append(Vectors_triangle)
+        center_all_triangles.append(mu_x)
+        Ntriangles+=1
+        indexes_new+=[i]
 
     Noutput, Nwave = data_svdfiltered.shape[2:]
 
     center_all_triangles = np.array(center_all_triangles)
     vectors_all_triangles = np.array(vectors_all_triangles).reshape((Ntriangles, Noutput, Nwave, Nqr))
 
-    return vectors_all_triangles, center_all_triangles
+    return vectors_all_triangles, center_all_triangles, indexes_new
 
 
 def flux_matrices(singular_vectors):
@@ -232,7 +200,6 @@ def Q_and_R_matrices(singular_vectors):
     Nwave = singular_vectors.shape[2]
     Nqr = singular_vectors.shape[3]
 
-    singular_vectors = singular_vectors.transpose((0,2,1,3))
     QT_singular_vectors = np.zeros((Ntriangles,Nwave,Nqr,Noutput))
     R_singular_vectors = np.zeros((Ntriangles,Nwave,Nqr,Nqr))
 
@@ -241,11 +208,11 @@ def Q_and_R_matrices(singular_vectors):
     else:
         description = "Calculating QR matrices for pyramids"
 
-    for p in tqdm(range(Ntriangles), desc = description):
+    for t in tqdm(range(Ntriangles), desc = description):
         for w in range(Nwave):
-            Q, R = np.linalg.qr(singular_vectors[p,w], mode="reduced")
-            QT_singular_vectors[p,w] = Q.T
-            R_singular_vectors[p,w] = R
+            Q, R = np.linalg.qr(singular_vectors[t,:,w], mode="reduced")
+            QT_singular_vectors[t,w] = Q.T
+            R_singular_vectors[t,w] = R
 
     return QT_singular_vectors,R_singular_vectors
 
@@ -274,7 +241,10 @@ def quick_plot(data,title =""):
     print("Done")
 
 
-if __name__ == "__main__":
+def main():
+    """
+    Main entry point for the coupling map generation script.
+    """
     parser = argparse.ArgumentParser(
         description="Generate coupling efficiency maps from preprocessed FIRST Photonic Lantern data using SVD analysis.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -352,7 +322,7 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
                        help="Select a specific wave Map to use (default: most recent in the wavemaps folder)")
     parser.add_argument("--wavelength_smooth", type=int, default=1,
                        help="Smoothing factor for wavelength (default: %(default)s)")
-    parser.add_argument("--wavelength_bin", type=int, default=20,
+    parser.add_argument("--wavelength_bin", type=int, default=1,
                        help="Binning factor for wavelength (default: %(default)s)")
     parser.add_argument("--Nsingular", type=int, default=19*6,
                        help="Number of singular values to use (default: %(default)s)")
@@ -362,6 +332,10 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
                        help="Selection of the modulation scale by user (default: first in the list)")
     parser.add_argument("--wollaston", 
                        help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
+    parser.add_argument("--use_pyramids", action="store_true",
+                       help="Use pyramids instead of triangles for coupling map analysis (default: use triangles)")
+    parser.add_argument("--center_data", action="store_true", default=True,
+                       help="Center the data -- remove mean flux over the output -- before analysis (default: center the data)")
 
     # Parse the arguments
     args = parser.parse_args()
@@ -378,6 +352,8 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
     dark_patterns = args.dark_files
     flat_patterns = args.flatMap
     wave_patterns = args.waveMap
+    use_pyramids = args.use_pyramids
+    center_data = args.center_data
     
     if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('SPYDER_DEBUG_FILE')):
         print("Running in compiler")
@@ -390,7 +366,9 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
             file_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc/firstpl_2025-05-14T11?3*s"
             file_patterns = "/Users/slacour/Downloads/2025-07-14/"
             # dark_patterns = "/Users/slacour/DATA/LANTERNE/20250514/preproc"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/raw/20260114/preproc"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/raw/20260114/preproc/firstpl_2026-01-14T20h56m24s_DAY_P.fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20260103/preproc/*ALFLEO*"
+            wave_patterns = "/Users/slacour/DATA/LANTERNE/20251231/wavemaps"
         if getpass.getuser() == "jsarrazin":
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
             file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
@@ -412,6 +390,8 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
     if wave_patterns is None:
         folder = os.path.dirname(file_patterns[0])
         wave_patterns = file_patterns + [os.path.join(folder,"../wavemaps")] + [os.path.join(folder,"wavemaps")]
+    if modID is None:
+        modID = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
     fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
 
@@ -432,7 +412,7 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
 
     datalist : List[DataCube] = fileList.extract_data_from_list(Nsmooth=wavelength_smooth, 
                                                                 Nbin = wavelength_bin, flatMap = flatMap, 
-                                                                waveMap = waveMap, center = False)
+                                                                waveMap = waveMap, center = center_data)
 
     flux = np.concatenate([d.flux for d in datalist])
     datacube=np.concatenate([d.data for d in datalist])
@@ -447,57 +427,47 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
 
     filenames = [d.filename for d in datalist]
 
-    flux_goodData,flux_threshold = runlib_basic.flux_filtering(flux)
+    flux_goodData,flux_threshold = runlib_linalg.flux_filtering(flux)
     print(f"* Percentage of good data: {np.sum(flux_goodData)/len(flux_goodData.ravel())*100:.1f} % (flux threshold)")
 
-    data_svdfiltered,fit_goodData,errors = runlib_basic.svd_filtering(datacube,flux_goodData,Nsingular)
+    data_svdfiltered,fit_goodData,errors = runlib_linalg.svd_filtering(datacube,flux_goodData,Nsingular)
     goodData = flux_goodData & fit_goodData
     print(f"* Percentage of good data: {np.sum(goodData)/len(goodData.ravel())*100:.1f} % (flux and svd threshold)")
-
 
     runlib_plots.plot_flux_map(flux.mean(axis=(2))[0], xmod[0], ymod[0])
 
     goodPositions = goodData.mean(axis=0) > 0.3
-    index_triangles , center_triangles = datalist[0].get_triangles()
-    index_pyramids, center_pyramids = datalist[0].get_pyramids()
+
+    if use_pyramids == False:
+        indexes  = datalist[0].get_triangles()
+    else:
+        indexes = datalist[0].get_pyramids()
 
     # Select only triangles with good data
-    goodTriangles = goodPositions[index_triangles].mean(axis=1)  == 1
-    index_triangles=index_triangles[goodTriangles]
-    center_triangles=center_triangles[goodTriangles]
-    # Select only pyramids with good data
-    goodPyramids = goodPositions[index_pyramids].mean(axis=1)  == 1
-    index_pyramids=index_pyramids[goodPyramids]
-    center_pyramids=center_pyramids[goodPyramids]
+    goodTriangles = goodPositions[indexes].mean(axis=1)  == 1
+    indexes_good=indexes[goodTriangles]
 
-    indexes = index_triangles
-    centers = center_triangles
+    vectors_all, center_all, indexes_new = singular_vector_basis(data_svdfiltered,goodData,indexes_good, xmod, ymod)
 
-    vectors_all_triangles, center_all_triangles = singular_vector_basis(data_svdfiltered,goodData,index_triangles,center_triangles, xmod, ymod)
-    vectors_all_pyramids, center_all_pyramids = singular_vector_basis(data_svdfiltered,goodData,index_pyramids,center_pyramids, xmod, ymod)
 
 
     # Ntriangles = vectors_all_triangles.shape[0]
     # vectors_all_triangles = vectors_all_triangles.reshape((Ntriangles, Noutput, Nwave,6))
     spectra = flux[goodData].mean(axis=0)
-    vectors_all_triangles = vectors_all_triangles/spectra[:,None]
-    vectors_all_pyramids = vectors_all_pyramids/spectra[:,None]
+    vectors_all_triangles = vectors_all/spectra[:,None]
 
     #getting the flux 2 data matrices
-    flux_2_data_triangles,data_2_flux_triangles = flux_matrices(vectors_all_triangles)
-    flux_2_data_pyramids,data_2_flux_pyramids = flux_matrices(vectors_all_pyramids)
+    flux_2_data,data_2_flux = flux_matrices(vectors_all_triangles)
 
     #getting the Q and R matrices
-    QT_triangles,R_triangles = Q_and_R_matrices(vectors_all_triangles)
-    QT_pyramids,R_pyramids = Q_and_R_matrices(vectors_all_pyramids)
+    QT,R = Q_and_R_matrices(vectors_all_triangles)
 
     ############### Save results ####################
     # Create CouplingMap object and save using the new save method
     
     couplingMap = CouplingMap()
     couplingMap.create_from_data(
-        flux_2_data_triangles, data_2_flux_triangles, QT_triangles, R_triangles, center_triangles,
-        flux_2_data_pyramids, data_2_flux_pyramids, QT_pyramids, R_pyramids, center_pyramids,
+        flux_2_data, data_2_flux, QT, R, center_all,
         spectra, wavelength_bin
     )
     
@@ -513,6 +483,8 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
     new_header['Q_CMWSMO'] = (wavelength_smooth,  'wavelength smoothing factor')
     new_header['Q_CMWBIN'] = (wavelength_bin, 'wavelength binning factor')
     new_header['Q_CMSING'] = (Nsingular, 'number of singular values')
+    new_header['Q_CMCENT'] = (center_data, 'whether the data was centered before analysis')
+    new_header['Q_CMPYR'] = (use_pyramids, 'whether pyramids (True) or triangles (False) were used')
     new_header['Q_CM_FT'] = (flux_threshold, 'flux threshold')
     # new_header['CHI2THR'] = chi2_threshold  # Add chi2 threshold
     new_header['Q_CM_CK'] = (np.random.randint(0, 2**32, dtype=np.uint32), 'checksum')
@@ -588,17 +560,18 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
 
     # 1. Plot positions (xmod, ymod) for all triangles
     axs[0].set_title("Positions of Fiber")
-    axs[0].scatter(xmod, ymod, c='k', marker='.')
+    axs[0].scatter(xmod, ymod, c='r', marker='.')
     axs[0].scatter(xmod[0,goodPositions], ymod[0,goodPositions], facecolors='g', marker='o', edgecolor='k', label='Good Positions')
     axs[0].set_xlabel("x [mas]")
     axs[0].set_ylabel("y [mas]")
     axs[0].set_aspect('equal')
     axs[0].legend()
 
+    center_triangles=np.array([xmod[0,indexes].mean(axis=1), ymod[0,indexes].mean(axis=1)]).T
     # 1. Plot positions (xmod, ymod) for all triangles
     axs[1].set_title("Positions of Triangles")
-    axs[1].scatter(center_triangles[:, 0], center_triangles[:, 1], c='k', marker='.')
-    axs[1].scatter(center_triangles[:, 0], center_triangles[:, 1], facecolors='g', marker='o', edgecolor='k', label='Good Triangles')
+    axs[1].scatter(center_triangles[:, 0], center_triangles[:, 1], c='r', marker='.')
+    axs[1].scatter(center_all[:, 0], center_all[:, 1], facecolors='g', marker='o', edgecolor='k', label='Good Triangles')
     axs[1].set_xlabel("x [mas]")
     axs[1].set_ylabel("y [mas]")
     axs[1].set_aspect('equal')
@@ -610,17 +583,17 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
     # Covariance and correlation matrix plot
     ###############################################
 
-    if len(center_triangles) > 0:
-        runlib_plots.plot_covariance(flux_2_data_triangles,center_triangles,"Triangles")
-    if len(center_pyramids) > 0:
-        runlib_plots.plot_covariance(flux_2_data_pyramids,center_pyramids,"Pyramids")
+    if len(center_all) > 0:
+        runlib_plots.plot_covariance(flux_2_data,center_all,"Triangles")
 
-    R_amplitude = np.linalg.norm(R_pyramids,axis=2)
+    R_amplitude = np.linalg.norm(R,axis=2)
 
     label = ["1","x","y","xy","x2","y2"]
 
-    runlib_plots.plot_R_amplitude(R_triangles,name="triangle")
-    runlib_plots.plot_R_amplitude(R_pyramids,name="pyramids")
+    if use_pyramids:
+        runlib_plots.plot_R_amplitude(R,name="pyramids")
+    else:
+        runlib_plots.plot_R_amplitude(R,name="triangle")
 
     ###############################################
 
@@ -634,159 +607,193 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
         sys.exit(0)
 
     signal.signal(signal.SIGINT, handle_sigint)
-    for coupling in ["triangles","pyramids"]:
 
-        if coupling == "triangles": 
-            couplingMap = CouplingMap(output_filename,pyramids = False)
-        else:
-            couplingMap = CouplingMap(output_filename,pyramids = True)
 
-        QT= couplingMap.QT
-        R= couplingMap.R * spectra[:,None,None]
-        centers = couplingMap.position
 
-        wmin = QT.shape[1] // 4
-        wmax = 3 * QT.shape[1] // 4
-        QT_broadband, R_broadband = couplingMap.compute_broadband_QR(wmin, wmax, spectra)
+    couplingMap = CouplingMap(output_filename)
+
+    QT= couplingMap.QT
+    R= couplingMap.R
+    centers = couplingMap.position
+
+    datacube=np.concatenate([d.data for d in datalist])
+    # datacube[np.isnan(datacube)] = 0
+
+    datacube_T=datacube.transpose((3,2,0,1))
+    # datacube_T=data_svdfiltered.transpose((3,2,0,1)) # TO REMOVE
+    Nwave, Noutput, Ncube, Nmod = datacube_T.shape
+    Ntriangles = QT.shape[0]
+
+    if Ntriangles == 0:
+        print(f"Bad coupling map, cannot continue the health check plots.")
+
+    datacube_T=datacube_T.reshape((datacube_T.shape[0], datacube_T.shape[1], -1))
+    chi2_max = np.sum(datacube_T**2, axis=(0,1))
+
+    chi2_map = np.zeros((Ntriangles,Ncube * Nmod))
+    chi2_map = np.zeros((Ntriangles, Ncube * Nmod))
+    chi2_map[:] =  chi2_max
+    # Here, the computation of the chi2 is simplified by the fact that QT is orthonormal
+    # chi2 = ||data - Q @ Q.T @ data||^2 = ||data||^2 - ||Q.T @ data||^2
+    for t in tqdm(range(Ntriangles), desc="Computing chi2 map"):
+        k= QT[t] @ datacube_T
+        chi2_map[t,:] -= np.sum(k ** 2, axis=(0,1))
+
+    Nt,No,Nw,Nthree = vectors_all.shape
+    vectors_all_inv = np.zeros((Nt,Nw,Nthree,No))
+    vectors_all_kernel = np.zeros((Nt,Nw,No,No))
+    for t in range(Nt):
+        for w in range(Nw):
+            v = vectors_all[t, :, w, :]
+            v_inv = np.linalg.pinv(v)
+            vectors_all_inv[t,w] = v_inv
+            vectors_all_kernel[t,w] = np.eye(No) - v @ v_inv
+
+    # chi2_map_2=chi2_map.copy()*0
+
+    # for t in tqdm(range(Ntriangles), desc="Computing chi2 map"):
+    #     k = vectors_all_kernel[t] @ datacube_T
+    #     chi2_map_2[t] = np.sum(k ** 2, axis=(0,1))
+                                                        
         
 
-        datacube=np.concatenate([d.data for d in datalist])
-        datacube[np.isnan(datacube)] = 0
+    # Handle all-NaN slices by using a masked approach
+    chi2_argmin = np.zeros(chi2_map.shape[1], dtype=int)
+    for i in range(chi2_map.shape[1]):
+        valid_indices = ~np.isnan(chi2_map[:, i])
+        if np.any(valid_indices):
+            chi2_argmin[i] = np.nanargmin(chi2_map[:, i])
+        else:
+            # If all values are NaN, use the first triangle as fallback
+            chi2_argmin[i] = -1
 
-        datacube_T=datacube.transpose((3,2,0,1))
-        # datacube_T=data_svdfiltered.transpose((3,2,0,1))
-        Nwave, Noutput, Ncube, Nmod = datacube_T.shape
-        Ntriangles = QT.shape[0]
+    # chi2_argmin[300] = 395  # manual fix for a weird outlier
+    # chi2_argmin[300] = 412  # manual fix for a weird outlier
 
-        if Ntriangles == 0:
-            print(f"No {coupling} to process for health check plots.")
-            continue
-
-        datacube_T=datacube_T.reshape((datacube_T.shape[0], datacube_T.shape[1], -1))
-        chi2_max = np.sum(datacube_T**2, axis=(0,1))
-
-        chi2_map = np.zeros((Ntriangles,Ncube * Nmod))
-        chi2_map = np.zeros((Ntriangles, Ncube * Nmod))
-        chi2_map[:] =  chi2_max
-        # Here, the computation of the chi2 is simplified by the fact that QT is orthonormal
-        # chi2 = ||data - Q @ Q.T @ data||^2 = ||data||^2 - ||Q.T @ data||^2
-        for t in tqdm(range(Ntriangles), desc="Computing chi2 map"):
-            k= QT[t] @ datacube_T
-            chi2_map[t,:] -= np.sum(k ** 2, axis=(0,1))
-
-        chi2_argmin = np.nanargmin(chi2_map,axis=0)
-        # chi2_argmin[300] = 395  # manual fix for a weird outlier
-        # chi2_argmin[300] = 412  # manual fix for a weird outlier
-
-        QTdata = np.zeros((QT.shape[1],QT.shape[2],datacube_T.shape[2]))
-        for i in tqdm(range(Ncube * Nmod), desc="Projection onto QT space"):
-            t = chi2_argmin[i]
+    QTdata = np.zeros((QT.shape[1],QT.shape[2],datacube_T.shape[2]))
+    for i in tqdm(range(Ncube * Nmod), desc="Projection onto QT space"):
+        t = chi2_argmin[i]
+        if t >= 0:
             data = datacube_T[:,:,i]
             QTdata[:,:,i] = (QT[t] @ data[:,:,None])[:,:,0]
+        else:
+            QTdata[:,:,i] = np.nan  # or some other placeholder for invalid data
 
 
-        Xpos = np.zeros((Ncube , Nmod))
-        Ypos = np.zeros((Ncube , Nmod))
-        Xcen = np.zeros((Ncube , Nmod))
-        Ycen = np.zeros((Ncube , Nmod))
-        Xdiff = np.zeros((Ncube , Nmod))
-        Ydiff = np.zeros((Ncube , Nmod))
 
-        X_wave = np.zeros((Nwave, Ncube * Nmod))
-        Y_wave = np.zeros((Nwave, Ncube * Nmod))
-        Z_wave = np.zeros((Nwave, Ncube * Nmod))
-        QTdata_dxy = np.zeros_like(QTdata)
-        Nqr = R.shape[2]
-        R_dxy = np.zeros((Nwave, Nqr, Ncube * Nmod, 2))
+    QTdata_dxy = np.zeros_like(QTdata)
+    Nqr = R.shape[2]
 
-            
-        for i in tqdm(range(Ncube * Nmod), desc="Computing XY positions"):
-            t = chi2_argmin[i]
-            center = centers[t]
-
-            QTdata_broadband = QT_broadband[t] @ QTdata[wmin:wmax,:,i].ravel()
-            
-            if Nqr == 6:
-                x_hat_broadband, y_hat_broadband, k_hat_broadband, chi2_broadband, _ = runlib_linalg.fit_QR_6(QTdata_broadband, R_broadband[t])
-            else:
-                x_hat_broadband, y_hat_broadband, k_hat_broadband, chi2_broadband, _ = runlib_linalg.solve_QR_3(QTdata_broadband, R_broadband[t])
-
-            # Add NaN checks and set to zero if needed
-            if np.isnan(x_hat_broadband):
-                x_hat_broadband = 0.0
-            if np.isnan(y_hat_broadband):
-                y_hat_broadband = 0.0
-            if np.isnan(k_hat_broadband):
-                k_hat_broadband = 0.0
-
-            if Nqr == 6:
-                v = np.array([1.0, x_hat_broadband, y_hat_broadband, x_hat_broadband*y_hat_broadband, x_hat_broadband**2, y_hat_broadband**2])
-                dv_dx = np.array([0.0, 1.0, 0.0, y_hat_broadband, 2.0*x_hat_broadband, 0.0])
-                dv_dy = np.array([0.0, 0.0, 1.0, x_hat_broadband, 0.0, 2.0*y_hat_broadband])
-            else:
-                v = np.array([1.0, x_hat_broadband, y_hat_broadband])
-                dv_dx = np.array([0.0, 1.0, 0.0])
-                dv_dy = np.array([0.0, 0.0, 1.0])
-
-            r = R[t] @ v
-            Kernel_v = np.identity(len(v)) - (r[:,:,None] @ r[:,None]) / (r[:,None] @ r[:,:,None])
-            QTdata_dxy[:,:,i] = (Kernel_v @ QTdata[:,:,i,None])[...,0]
-
-            dev_phi = np.array((dv_dx,dv_dy)).T
-            R_dxy[:,:,i] = Kernel_v @ (R[t] @ dev_phi)
-
-            xy_dev = (np.linalg.pinv(R_dxy[:,:,i]) @ QTdata_dxy[:,:,i,None])[...,0]
-
-            X_wave[:,i] = xy_dev[:,0]
-            Y_wave[:,i] = xy_dev[:,1]
-
-            Xpos.ravel()[i] = x_hat_broadband
-            Ypos.ravel()[i] = y_hat_broadband
-
-            Xcen.ravel()[i] = center[0]
-            Ycen.ravel()[i] = center[1]
-
-            Xdiff.ravel()[i] = x_hat_broadband + center[0] - xmod.ravel()[i]
-            Ydiff.ravel()[i] = y_hat_broadband + center[1] - ymod.ravel()[i]
-
-        xy_dev = np.linalg.pinv(R_dxy.reshape((Nwave,-1,2))) @ QTdata_dxy.reshape((Nwave,-1,1))
-        xy_dev = xy_dev[...,0]
-
+    Xpos = np.zeros((Ncube , Nmod))
+    Ypos = np.zeros((Ncube , Nmod))
+    Xcen = np.zeros((Ncube , Nmod))
+    Ycen = np.zeros((Ncube , Nmod))
+    Xdiff = np.zeros((Ncube , Nmod))
+    Ydiff = np.zeros((Ncube , Nmod))
+    ZXY_wave = np.zeros((Ncube * Nmod , Nwave, Nqr))
         
-        fig, axs = plt.subplots(2, Ncube, num="XY position -- using "+coupling, clear=True, figsize=(7*Ncube,12), squeeze=False)
-        for i in range(Ncube):
-            axs[0,i].plot(Xcen[i],Ycen[i],'.',label='Center of '+coupling)
-            axs[0,i].set_ylim(axs[0,i].get_ylim()[0], axs[0,i].get_ylim()[1])
-            axs[0,i].set_xlim(axs[0,i].get_xlim()[0], axs[0,i].get_xlim()[1])
-            axs[0,i].plot((Xcen+Xpos)[i],(Ycen+Ypos)[i],'.-',label='Detected position')
-            axs[0,i].plot((Xcen[i],(Xcen+Xpos)[i]),(Ycen[i],(Ycen+Ypos)[i]),'-k',alpha=0.3,linewidth=0.5)
-            axs[0,i].set_title(basenames[i][8:])
-            axs[0,i].set_xlabel("X [mas]")
-            axs[0,i].set_ylabel("Y [mas]")
-            axs[0,i].legend()
-        for ax in axs[0]:
-            ax.set_aspect('equal')
-        for i in range(Ncube):
-            x_median = np.median(Xdiff[i])
-            y_median = np.median(Ydiff[i])
-            x_1sigma = np.percentile(Xdiff[i], [16, 84])
-            y_1sigma = np.percentile(Ydiff[i], [16, 84])
-            range_max = np.max((np.abs(x_1sigma), np.abs(y_1sigma))) * 2 +10
-            axs[1,i].hist(Xdiff[i], bins=51, alpha=0.5, color='b', label='Xdiff', range=(-range_max, range_max))
-            axs[1,i].hist(Ydiff[i], bins=51, alpha=0.5, color='r', label='Ydiff', range=(-range_max, range_max))
-            x_median = np.median(Xdiff[i])
-            y_median = np.median(Ydiff[i])
-            x_1sigma = np.percentile(Xdiff[i], [16, 84])
-            y_1sigma = np.percentile(Ydiff[i], [16, 84])
-            axs[1,i].axvline(x_median, color='b', linestyle='--', label=f'X median: {x_median:.2f}')
-            axs[1,i].axvline(y_median, color='r', linestyle='--', label=f'Y median: {y_median:.2f}')
-            # axs[1,i].axvspan(x_1sigma[0], x_1sigma[1], color='b', alpha=0.2, label=f'X 1σ: [{x_1sigma[0]:.2f}, {x_1sigma[1]:.2f}]')
-            # axs[1,i].axvspan(y_1sigma[0], y_1sigma[1], color='r', alpha=0.2, label=f'Y 1σ: [{y_1sigma[0]:.2f}, {y_1sigma[1]:.2f}]')
-            axs[1,i].set_xlabel('Difference [mas]')
-            axs[1,i].set_ylabel('Count')
-            axs[1,i].legend()
-        
-        plt.tight_layout()
+    for i in tqdm(range(Ncube * Nmod), desc="Computing XY positions"):
+        t = chi2_argmin[i]
+        center = couplingMap.position[t]
+
+        if Nqr == 6:
+            # x_hat_broadband, y_hat_broadband, k_hat_broadband, chi2_broadband, _ = runlib_linalg.fit_QR_6(QTdata_broadband, R_broadband[t])
+            pass
+        else:
+            zxy_bd = np.zeros((Nwave,Nqr))
+            if np.any(np.isnan(QTdata[:, :, i])):
+                zxy_bd[:] = np.nan
+            else:
+                for w in range(Nwave):
+                    zxy_bd[w] = solve_triangular(R[t, w], QTdata[w, :, i].T, lower=False)
+
+        ZXY_wave[i] = zxy_bd  # or some other appropriate assignment
+        Xpos.ravel()[i] = zxy_bd[:,1].mean(axis=0)/zxy_bd[:,0].mean(axis=0)  # x_hat_broadband
+        Ypos.ravel()[i] = zxy_bd[:,2].mean(axis=0)/zxy_bd[:,0].mean(axis=0)  # y_hat_broadband
+
+        Xcen.ravel()[i] = center[0]
+        Ycen.ravel()[i] = center[1]
+
+        Xdiff.ravel()[i] = Xpos.ravel()[i] + Xcen.ravel()[i] - xmod.ravel()[i]
+        Ydiff.ravel()[i] = Ypos.ravel()[i] + Ycen.ravel()[i] - ymod.ravel()[i]
+
+    coupling = "pyramids" if use_pyramids else "triangles"
+
+    fig, axs = plt.subplots(2, Ncube, num="XY position -- using "+coupling, clear=True, figsize=(7*Ncube,12), squeeze=False)
+    for i in range(Ncube):
+        axs[0,i].plot(Xcen[i],Ycen[i],'.',label='Center of '+coupling)
+        axs[0,i].set_ylim(axs[0,i].get_ylim()[0], axs[0,i].get_ylim()[1])
+        axs[0,i].set_xlim(axs[0,i].get_xlim()[0], axs[0,i].get_xlim()[1])
+        axs[0,i].plot((Xcen+Xpos)[i],(Ycen+Ypos)[i],'.-',label='Detected position')
+        axs[0,i].plot((Xcen[i],(Xcen+Xpos)[i]),(Ycen[i],(Ycen+Ypos)[i]),'-k',alpha=0.3,linewidth=0.5)
+        axs[0,i].set_title(basenames[i][8:])
+        axs[0,i].set_xlabel("X [mas]")
+        axs[0,i].set_ylabel("Y [mas]")
+        axs[0,i].legend()
+    for ax in axs[0]:
+        ax.set_aspect('equal')
+    for i in range(Ncube):
+        x_median = np.nanmedian(Xdiff[i])
+        y_median = np.nanmedian(Ydiff[i])
+        x_1sigma = np.nanpercentile(Xdiff[i], [16, 84])
+        y_1sigma = np.nanpercentile(Ydiff[i], [16, 84])
+        range_max = np.nanmax((np.abs(x_1sigma), np.abs(y_1sigma))) * 2 +10
+        axs[1,i].hist(Xdiff[i][~np.isnan(Xdiff[i])], bins=51, alpha=0.5, color='b', label='Xdiff', range=(-range_max, range_max))
+        axs[1,i].hist(Ydiff[i][~np.isnan(Ydiff[i])], bins=51, alpha=0.5, color='r', label='Ydiff', range=(-range_max, range_max))
+        x_median = np.nanmedian(Xdiff[i])
+        y_median = np.nanmedian(Ydiff[i])
+        x_1sigma = np.nanpercentile(Xdiff[i], [16, 84])
+        y_1sigma = np.nanpercentile(Ydiff[i], [16, 84])
+        axs[1,i].axvline(x_median, color='b', linestyle='--', label=f'X median: {x_median:.2f}')
+        axs[1,i].axvline(y_median, color='r', linestyle='--', label=f'Y median: {y_median:.2f}')
+        # axs[1,i].axvspan(x_1sigma[0], x_1sigma[1], color='b', alpha=0.2, label=f'X 1σ: [{x_1sigma[0]:.2f}, {x_1sigma[1]:.2f}]')
+        # axs[1,i].axvspan(y_1sigma[0], y_1sigma[1], color='r', alpha=0.2, label=f'Y 1σ: [{y_1sigma[0]:.2f}, {y_1sigma[1]:.2f}]')
+        axs[1,i].set_xlabel('Difference [mas]')
+        axs[1,i].set_ylabel('Count')
+        axs[1,i].legend()
+    
+    plt.tight_layout()
+
+    wave=datalist[0].wave
+    wave_label=datalist[0].wave_label
+    fig, axs = plt.subplots(3, num="Spectra and xy offsets 3", clear=True, figsize=(10,18),sharex=True)
+    
+    # Calculate means and standard errors
+    flux_mean = np.nanmean(ZXY_wave,axis=0)[:,0]
+    flux_stderr = np.nanstd(ZXY_wave,axis=0)[:,0] / np.sqrt(np.sum(~np.isnan(ZXY_wave[:,:,0]),axis=0))
+    
+    x_offset_mean = np.nanmean(ZXY_wave,axis=0)[:,1]/np.nanmean(ZXY_wave,axis=0)[:,0]
+    x_offset_stderr = np.nanstd(ZXY_wave[:,:,1]/ZXY_wave[:,:,0],axis=0) / np.sqrt(np.sum(~np.isnan(ZXY_wave[:,:,1]/ZXY_wave[:,:,0]),axis=0))
+    
+    y_offset_mean = np.nanmean(ZXY_wave,axis=0)[:,2]/np.nanmean(ZXY_wave,axis=0)[:,0]
+    y_offset_stderr = np.nanstd(ZXY_wave[:,:,2]/ZXY_wave[:,:,0],axis=0) / np.sqrt(np.sum(~np.isnan(ZXY_wave[:,:,2]/ZXY_wave[:,:,0]),axis=0))
+    
+    # Plot flux with error bars
+    axs[0].plot(wave, flux_mean)
+    axs[0].set_ylim(*axs[0].get_ylim())
+    axs[0].fill_between(wave, flux_mean - flux_stderr, flux_mean + flux_stderr, 
+                        alpha=0.3, color='gray', label='±1σ')
+    axs[0].set_title("Flux")
+    
+    # Plot X offsets with error bars
+    axs[1].plot(wave, x_offset_mean)
+    axs[1].set_ylim(*axs[1].get_ylim())
+    axs[1].fill_between(wave, x_offset_mean - x_offset_stderr, x_offset_mean + x_offset_stderr, 
+                        alpha=0.3, color='gray', label='±1σ')
+    axs[1].set_title("X Offsets")
+    # axs[1].legend()
+    
+    # Plot Y offsets with error bars
+    axs[2].plot(wave, y_offset_mean)
+    axs[2].set_ylim(*axs[2].get_ylim())
+    axs[2].fill_between(wave, y_offset_mean - y_offset_stderr, y_offset_mean + y_offset_stderr, 
+                        alpha=0.3, color='gray', label='±1σ')
+    axs[2].set_title("Y Offsets")
+    axs[2].set_xlabel(wave_label)
+    # axs[2].legend()
+
+    axs[0].set_xlim(wave.min(), wave.max())
+    plt.tight_layout()
 
     runlib_plots.save_pdf_in_file(output_filename)
 
@@ -794,3 +801,6 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
 # %%
 
 #ideal : 0.01 mas
+
+if __name__ == "__main__":
+    main()

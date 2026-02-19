@@ -12,15 +12,11 @@ def clean_filelist(fits_keywords, filelist):
     if isinstance(filelist, str):
         filelist = [filelist]
     for filename in filelist:
-        # TODO : could be speed up
         try:
-            first_file = fits.open(filename, memmap=True)
+            header = fits.getheader(filename)
         except:
             continue
-        header = first_file[0].header.copy()
-        first_file.close()
-        del first_file
-        
+
         # Data files with the correct keywords only
         key_names = list(fits_keywords.keys())
         type_ok = True

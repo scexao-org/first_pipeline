@@ -38,13 +38,13 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
 from tqdm import tqdm
-import libraries.runPL_library_io as runlib_io
-import libraries.runPL_library_plots as runlib_plots
+from .libraries import runPL_library_io as runlib_io
+from .libraries import runPL_library_plots as runlib_plots
 # Import FIRST pipeline classes
-from classes.runPL_class_flatMap import FlatMap
-from classes.runPL_class_fileList import FileList
-from classes.runPL_class_dataCube import DataCube
-from classes.runPL_class_waveMap import WaveMap
+from .classes.runPL_class_flatMap import FlatMap
+from .classes.runPL_class_fileList import FileList
+from .classes.runPL_class_dataCube import DataCube
+from .classes.runPL_class_waveMap import WaveMap
 
 #plt.ion()
 # Add options
@@ -385,7 +385,10 @@ def calculate_the_pixel_to_wavelength_mapping(ref_pixels_lines, neon_wavelengths
     return wave_1D_mapping, coeffs_poly, fig
     
 
-if __name__ == "__main__":
+def main():
+    """
+    Main entry point for the wavelength map generation script.
+    """
     '''
     run for neon only, call functions for star
 
@@ -605,3 +608,6 @@ Review diagnostic plots to ensure proper line detection and fitting.
     runlib_plots.save_pdf_in_file(output_filename)
 
 # %%
+
+if __name__ == "__main__":
+    main()

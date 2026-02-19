@@ -157,9 +157,28 @@ class WaveMap:
                 dataCube (DataCube): The data cube to apply the wavelength map to.
         """
         self._check_loaded()
-        data = dataCube.data
-        variance = dataCube.variance
+
+        if not isinstance(dataCube, DataCube):
+            is_dataCube = False
+        else:
+            is_dataCube = True
+
+        if is_dataCube:
+            data = dataCube.data
+            variance = dataCube.variance
+        else:
+            data = dataCube
+            variance = np.zeros_like(data)  # Create a dummy variance array if not provided
+
+        # Handle 3D data by adding a first dimension if needed
+        if len(data.shape) == 3:
+            data = data[np.newaxis, :, :, :]
+            variance = variance[np.newaxis, :, :, :]
+        
         Ncube, Nmod, Noutput, Nwave = data.shape
+        if self.index.max() != Nwave-1:
+            raise ValueError(f"Wavelength map size mismatch: expected {self.index.max() + 1}, got {Nwave}")
+
         Nwave_new = self.Nwave
         new_data = np.zeros((Ncube, Nmod, Noutput, Nwave_new)) 
         new_variance = np.zeros((Ncube, Nmod, Noutput, Nwave_new)) 
@@ -168,8 +187,12 @@ class WaveMap:
             new_data[:,:,o,:] = (data[:,:,o,self.index[:,o]] * self.weights[:,o]).sum(axis=2)
             new_variance[:,:,o,:] = (variance[:,:,o,self.index[:,o]] * self.weights[:,o]).sum(axis=2)
 
-        dataCube.data = new_data
-        dataCube.variance = new_variance
+
+        if is_dataCube:
+            dataCube.data = new_data
+            dataCube.variance = new_variance
+        else:
+            return new_data
         
     def return_hdu_list(self):
         """

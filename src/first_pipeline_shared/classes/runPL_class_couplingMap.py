@@ -16,7 +16,6 @@ class CouplingMap:
     Attributes:
         filename (str): Path to the FITS file containing the coupling map
         basename (str): Base name of the file
-        pyramids (bool): Whether using pyramid or triangle data mode
         wavelength_bin (int): Wavelength binning factor
         flux_2_data (numpy.ndarray): Flux to data transformation matrix
         data_2_flux (numpy.ndarray): Data to flux transformation matrix
@@ -31,8 +30,7 @@ class CouplingMap:
         Noutput (int): Number of output channels
         is_loaded (bool): Whether the coupling map data has been loaded
     """
-    def __init__(self, filename=None, pyramids=False):
-        self.pyramids = pyramids
+    def __init__(self, filename=None):
         self.filename = filename
         self.basename = os.path.basename(filename) if filename else None
         
@@ -52,15 +50,14 @@ class CouplingMap:
         self.is_loaded = False
         
         if filename is not None:
-            self.load(filename, pyramids)
+            self.load(filename)
 
-    def load(self, filename, pyramids=False):
+    def load(self, filename):
         """
         Load the coupling map from a FITS file.
         
         Args:
             filename (str): Path to the FITS file containing the coupling map
-            pyramids (bool): Whether to load pyramid data (True) or triangle data (False)
             
         Raises:
             FileNotFoundError: If the file doesn't exist
@@ -71,7 +68,6 @@ class CouplingMap:
             
         self.filename = filename
         self.basename = os.path.basename(filename)
-        self.pyramids = pyramids
         
         cmap_file = fits.open(filename)
         header = cmap_file[0].header
@@ -81,12 +77,7 @@ class CouplingMap:
             
         self.wavelength_bin = header['Q_CMWBIN']
         
-        if pyramids:
-            add_key = "_P"
-        else:
-            add_key = "_T"
-
-        required_extensions = [f'F2DATA{add_key}', f'DATA2F{add_key}', f'QT{add_key}', f'R{add_key}', f'XY{add_key}', 'SPECTRA']
+        required_extensions = ['F2DATA', 'DATA2F', 'QT', 'R', 'XY', 'SPECTRA']
         available_extensions = [hdu.name for hdu in cmap_file]
         missing_extensions = [ext for ext in required_extensions if ext not in available_extensions]
         
@@ -94,11 +85,11 @@ class CouplingMap:
             cmap_file.close()
             raise KeyError(f"FITS file missing required extensions: {missing_extensions}")
 
-        self.flux_2_data = cmap_file['F2DATA'+add_key].data
-        self.data_2_flux = cmap_file['DATA2F'+add_key].data
-        self.QT = cmap_file['QT'+add_key].data
-        self.R = cmap_file['R'+add_key].data
-        self.position = cmap_file['XY'+add_key].data
+        self.flux_2_data = cmap_file['F2DATA'].data
+        self.data_2_flux = cmap_file['DATA2F'].data
+        self.QT = cmap_file['QT'].data
+        self.R = cmap_file['R'].data
+        self.position = cmap_file['XY'].data
         self.ref_spectra = cmap_file['SPECTRA'].data
 
         if self.QT is None or self.QT.size == 0:
@@ -114,35 +105,37 @@ class CouplingMap:
         cmap_file.close()
         self.is_loaded = True
 
-    def create_from_data(self, flux_2_data_triangles, data_2_flux_triangles, QT_triangles, R_triangles, 
-                        center_triangles, flux_2_data_pyramids, data_2_flux_pyramids, QT_pyramids, 
-                        R_pyramids, center_pyramids, spectra, wavelength_bin, filename=None):
+    def create_from_data(self, flux_2_data, data_2_flux, QT, R, position, spectra, wavelength_bin, filename=None):
         """
         Create a coupling map from data arrays.
         Args:
-            flux_2_data_triangles, data_2_flux_triangles, QT_triangles, R_triangles, center_triangles: Triangle data arrays
-            flux_2_data_pyramids, data_2_flux_pyramids, QT_pyramids, R_pyramids, center_pyramids: Pyramid data arrays  
+            flux_2_data: Flux to data transformation matrix
+            data_2_flux: Data to flux transformation matrix  
+            QT: QT transformation matrices
+            R: R matrices for coupling analysis
+            position: Position data for coupling points
             spectra: Reference spectra array
             wavelength_bin: Wavelength binning factor
             filename (str, optional): Optional filename to associate with this coupling map.
         """
-        # Store all the data arrays
-        self.flux_2_data_triangles = flux_2_data_triangles
-        self.data_2_flux_triangles = data_2_flux_triangles 
-        self.QT_triangles = QT_triangles
-        self.R_triangles = R_triangles
-        self.center_triangles = center_triangles
-        self.flux_2_data_pyramids = flux_2_data_pyramids
-        self.data_2_flux_pyramids = data_2_flux_pyramids
-        self.QT_pyramids = QT_pyramids
-        self.R_pyramids = R_pyramids
-        self.center_pyramids = center_pyramids
+        # Store the data arrays directly
+        self.flux_2_data = flux_2_data
+        self.data_2_flux = data_2_flux 
+        self.QT = QT
+        self.R = R
+        self.position = position
         self.ref_spectra = spectra
         self.wavelength_bin = wavelength_bin
         
-        # Set default to triangles
-        self.pyramids = False
-        self._set_active_data()
+        # Set dimensions
+        if self.position is not None:
+            self.Npositions = self.position.shape[0]
+        if self.R is not None:
+            self.Nqr = self.R.shape[2]
+            self.Nwave = self.R.shape[1]
+            self.Ntriangles = self.R.shape[0]
+        if self.QT is not None:
+            self.Noutput = self.QT.shape[3]
         
         if filename:
             self.filename = filename
@@ -159,20 +152,9 @@ class CouplingMap:
             raise ValueError("Coupling map not loaded. Use load() or create_from_data() first.")
     
     def _set_active_data(self):
-        """Set the active data based on pyramids flag"""
-        if self.pyramids:
-            self.flux_2_data = self.flux_2_data_pyramids
-            self.data_2_flux = self.data_2_flux_pyramids
-            self.QT = self.QT_pyramids
-            self.R = self.R_pyramids
-            self.position = self.center_pyramids
-        else:
-            self.flux_2_data = self.flux_2_data_triangles
-            self.data_2_flux = self.data_2_flux_triangles
-            self.QT = self.QT_triangles
-            self.R = self.R_triangles
-            self.position = self.center_triangles
-            
+        """Set the active data (no longer needed since we only have one dataset)"""
+        # This method is kept for compatibility but does nothing since we no longer
+        # distinguish between triangle and pyramid data
         if self.position is not None:
             self.Npositions = self.position.shape[0]
         if self.R is not None:
@@ -181,18 +163,6 @@ class CouplingMap:
             self.Ntriangles = self.R.shape[0]
         if self.QT is not None:
             self.Noutput = self.QT.shape[3]
-
-    def set_pyramids(self, pyramids):
-        """
-        Switch between triangle and pyramid data.
-        Args:
-            pyramids (bool): True for pyramid data, False for triangle data.
-        """
-        self.pyramids = pyramids
-        if hasattr(self, 'flux_2_data_triangles'):  # Check if created from data
-            self._set_active_data()
-        elif self.filename is not None:  # Reload from file
-            self.load(self.filename, pyramids)
 
     def save(self, output_filename, header=None, flat_map=None, wave_map=None, modulation_hdu=None):
         """
@@ -211,58 +181,17 @@ class CouplingMap:
         from datetime import datetime
         
         self._check_loaded()
-        # Check if we have the required data
-        if hasattr(self, 'flux_2_data_triangles'):
-            # Created from data - use stored arrays
-            flux_2_data_triangles = self.flux_2_data_triangles
-            data_2_flux_triangles = self.data_2_flux_triangles
-            QT_triangles = self.QT_triangles
-            R_triangles = self.R_triangles
-            center_triangles = self.center_triangles
-            flux_2_data_pyramids = self.flux_2_data_pyramids
-            data_2_flux_pyramids = self.data_2_flux_pyramids
-            QT_pyramids = self.QT_pyramids
-            R_pyramids = self.R_pyramids
-            center_pyramids = self.center_pyramids
-            spectra = self.ref_spectra
-        elif self.filename is not None:
-            # Loaded from file - need to reload both triangle and pyramid data
-            temp_pyramids = self.pyramids
-            # Load triangles
-            self.load(self.filename, pyramids=False)
-            flux_2_data_triangles = self.flux_2_data
-            data_2_flux_triangles = self.data_2_flux
-            QT_triangles = self.QT
-            R_triangles = self.R
-            center_triangles = self.position
-            # Load pyramids
-            self.load(self.filename, pyramids=True)
-            flux_2_data_pyramids = self.flux_2_data
-            data_2_flux_pyramids = self.data_2_flux
-            QT_pyramids = self.QT
-            R_pyramids = self.R
-            center_pyramids = self.position
-            spectra = self.ref_spectra
-            # Restore original mode
-            self.load(self.filename, pyramids=temp_pyramids)
-        else:
-            raise ValueError("No coupling map data to save. Load or create coupling map data first.")
-            
+        
         # Create a primary HDU with no data, just the header
         hdu_primary = fits.PrimaryHDU()
 
         # Create HDUs for coupling map data
-        hdu = [fits.ImageHDU(data=flux_2_data_triangles, name='F2DATA_T')]
-        hdu += [fits.ImageHDU(data=data_2_flux_triangles, name='DATA2F_T')]
-        hdu += [fits.ImageHDU(data=QT_triangles, name='QT_T')]
-        hdu += [fits.ImageHDU(data=R_triangles, name='R_T')]
-        hdu += [fits.ImageHDU(data=center_triangles, name='XY_T')]
-        hdu += [fits.ImageHDU(data=flux_2_data_pyramids, name='F2DATA_P')]
-        hdu += [fits.ImageHDU(data=data_2_flux_pyramids, name='DATA2F_P')]
-        hdu += [fits.ImageHDU(data=QT_pyramids, name='QT_P')]
-        hdu += [fits.ImageHDU(data=R_pyramids, name='R_P')]
-        hdu += [fits.ImageHDU(data=center_pyramids, name='XY_P')]
-        hdu += [fits.ImageHDU(data=spectra, name='SPECTRA')]
+        hdu = [fits.ImageHDU(data=self.flux_2_data, name='F2DATA')]
+        hdu += [fits.ImageHDU(data=self.data_2_flux, name='DATA2F')]
+        hdu += [fits.ImageHDU(data=self.QT, name='QT')]
+        hdu += [fits.ImageHDU(data=self.R, name='R')]
+        hdu += [fits.ImageHDU(data=self.position, name='XY')]
+        hdu += [fits.ImageHDU(data=self.ref_spectra, name='SPECTRA')]
         
         if modulation_hdu is not None:
             hdu += [modulation_hdu]
@@ -310,28 +239,13 @@ class CouplingMap:
         Raises:
             ValueError: If no coupling map data is available
         """
-        if hasattr(self, 'flux_2_data_triangles'):
-            # Created from data
-            hdu = [fits.ImageHDU(data=self.flux_2_data_triangles, name='F2DATA_T')]
-            hdu += [fits.ImageHDU(data=self.data_2_flux_triangles, name='DATA2F_T')]
-            hdu += [fits.ImageHDU(data=self.QT_triangles, name='QT_T')]
-            hdu += [fits.ImageHDU(data=self.R_triangles, name='R_T')]
-            hdu += [fits.ImageHDU(data=self.center_triangles, name='XY_T')]
-            hdu += [fits.ImageHDU(data=self.flux_2_data_pyramids, name='F2DATA_P')]
-            hdu += [fits.ImageHDU(data=self.data_2_flux_pyramids, name='DATA2F_P')]
-            hdu += [fits.ImageHDU(data=self.QT_pyramids, name='QT_P')]
-            hdu += [fits.ImageHDU(data=self.R_pyramids, name='R_P')]
-            hdu += [fits.ImageHDU(data=self.center_pyramids, name='XY_P')]
-            hdu += [fits.ImageHDU(data=self.ref_spectra, name='SPECTRA')]
-        else:
-            # Use current active data only
-            add_key = "_P" if self.pyramids else "_T"
-            hdu = [fits.ImageHDU(data=self.flux_2_data, name='F2DATA'+add_key)]
-            hdu += [fits.ImageHDU(data=self.data_2_flux, name='DATA2F'+add_key)]
-            hdu += [fits.ImageHDU(data=self.QT, name='QT'+add_key)]
-            hdu += [fits.ImageHDU(data=self.R, name='R'+add_key)]
-            hdu += [fits.ImageHDU(data=self.position, name='XY'+add_key)]
-            hdu += [fits.ImageHDU(data=self.ref_spectra, name='SPECTRA')]
+        # Use current active data
+        hdu = [fits.ImageHDU(data=self.flux_2_data, name='F2DATA')]
+        hdu += [fits.ImageHDU(data=self.data_2_flux, name='DATA2F')]
+        hdu += [fits.ImageHDU(data=self.QT, name='QT')]
+        hdu += [fits.ImageHDU(data=self.R, name='R')]
+        hdu += [fits.ImageHDU(data=self.position, name='XY')]
+        hdu += [fits.ImageHDU(data=self.ref_spectra, name='SPECTRA')]
         return hdu
     
     def return_header(self):

@@ -40,12 +40,12 @@ from tqdm import tqdm
 import matplotlib as mpl
 mpl.rcParams['figure.max_open_warning'] = 0
 
-import libraries.runPL_library_io as runlib_io
-import libraries.runPL_library_plots as runlib_plots
+from .libraries import runPL_library_io as runlib_io
+from .libraries import runPL_library_plots as runlib_plots
 # Import FIRST pipeline classes
-from classes.runPL_class_flatMap import FlatMap
-from classes.runPL_class_fileList import FileList
-from classes.runPL_class_dataCube import DataCube 
+from .classes.runPL_class_flatMap import FlatMap
+from .classes.runPL_class_fileList import FileList
+from .classes.runPL_class_dataCube import DataCube 
 
 
 #plt.ion()
@@ -243,7 +243,57 @@ any systematic issues with SuperK illumination or detector response.
             # dark_patterns = "/Users/slacour/DATA/LANTERNE/20251231/preproc/firstpl_*fits"
             file_patterns = "/Users/slacour/DATA/LANTERNE/test_flat/preproc"
             file_patterns = "/Users/slacour/DATA/LANTERNE/raw/20260114/preproc"
-            file_patterns = "/Users/slacour/DATA/LANTERNE/raw/20260114/preproc_noedge"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/raw/20260114/preproc_noedge"
+            override_flat_keyword = True
+
+        if getpass.getuser() == "jsarrazin":
+            file_patterns = "/home/jsarrazin/Bureau/PLDATA/moreTest/2024-11-21_13-48-32_science_copie/preproc"
+            file_patterns = "/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"
+        if getpass.getuser() == "ehuby":
+            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
+            file_patterns = "/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"
+        
+
+def main():
+    """
+    Main entry point for the flat field map creation script.
+    """
+    # needed to work in VSC:
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--f", help=argparse.SUPPRESS)
+
+    # Add positional argument for files
+    parser.add_argument('files', nargs='*', default=['*.fits'],
+                       help='FITS files to process (supports wildcards)')
+    # Add optional arguments
+    parser.add_argument("--dark_files", 
+                       help="Select one or more specific dark(s) files to use")
+    parser.add_argument("--wollaston", 
+                       help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list of files)")
+    parser.add_argument("--Nflat_smooth", default = 25,
+                       help="Smoothing parameter for flat field computation [default: 25]", type=int)
+    parser.add_argument("--override-flat-keyword", action="store_true",
+                       help="Override the requirement for DATA-TYP=FLAT keyword in input files")
+    
+    # Parse the arguments
+    args = parser.parse_args()
+    file_patterns = args.files if args.files else ['*.fits','./preproc/*.fits']
+
+    # Extract the parsed arguments
+    dark_patterns = args.dark_files
+    wollaston = args.wollaston
+    Nflat_smooth =args.Nflat_smooth
+    override_flat_keyword = args.override_flat_keyword
+
+    if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or os.environ.get('SPYDER_DEBUG_FILE')):
+        print("Running in compiler")
+        if getpass.getuser() == "slacour":
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20251125/preproc"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/20251231/preproc/firstpl_2025-12-31T00?3*fits"
+            # dark_patterns = "/Users/slacour/DATA/LANTERNE/20251231/preproc/firstpl_*fits"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/test_flat/preproc"
+            file_patterns = "/Users/slacour/DATA/LANTERNE/raw/20260114/preproc"
+            # file_patterns = "/Users/slacour/DATA/LANTERNE/raw/20260114/preproc_noedge"
             override_flat_keyword = True
 
         if getpass.getuser() == "jsarrazin":
@@ -274,7 +324,7 @@ any systematic issues with SuperK illumination or detector response.
 # filenumber = 6
 # basename = datalist[filenumber].basename
 
-# flats=np.array([np.nansum(d.data,axis=(0)) for d in datalist[2:4]])    
+# flats=np.array([np.nansum(d.data,axis=(0)) for d in datalist[6:7]])    
 # valid_mask = ~np.isnan(flats[:,0,0,0])
 # flats = flats[valid_mask]
 
@@ -300,14 +350,14 @@ any systematic issues with SuperK illumination or detector response.
 
 # fig.suptitle(f'Flat Field Analysis for files {datalist[6].basename}')
 # # Upper plot: imshow of flats[2,:,10]
-# im1 = ax1.imshow(flats[0,:,10], origin='lower', aspect='auto', interpolation='none')
+# im1 = ax1.imshow(flats[0,:,6], origin='lower', aspect='auto', interpolation='none')
 # ax1.set_title('Output 10 - Raw flat field data')
 # ax1.set_xlabel('X pixel')
 # ax1.set_ylabel('Modulation Step (over 10mas)')
 # plt.colorbar(im1, ax=ax1)
 
 # # Lower plot: imshow of flat_individual
-# im2 = ax2.imshow(flat_i[0,:,10], origin='lower', aspect='auto', interpolation='none',vmax=1.1, vmin=0.9)
+# im2 = ax2.imshow(flat_i[0,:,6], origin='lower', aspect='auto', interpolation='none',vmax=1.1, vmin=0.9)
 # ax2.set_title('Output 10 - Normalized flat field')
 # ax2.set_xlabel('X pixel') 
 # ax2.set_ylabel('Modulation Step (over 10mas)')
@@ -321,7 +371,7 @@ any systematic issues with SuperK illumination or detector response.
 
 
 
-# #%%
+# %%
 
 
     fig=plt.figure("Flat Field Computation",clear=True,figsize=(18,6))
@@ -403,5 +453,7 @@ any systematic issues with SuperK illumination or detector response.
     runlib_plots.save_pdf_in_file(output_filename)
 
 
+if __name__ == "__main__":
+    main()
 
 # %%

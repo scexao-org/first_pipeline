@@ -90,9 +90,15 @@ class DataCube:
                     ymod = np.array([ymod])
 
             # Fix known issue with ymod[373] if necessary
-        if len(xmod) == 595:
-            if ymod[373]<1e-5:
-                ymod[373]=ymod[372]
+        
+        # Fix known issue with ymod[373] if necessary (only for 2024-2025 data)
+        try:
+            year = int(self.date.split('-')[0])
+            if year >= 2024 and len(xmod) == 595:
+                if ymod[373] < 1e-5:
+                    ymod[373] = ymod[372]
+        except:
+            pass
 
         self.xmod = xmod
         self.ymod = ymod
@@ -110,11 +116,11 @@ class DataCube:
         # padding with NaN if needed
         if np.prod(size_new) != size_old:
             data_padded=np.full(np.prod(size_new), np.nan)
-            data_padded[:size_old]=self.data.ravel()[:size_old]
+            data_padded[np.prod(size_new)-size_old:]=self.data.ravel()[:size_old]
             self.data=data_padded.reshape(size_new)
 
             variance_padded=np.full(np.prod(size_new), np.inf)
-            variance_padded[:size_old]=self.variance.ravel()[:size_old]
+            variance_padded[np.prod(size_new)-size_old:]=self.variance.ravel()[:size_old]
             self.variance=variance_padded.reshape(size_new)
         else:
             self.data = self.data.reshape(size_new)
@@ -206,6 +212,7 @@ class DataCube:
         self.data = self.data.reshape((self.Ncube, self.Nmod, self.Noutput, Nwave // Nbin, Nbin)).sum(axis=-1)
         self.variance = self.variance.reshape((self.Ncube, self.Nmod, self.Noutput, Nwave // Nbin, Nbin)).sum(axis=-1)
         
+        self.wave = self.wave[:(Nwave // Nbin) * Nbin].reshape((Nwave // Nbin, Nbin)).mean(axis=-1)
         self.Nwave = self.data.shape[3]
 
     def get_triangles(self,quiet=False):
@@ -249,9 +256,8 @@ class DataCube:
 
         orders = center_triangles[:, 0] + center_triangles[:, 1] * 1e5
         indexes = indexes[np.argsort(orders)]
-        center_triangles = points[indexes].mean(axis=1)
 
-        return indexes , center_triangles
+        return indexes 
     
     def get_pyramids(self):
 
@@ -276,9 +282,8 @@ class DataCube:
         delta_triangles = np.sqrt((delta_xy_triangles**2).sum(axis=-1))
 
         good_pyramids = indices[delta_triangles < l_mean / 10]
-        center_pyramids = center_triangles[delta_triangles < l_mean / 10]
 
         print(f"Computed {len(good_pyramids)} good pyramids.")
 
-        return good_pyramids, center_pyramids
+        return good_pyramids
 

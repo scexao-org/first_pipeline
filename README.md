@@ -3,41 +3,157 @@
 Pipeline to reduce the FIRST data (using the Visible Photonic Lantern) at SUBARU/SCEXAO.
 The scripts are designed to run sequentially, each handling a specific stage of data reduction, calibration, and analysis. FITS file keywords are used to determine file roles and processing steps.
 
+## ✅ Status: All Scripts Working
+
+All `runPL_*` scripts have been updated and are fully functional after recent package restructuring. All entry points work correctly when installed with `pip install -e .`
+
 ## Project Structure
 
-### Directory Organization
+### Modern Modular Architecture with Interactive Development Support
+
+The pipeline uses a sophisticated modular structure where each script is organized as its own subpackage under a `src/` layout with **core algorithms separated from CLI interfaces**. This enables both command-line usage and interactive development in VS Code, Jupyter notebooks, or Python REPL.
+
 ```
 first_pipeline/
-├── __init__.py       # Package initialization
-├── setup.py          # Package setup and installation
-├── requirements.txt  # Python dependencies
-├── classes/          # Data structure classes
-│   ├── __init__.py
-│   ├── runPL_class_couplingMap.py
-│   ├── runPL_class_dataCube.py
-│   ├── runPL_class_pixelMap.py
-│   ├── runPL_class_flatMap.py
-│   ├── runPL_class_waveMap.py
-│   └── runPL_class_preproc.py
-├── libraries/        # Utility functions
-│   ├── __init__.py
-│   ├── runPL_library_io.py
-│   ├── runPL_library_linalg.py
-│   └── runPL_library_plots.py
-└── [main scripts]    # Primary pipeline scripts
+├── README.md                     # This documentation
+├── setup.py                      # Package setup and installation  
+├── requirements.txt              # Python dependencies
+├── runPL_dfits                   # FITS inspection shell script
+└── src/                          # Source code directory (src layout)
+    ├── first_pipeline_shared/    # Shared components across all modules
+    │   ├── __init__.py
+    │   ├── classes/              # Data structure classes
+    │   │   ├── __init__.py
+    │   │   ├── runPL_class_couplingMap.py
+    │   │   ├── runPL_class_dataCube.py
+    │   │   ├── runPL_class_pixelMap.py
+    │   │   ├── runPL_class_flatMap.py
+    │   │   ├── runPL_class_waveMap.py
+    │   │   └── runPL_class_preproc.py
+    │   └── libraries/            # Utility functions
+    │       ├── __init__.py
+    │       ├── runPL_library_io.py
+    │       ├── runPL_library_linalg.py
+    │       └── runPL_library_plots.py
+    ├── changeKeyword/            # FITS keyword modification module
+    │   ├── __init__.py
+    │   ├── main.py              # CLI interface with argparse
+    │   └── core.py              # Core algorithms & development defaults
+    ├── createPixelMap/           # Pixel mapping module
+    │   ├── __init__.py
+    │   ├── main.py              # CLI interface with argparse
+    │   └── core.py              # Core algorithms & development defaults
+    ├── makePreproc/              # Data preprocessing module
+    │   ├── __init__.py
+    │   ├── main.py              # CLI interface with argparse
+    │   └── core.py              # Core algorithms & development defaults
+    ├── createFlatMap/            # Flat field mapping module
+    │   ├── __init__.py
+    │   ├── main.py              # CLI interface with argparse
+    │   └── core.py              # Core algorithms & development defaults
+    ├── createWaveMap/            # Wavelength mapping module
+    │   ├── __init__.py
+    │   ├── main.py              # CLI interface with argparse
+    │   └── core.py              # Core algorithms & development defaults
+    ├── createCouplingMap/        # Coupling efficiency mapping module
+    │   ├── __init__.py
+    │   ├── main.py              # CLI interface with argparse
+    │   └── core.py              # Core algorithms & development defaults
+    ├── makeImage/                # Image reconstruction module
+    │   ├── __init__.py
+    │   ├── main.py              # CLI interface with argparse
+    │   └── core.py              # Core algorithms & development defaults
+    └── makeAstrometry/           # Astrometric processing module
+        ├── __init__.py
+        ├── main.py              # CLI interface with argparse
+        └── core.py              # Core algorithms & development defaults
 ```
 
+### Core/CLI Separation Benefits
+
+1. **Interactive Development**: Core algorithms can be imported and used directly in VS Code, Jupyter notebooks, or Python REPL
+2. **Development Defaults**: Automatic detection of development environment with user-specific file paths
+3. **Clean Architecture**: CLI logic separated from scientific algorithms for better maintainability
+4. **Flexible Usage**: Choose between command-line tools or programmatic access to algorithms
+5. **Debugging Support**: Easy to test individual functions and step through code interactively
+6. **Notebook Ready**: Perfect for exploratory data analysis and algorithm development
+
+### Interactive Development Support
+
+Each module provides both CLI and programmatic interfaces:
+
+**Command Line Interface** (via `main.py`):
+```bash
+# Traditional CLI usage
+runPL_make_preproc --object="HD 164461" /path/to/files*.fits
+runPL_create_couplingMap --wavelength_smooth=7 *.fits
+```
+
+**Interactive Usage** (via `core.py`):
+```python
+# Import core functions directly
+from first_pipeline.src.makePreproc.core import process_with_monitoring
+from first_pipeline.src.createCouplingMap.core import process_coupling_map_data
+
+# Use with your own parameters
+results = process_with_monitoring(
+    file_patterns=["/path/to/data/*.fits"],
+    pixel_map="/path/to/pixel_map.fits"
+)
+
+# Or use development defaults (auto-detects user and paths)
+results = process_coupling_map_data()  # Uses defaults for your user automatically!
+```
+
+### Development Defaults System
+
+The pipeline automatically detects when running in development environments (VS Code, Spyder, Jupyter) and uses user-specific default parameters:
+
+```python
+# Development defaults are automatically applied based on user:
+# - slacour: Uses /Users/slacour/DATA/LANTERNE/... paths
+# - jsarrazin: Uses /home/jsarrazin/Bureau/PLDATA/... paths  
+# - ehuby: Uses /home/ehuby/WORK/DATA/FIRST-PL/... paths
+
+# No parameters needed in development mode
+from first_pipeline.src.createPixelMap.core import run_createPixelMap
+result = run_createPixelMap()  # Automatically uses your user's default paths!
+
+# You can still override any parameter as needed
+result = run_createPixelMap(
+    pixel_min=100, 
+    pixel_max=1600,
+    file_patterns=["/custom/path/*.fits"]
+)
+```
+
+### Benefits of the Modular Architecture
+
+1. **Clear Separation of Concerns**: Each script is a self-contained module with its own namespace
+2. **Interactive Development**: Direct access to core algorithms without CLI overhead
+3. **Development Efficiency**: Automatic defaults for common development scenarios  
+4. **Shared Code Reuse**: Common functionality in `first_pipeline_shared` accessible to all modules
+5. **Better Maintainability**: Changes to one module don't affect others; easier to debug and extend
+6. **Import Safety**: No naming conflicts between modules; each has its own scope
+7. **Standard Python Structure**: Follows modern Python packaging conventions (src layout)
+8. **CLI Compatibility**: All existing `runPL_*` commands continue to work exactly as before
+9. **Notebook Ready**: Perfect for research and algorithm development workflows
+
 ### Key Components & Workflow
-- **Shell and Python scripts**: Each major step is a separate script
+- **Modular scripts**: Each major step is now a separate subpackage module with CLI (`main.py`) and core algorithms (`core.py`)
+- **Interactive development**: Core functions available for direct use with automatic development defaults
+- **Shared components**: Common classes and libraries in `first_pipeline_shared`
 - **Data flow**: Raw FITS files → Pixel Map → Preprocessing → Flat Map → Wavelength Map → Coupling Maps → Astrometry → Image Reconstruction
-- **Script chaining**: Output from one script is often input for the next
+- **Flexible usage**: Choose between command-line tools or programmatic access to algorithms
+- **Script chaining**: Output from one script is input for the next (unchanged workflow)
 - **Modern CLI**: All scripts use `argparse` for professional command-line interfaces
+- **Development efficiency**: Automatic user detection and path defaults for common development scenarios
 
 ## Installation
 
 There are two ways to install and use the FIRST Pipeline:
 
-### Option 1: Development Installation (Recommended)
+### Option 1: Package Installation (Recommended)
 
 1. **Clone the repository:**
    ```bash
@@ -59,7 +175,14 @@ There are two ways to install and use the FIRST Pipeline:
    # See: https://github.com/granttremblay/eso_fits_tools
    ```
 
-### Option 2: Using Scripts Directly
+4. **Verify installation:**
+   ```bash
+   runPL_changeKeyword --help
+   runPL_create_pixelMap --help
+   # All runPL_* commands should work from any directory
+   ```
+
+### Option 2: Direct Script Usage
 
 If you prefer to run scripts directly without package installation:
 
@@ -74,17 +197,167 @@ If you prefer to run scripts directly without package installation:
    pip install -r requirements.txt
    ```
 
-3. **Run scripts from the first_pipeline directory:**
+3. **Run scripts directly:**
    ```bash
-   # Run from the first_pipeline/ directory
+   # Navigate to the scripts directory
+   cd first_pipeline
+   
+   # Run scripts with full path
    python runPL_changeKeyword.py [options] [files...]
    python runPL_create_pixelMap.py [options] [files...]
    # etc.
    ```
 
 **Note**: 
-- **Option 1** allows you to run commands from anywhere as `runPL_changeKeyword`, `runPL_create_pixelMap`, etc.
-- **Option 2** requires you to be in the `first_pipeline/` directory and use `python script_name.py`
+- **Option 1** (recommended) allows you to run commands from anywhere as `runPL_changeKeyword`, `runPL_create_pixelMap`, etc.
+- **Option 2** requires you to navigate to the `first_pipeline/first_pipeline/` directory and use `python script_name.py`
+
+## Interactive Development & Core Functions
+
+The FIRST Pipeline provides both traditional command-line interfaces and modern interactive development capabilities. Each module's core algorithms can be imported and used directly in development environments.
+
+### Development Environment Detection
+
+The pipeline automatically detects when you're running in development environments (VS Code, Spyder, Jupyter) and provides user-specific default parameters:
+
+```python
+# No setup required - the pipeline detects your environment and user automatically!
+
+# VS Code Interactive Window
+from first_pipeline.src.makePreproc.core import process_with_monitoring
+results = process_with_monitoring()  # Uses your user's default paths automatically
+
+# Jupyter Notebook
+from first_pipeline.src.createCouplingMap.core import process_coupling_map_data  
+coupling_map = process_coupling_map_data()  # Automatic user detection & defaults
+
+# Python REPL/Script
+from first_pipeline.src.makeImage.core import process_image_reconstruction_data
+images = process_image_reconstruction_data()  # Works out of the box!
+```
+
+### User-Specific Development Defaults
+
+The system provides different default paths for each user:
+
+- **slacour**: `/Users/slacour/DATA/LANTERNE/...` 
+- **jsarrazin**: `/home/jsarrazin/Bureau/PLDATA/...`
+- **ehuby**: `/home/ehuby/WORK/DATA/FIRST-PL/...`
+
+### Core Function Examples
+
+Each module provides powerful core functions for interactive use:
+
+**Pixel Map Creation:**
+```python
+from first_pipeline.src.createPixelMap.core import run_createPixelMap
+
+# Use development defaults
+raw_image, traces, header, x_found, y_found = run_createPixelMap()
+
+# Or customize parameters
+result = run_createPixelMap(
+    folder="/custom/path",
+    pixel_min=100,
+    pixel_max=1600,
+    pixel_wide=2
+)
+```
+
+**Preprocessing:**
+```python
+from first_pipeline.src.makePreproc.core import process_with_monitoring
+
+# Automatic development defaults
+processed_files = process_with_monitoring()
+
+# Custom parameters  
+processed_files = process_with_monitoring(
+    file_patterns=["/path/to/raw/*.fits"],
+    pixel_map="/path/to/pixel_map.fits",
+    object_name="HD 164461"
+)
+```
+
+**Wavelength Calibration:**
+```python
+from first_pipeline.src.createWaveMap.core import process_wavelength_map_data
+
+# Development defaults
+result = process_wavelength_map_data()
+print(f"Wavelength map saved: {result['output_filename']}")
+print(f"1D coefficients: {result['coef_1d']}")
+```
+
+**Coupling Map Generation:**
+```python
+from first_pipeline.src.createCouplingMap.core import process_coupling_map_data
+
+# Full SVD analysis with defaults
+result = process_coupling_map_data()
+coupling_map = result['couplingMap']
+print(f"Singular values shape: {result['singular_values'].shape}")
+```
+
+**Image Reconstruction:**
+```python
+from first_pipeline.src.makeImage.core import process_image_reconstruction_data
+
+# Reconstruct images with automatic setup
+result = process_image_reconstruction_data()
+print(f"Images reconstructed: {result['output_filename']}")
+
+# Access reconstruction data
+image_data = result['image_data']
+figures = result['figures']  # Diagnostic plots
+```
+
+**Astrometric Analysis:**
+```python
+from first_pipeline.src.makeAstrometry.core import process_astrometric_data
+
+# High-precision astrometry
+result = process_astrometric_data()
+positions = result['xy_dev']  # Position measurements
+quality = result['star_detected']  # Detection quality
+
+# Multiple files processed
+for file_result in result['results']:
+    print(f"File: {file_result['output_filename']}")
+    print(f"Detected stars: {file_result['star_detected'].sum()}")
+```
+
+### Interactive Workflow Benefits
+
+1. **Instant Feedback**: See results immediately without command-line overhead
+2. **Easy Debugging**: Step through algorithms, inspect intermediate results  
+3. **Parameter Exploration**: Quickly test different settings and configurations
+4. **Data Inspection**: Access all internal data structures and diagnostic information
+5. **Custom Analysis**: Build on core functions for specialized research workflows
+6. **Notebook Integration**: Perfect for research documentation and reproducible science
+
+### Combining CLI and Interactive Usage
+
+You can seamlessly combine command-line tools with interactive development:
+
+```bash
+# Use CLI for batch processing
+runPL_make_preproc /large/dataset/*.fits
+
+# Then interactively analyze results
+```
+
+```python
+# Interactive analysis of CLI results
+from first_pipeline.src.createCouplingMap.core import process_coupling_map_data
+
+# Process specific files interactively with custom parameters
+result = process_coupling_map_data(
+    file_patterns=["/large/dataset/preproc/specific_target*.fits"],
+    wavelength_smooth=3,
+    Nsingular=120
+)
+```
 
 ## Essential Scripts & Usage
 
@@ -108,7 +381,7 @@ Essential tool for classifying files and tracking their processing stages throug
 # After package installation (Option 1):
 runPL_changeKeyword [options] [files...]
 
-# Or running directly (Option 2):
+# Or running directly (Option 2, from first_pipeline/first_pipeline/):
 python runPL_changeKeyword.py [options] [files...]
 
 # Examples (using installed commands):
@@ -140,6 +413,8 @@ runPL_changeKeyword --DATE=DEFAULT --X_FIRTYP=RAW recent_observations/*.fits
 Python script to generate pixel maps essential for FIRST Pipeline spectral trace alignment and calibration.  
 Pixel maps detect and calibrate the positions of spectral traces across all fiber channels, enabling proper spectral extraction in downstream processing.
 
+📝 **Interactive Development**: Also available as `run_createPixelMap()` function with automatic development defaults. Perfect for VS Code and Jupyter notebook usage.
+
 **Usage:**
 ```bash
 runPL_create_pixelMap [options] [file_patterns...]
@@ -170,6 +445,8 @@ runPL_create_pixelMap --filter_files /data/raw/*.fits
 ### runPL_make_preproc.py
 Python script to preprocess raw FIRST Photonic Lantern data using pixel maps for spectral extraction and calibration.  
 Transforms raw detector images into calibrated spectral data with quality assessment and diagnostic analysis.
+
+📝 **Interactive Development**: Also available as `process_with_monitoring()` function with automatic development defaults. Ideal for interactive data exploration in development environments.
 
 **Usage:**
 ```bash
@@ -274,6 +551,8 @@ runPL_create_wavelengthMap --poly_degree=3 data/*.fits
 Python script to generate coupling efficiency maps from preprocessed FIRST Photonic Lantern data using SVD analysis.  
 Analyzes coupling efficiency between telescope focal plane and photonic lantern channels, essential for image reconstruction.
 
+📝 **Interactive Development**: Also available as `process_coupling_map_data()` function with automatic development defaults. Excellent for algorithm development and parameter optimization.
+
 **Usage:**
 ```bash
 runPL_create_couplingMap [options] [files...]
@@ -339,7 +618,9 @@ runPL_make_image --save_individual_frames --save_individual_wavelength *.fits
 Python script to perform high-precision astrometric measurements from FIRST Photonic Lantern data using coupling map analysis.  
 Enables sub-milliarcsecond position measurements for binary stars, exoplanet detection, and precision astrometry applications.
 
-**Usage:**
+📝 **Interactive Development**: Also available as `process_astrometric_data()` function with automatic development defaults. Perfect for research analysis and algorithm development.
+
+**Usage:****
 ```bash
 runPL_make_astrometry [options] [files...]
 
@@ -375,7 +656,9 @@ runPL_make_astrometry --save_individual_frames --save_individual_wavelength *.fi
 - **Consistent patterns**: Follow existing argument and naming conventions
 - **FITS compliance**: Maintain keyword conventions for pipeline compatibility
 
-## Workflow Example
+## Workflow Examples
+
+### Command Line Interface (Traditional)
 
 Using installed commands (after `pip install -e .`):
 1. **Inspect FITS files**: `./runPL_dfits <file>`
@@ -397,24 +680,123 @@ python runPL_make_preproc.py /data/directory
 # etc.
 ```
 
+### Interactive Development (New)
+
+Using core functions directly for development and exploration:
+
+```python
+# Complete interactive workflow with automatic defaults
+from first_pipeline.src.createPixelMap.core import run_createPixelMap  
+from first_pipeline.src.makePreproc.core import process_with_monitoring
+from first_pipeline.src.createFlatMap.core import process_flat_field_data
+from first_pipeline.src.createWaveMap.core import process_wavelength_map_data
+from first_pipeline.src.createCouplingMap.core import process_coupling_map_data
+from first_pipeline.src.makeAstrometry.core import process_astrometric_data
+from first_pipeline.src.makeImage.core import process_image_reconstruction_data
+
+# 1. Create pixel map (automatic user defaults)
+raw_image, traces, header, x_found, y_found = run_createPixelMap()
+
+# 2. Preprocess data  
+processed_files = process_with_monitoring()
+
+# 3. Create flat field map
+flat_map_file = process_flat_field_data()
+
+# 4. Generate wavelength map
+wave_result = process_wavelength_map_data()
+print(f"Wavelength coefficients: {wave_result['coef_1d']}")
+
+# 5. Create coupling maps
+coupling_result = process_coupling_map_data()
+print(f"Coupling map shape: {coupling_result['coupling_map'].Q.shape}")
+
+# 6. Perform astrometry
+astro_result = process_astrometric_data()
+positions = astro_result['results'][0]['xy_dev']
+
+# 7. Reconstruct images  
+image_result = process_image_reconstruction_data()
+reconstructed = image_result['image_data']
+```
+
+### Mixed Workflow (CLI + Interactive)
+
+Combine the best of both approaches:
+
+```bash
+# Use CLI for batch processing of large datasets
+runPL_make_preproc /large/dataset/*.fits
+runPL_create_flatMap /large/dataset/preproc/*.fits
+```
+
+```python
+# Then interactive analysis for specific targets
+from first_pipeline.src.createCouplingMap.core import process_coupling_map_data
+
+# Custom coupling map for specific target with fine-tuned parameters
+result = process_coupling_map_data(
+    file_patterns=["/large/dataset/preproc/HD164461*.fits"],
+    wavelength_smooth=3,
+    Nsingular=150,
+    use_pyramids=True
+)
+
+# Analyze results interactively
+import matplotlib.pyplot as plt
+plt.figure(figsize=(12, 8))
+plt.subplot(2, 2, 1)
+plt.imshow(result['coupling_map'].Q[:, :, 0])
+plt.title('Q Matrix - First Channel')
+plt.colorbar()
+```
+
 **Key Pipeline Notes:**
+- **CLI**: Perfect for production, batch processing, and established workflows
+- **Interactive**: Ideal for development, exploration, debugging, and research analysis  
+- **Mixed approach**: Use CLI for heavy lifting, interactive for detailed analysis
+- **Development defaults**: When in VS Code/Jupyter, all functions work without parameters
+- **Flexibility**: All core functions accept custom parameters to override defaults
 - Use `runPL_changeKeyword` to classify files at each stage for proper downstream processing
 - Proper keyword classification ensures correct file selection by subsequent pipeline scripts
 - Monitor processing stages with `X_FIRTYP` updates as data moves through the workflow
 - With package installation, commands can be run from any directory
 
-## Pipeline Classes
+## Pipeline Classes & Core Functions
 
-The FIRST Pipeline uses object-oriented design with specialized classes for different data products. Each class provides consistent interfaces for loading, creating, and saving pipeline data.
+The FIRST Pipeline uses object-oriented design with specialized classes for different data products and provides both high-level processing functions and low-level class access. Each class provides consistent interfaces for loading, creating, and saving pipeline data.
 
-### Available Classes
+### Processing Functions (Recommended)
+
+Each module provides high-level processing functions that handle complete workflows:
+
+```python
+# High-level processing functions with development defaults
+from first_pipeline.src.makePreproc.core import process_with_monitoring  
+from first_pipeline.src.createWaveMap.core import process_wavelength_map_data
+from first_pipeline.src.createCouplingMap.core import process_coupling_map_data
+from first_pipeline.src.makeImage.core import process_image_reconstruction_data
+from first_pipeline.src.makeAstrometry.core import process_astrometric_data
+
+# All functions support both development defaults and custom parameters
+result = process_wavelength_map_data()  # Uses defaults
+result = process_wavelength_map_data(file_patterns=["/custom/path/*.fits"])  # Custom
+```
+
+### Available Classes (Advanced Usage)
 
 #### Preproc Class
 **Purpose**: Handle preprocessed spectral data with quality metrics and modulation support  
 **File**: `classes/runPL_class_preproc.py`
 
 ```python
-from classes.runPL_class_preproc import Preproc
+# If using package installation:
+from first_pipeline.classes.runPL_class_preproc import Preproc
+
+# If running scripts directly, add to sys.path first:
+# import sys
+# sys.path.append('path/to/first_pipeline')
+# from classes.runPL_class_preproc import Preproc
 
 # Load existing preprocessed file
 preproc = Preproc("path/to/preproc_file.fits")
@@ -455,11 +837,13 @@ data_product.return_header()         # Get FITS header
 ```
 
 **Key Benefits**:
+- **High-level Functions**: Complete workflows with automatic defaults for development
+- **Class Access**: Fine-grained control for advanced users
 - **Encapsulation**: All related functionality in one place
 - **Consistency**: Same interface across all data products  
 - **Quality control**: Built-in validation and metrics
 - **Modularity**: Easy to use individually or in pipelines
-- **Maintainability**: Clear separation of concerns
+- **Interactive Ready**: Perfect for VS Code, Jupyter, and development environments
 
 ## Requirements
 
@@ -475,12 +859,12 @@ data_product.return_header()         # Get FITS header
 All scripts provide detailed help information:
 
 ```bash
-# Using installed commands:
+# Using installed commands (from any directory):
 runPL_changeKeyword --help
 runPL_create_pixelMap --help
 runPL_make_preproc --help
 
-# Or using scripts directly:
+# Or using scripts directly (from first_pipeline/first_pipeline/ directory):
 python runPL_changeKeyword.py --help
 python runPL_create_pixelMap.py --help
 python runPL_make_preproc.py --help
@@ -492,3 +876,34 @@ This displays:
 - Input/output file requirements
 - Practical examples
 - Default values
+
+## Summary of Recent Improvements
+
+### 🔬 Interactive Development Revolution
+- **Core/CLI Separation**: Each module now has `core.py` (algorithms) and `main.py` (CLI interface)
+- **Development Defaults**: Automatic user detection with customized default file paths
+- **VS Code Ready**: Direct import and execution of core functions in interactive environments
+- **Jupyter Compatible**: Perfect for research notebooks and algorithm development
+- **Zero Configuration**: Functions work out-of-the-box in development environments
+
+### 🛠 Enhanced Developer Experience  
+- **Modular Architecture**: Clean separation of concerns with shared components
+- **Flexible Usage**: Choose between command-line tools or programmatic access
+- **Interactive Debugging**: Easy algorithm inspection and step-through debugging
+- **Parameter Exploration**: Quick testing of different configurations and settings
+- **Custom Workflows**: Build specialized analysis pipelines using core functions
+
+### 🚀 Production Ready
+- **CLI Compatibility**: All existing `runPL_*` commands work exactly as before
+- **Package Installation**: Modern pip-installable package with entry points
+- **Professional CLI**: Comprehensive argparse interfaces with detailed help
+- **Quality Control**: Built-in validation, metrics, and diagnostic outputs
+- **Pipeline Integration**: Seamless file flow between sequential processing steps
+
+### 👥 Multi-User Support
+- **User Detection**: Automatic recognition of `slacour`, `jsarrazin`, `ehuby` development environments
+- **Custom Paths**: User-specific default file paths for streamlined development
+- **Environment Aware**: Detects VS Code, Spyder, Jupyter environments automatically
+- **Override Capable**: Custom parameters can override defaults when needed
+
+The FIRST Pipeline now provides the best of both worlds: **powerful command-line tools for production** and **intuitive interactive functions for research and development**. Whether you're processing large datasets or exploring new algorithms, the pipeline adapts to your workflow.

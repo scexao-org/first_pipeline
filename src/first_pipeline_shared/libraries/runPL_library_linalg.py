@@ -55,6 +55,8 @@ def robust_subspace(X, k=6, center=True, k_sigma=3.5, max_refit=1, verbose=False
 
     refits = 0
     while refits < max_refit and inliers_idx.size >= k:
+        if verbose:
+            print(f"Refit {refits}: {inliers_idx.size} inliers, recomputing subspace...")
         model, _ = svd_subspace(X[inliers_idx], k=k, center=center)
         X_proj, residuals, errors = project(X, model)
         thr, mask_in = mad_threshold(errors, k_sigma=k_sigma)
@@ -275,10 +277,15 @@ def solve_QR_3(QTdata, R):
 
     x_hat, y_hat, k_hat, cost
     """
+    
     b = QTdata  # shape (6,)
     Nqr = len(b)  # should be 
     if Nqr !=3 :
         raise ValueError("data and QT must have length 3 (triangles)")
+    
+    # Check for NaN values in QTdata
+    if np.any(np.isnan(b)):
+        return np.nan, np.nan, np.nan, np.nan, np.full_like(b, np.nan)
     
     cs = solve_triangular(R, b, lower=False)  # shape (6,)
     t = cs / cs[0]

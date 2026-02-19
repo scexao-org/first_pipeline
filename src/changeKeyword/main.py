@@ -20,7 +20,7 @@ import sys
 from astropy.io import fits
 from glob import glob
 import argparse
-import libraries.runPL_library_io as runlib
+from first_pipeline_shared.libraries import runPL_library_io as runlib
 
 def main():
     """Main entry point for the script"""
@@ -109,19 +109,12 @@ logic in downstream pipeline scripts (createPixelMap, preprocess, wavelengthMap,
                        help="Observation date (use DEFAULT to automatically extract from filename)")
 
     args = parser.parse_args()
-
-    filelist = []
-    # If the user specifies file names or wildcards
-    if len(args.files) > 0:
-        for f in args.files:
-            filelist += [file for file in glob(f) if file.endswith(".fits")]
-    # Processing of the full current directory
-    else:
-        for file in os.listdir("."):
-            if file.endswith(".fits"):
-                filelist.append(file)
-
-    filelist.sort()  # process the files in alphabetical order
+    
+    # Import core functions
+    from .core import collect_files, update_fits_headers
+    
+    # Collect files to process
+    filelist = collect_files(args.files)
 
     # Update FITS headers based on provided options
     header_updates = {
@@ -135,18 +128,15 @@ logic in downstream pipeline scripts (createPixelMap, preprocess, wavelengthMap,
         'DATE': args.DATE if args.DATE != "DEFAULT" else None,
     }
 
+    # Process files if any updates are needed
     if any(v is not None for v in header_updates.values()) or args.DATE == "DEFAULT":
-        for filename in filelist:
-            updates = header_updates.copy()
-            if args.DATE == "DEFAULT":
-                updates['DATE'] = runlib.get_date_from_filename(filename)
-            string_print = filename + "   ----->"
-            with fits.open(filename, mode='update') as filehandle:
-                for key, value in updates.items():
-                    if value is not None:
-                        filehandle[0].header[key] = value
-                        string_print += f'   {key}={value}'
-            print(string_print)
+        messages = update_fits_headers(
+            filelist, 
+            header_updates, 
+            extract_date_from_filename=(args.DATE == "DEFAULT")
+        )
+        for message in messages:
+            print(message)
 
 
 if __name__ == "__main__":

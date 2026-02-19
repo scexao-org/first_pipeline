@@ -29,12 +29,12 @@ if "VSCODE_PID" in os.environ:
 else:
     matplotlib.use('Agg')
 
-from classes.runPL_class_fileList import FileList     
+from .classes.runPL_class_fileList import FileList     
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
 from tqdm import tqdm
-import libraries.runPL_library_io as runlib_io
+from .libraries import runPL_library_io as runlib_io
 import shutil
 from scipy.signal import find_peaks
 
@@ -302,7 +302,7 @@ def checking_wavelength_aligment_in_modes(x_none, y_none):
 def save_fits_and_png(raw_image,traces_loc, traces_loc_double, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder):
 
     # Import PixelMap class
-    from classes.runPL_class_pixelMap import PixelMap
+    from .classes.runPL_class_pixelMap import PixelMap
     
     # Handle case when traces_loc is None (failed pixelmap generation)
     if traces_loc is None:
@@ -504,6 +504,10 @@ varying observation conditions.
         """
     )
 
+def main():
+    """
+    Main entry point for the pixel map creation script.
+    """
     # needed to work in VSC:
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--f", help=argparse.SUPPRESS)
@@ -585,5 +589,9 @@ varying observation conditions.
         
         folder = fileList.get_most_common_dir()
         save_fits_and_png(raw_image, traces_loc, traces_loc_double, header, x_found,y_found, pixel_min, pixel_max,pixel_wide,output_channels, folder)
+
+
+if __name__ == "__main__":
+    main()
 
 # %%

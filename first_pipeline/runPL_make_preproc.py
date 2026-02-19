@@ -36,17 +36,17 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
 from tqdm import tqdm
-import libraries.runPL_library_io as runlib_io
-import libraries.runPL_library_plots as runlib_plots
+from .libraries import runPL_library_io as runlib_io
+from .libraries import runPL_library_plots as runlib_plots
 import shutil
 from collections import defaultdict
 import time
 from astroplan import Observer
 from astropy.time import Time
-from classes.runPL_class_fileList import FileList
-from classes.runPL_class_dataCube import DataCube
-from classes.runPL_class_pixelMap import PixelMap
-from classes.runPL_class_preproc import Preproc
+from .classes.runPL_class_fileList import FileList
+from .classes.runPL_class_dataCube import DataCube
+from .classes.runPL_class_pixelMap import PixelMap
+from .classes.runPL_class_preproc import Preproc
 
 subaru = Observer.at_site("Subaru")
 now_time = Time.now()
@@ -282,6 +282,10 @@ attention before proceeding with scientific analysis.
         """
     )
 
+def main():
+    """
+    Main entry point for the preprocessing script.
+    """
     # needed to work in VSC:
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--f", help=argparse.SUPPRESS)
@@ -338,6 +342,9 @@ attention before proceeding with scientific analysis.
     
     print ( "Overwrite existing already preprocessed files: ", overwrite)
     preprocess(fileList, overwrite=overwrite, plot_sum=True)
-    
+
+
+if __name__ == "__main__":
+    main()
 
 # %%

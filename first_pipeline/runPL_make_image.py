@@ -40,16 +40,15 @@ from matplotlib.pyplot import plot,hist,clf,figure,legend,imshow
 from datetime import datetime
 from tqdm import tqdm
 # Import FIRST pipeline classes
-from classes.runPL_class_flatMap import FlatMap
-from classes.runPL_class_waveMap import WaveMap
-from classes.runPL_class_fileList import FileList
-from classes.runPL_class_dataCube import DataCube
-from classes.runPL_class_couplingMap import CouplingMap
+from .classes.runPL_class_flatMap import FlatMap
+from .classes.runPL_class_waveMap import WaveMap
+from .classes.runPL_class_fileList import FileList
+from .classes.runPL_class_dataCube import DataCube
+from .classes.runPL_class_couplingMap import CouplingMap
 
-import libraries.runPL_library_basic as runlib_basic
-import libraries.runPL_library_io as runlib_io
-import libraries.runPL_library_plots as runlib_plots
-import libraries.runPL_library_linalg as runlib_linalg
+from .libraries import runPL_library_io as runlib_io
+from .libraries import runPL_library_plots as runlib_plots
+from .libraries import runPL_library_linalg as runlib_linalg
 
 from astropy.io import fits
 from astroplan import Observer
@@ -212,7 +211,10 @@ def quick_plot(data,title =""):
     
 
 
-if __name__ == "__main__":
+def main():
+    """
+    Main entry point for the image reconstruction script.
+    """
     parser = argparse.ArgumentParser(
         description="Reconstruct astronomical images from FIRST Photonic Lantern fiber measurements using coupling map inversion.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -636,3 +638,6 @@ Optimize smoothing and modulation parameters for best results with your data.
 
 
 # %%
+
+if __name__ == "__main__":
+    main()

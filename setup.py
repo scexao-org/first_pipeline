@@ -5,6 +5,25 @@ Setup script for FIRST Pipeline
 
 from setuptools import setup, find_packages
 import os
+import sys
+
+# Add src directory to path to import version from package structure
+src_path = os.path.join(os.path.dirname(__file__), 'src')
+sys.path.insert(0, src_path)
+
+try:
+    from first_pipeline_shared import __version__, __author__, __email__, __description__
+except ImportError:
+    # Fallback version info if import fails
+    __version__ = "1.1.0"
+    __author__ = "sylacour"
+    __email__ = "sylvestre.lacour@observatoiredeparis.psl.eu"
+    __description__ = "FIRST Pipeline for Visible Photonic Lantern data reduction at SUBARU/SCEXAO"
+
+# Configure package discovery for src layout
+def find_src_packages(where="src"):
+    packages = find_packages(where=where)
+    return packages
 
 # Read the README file for the long description
 def read_readme():
@@ -24,24 +43,26 @@ def read_requirements():
 
 setup(
     name="first-pipeline",
-    version="1.0.0",
-    description="FIRST Pipeline for Visible Photonic Lantern data reduction at SUBARU/SCEXAO",
+    version=__version__,
+    description=__description__,
     long_description=read_readme(),
     long_description_content_type="text/markdown",
-    author="sylacour",
+    author=__author__,
+    author_email=__email__,
     python_requires=">=3.7",
-    packages=find_packages(),
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
     install_requires=read_requirements(),
     entry_points={
         'console_scripts': [
-            'runPL_changeKeyword=first_pipeline.runPL_changeKeyword:main',
-            'runPL_create_pixelMap=first_pipeline.runPL_create_pixelMap:main',
-            'runPL_make_preproc=first_pipeline.runPL_make_preproc:main',
-            'runPL_create_flatMap=first_pipeline.runPL_create_flatMap:main',
-            'runPL_create_waveMap=first_pipeline.runPL_create_waveMap:main',
-            'runPL_create_couplingMap=first_pipeline.runPL_create_couplingMap:main',
-            'runPL_make_image=first_pipeline.runPL_make_image:main',
-            'runPL_make_astrometry=first_pipeline.runPL_make_astrometry:main',
+            'runPL_changeKeyword=changeKeyword.main:main',
+            'runPL_create_pixelMap=createPixelMap.main:main',
+            'runPL_make_preproc=makePreproc.main:main',
+            'runPL_create_flatMap=createFlatMap.main:main',
+            'runPL_create_waveMap=createWaveMap.main:main',
+            'runPL_create_couplingMap=createCouplingMap.main:main',
+            'runPL_make_image=makeImage.main:main',
+            'runPL_make_astrometry=makeAstrometry.main:main',
         ],
     },
     classifiers=[
