@@ -423,15 +423,19 @@ def plot_star_fit_position(cmap_style, Xmod, Ymod,
     
     fig, axs = plt.subplots(2,1, num="XY position -- using "+cmap_style, 
                             clear=True, figsize=(7,12), squeeze=False)
-    axs[0,0].plot(Xcen,Ycen,'.',label='Center of '+cmap_style)
+            
+    axs[0,0].plot(Xcen,Ycen,'.',label='Center of '+cmap_style, color='.8')
     axs[0,0].set_ylim(axs[0,0].get_ylim()[0], axs[0,0].get_ylim()[1])
     axs[0,0].set_xlim(axs[0,0].get_xlim()[0], axs[0,0].get_xlim()[1])
-    axs[0,0].plot((Xpos),(Ypos),'.-',label='Detected position')
-    axs[0,0].plot((Xcen,(Xpos)),(Ycen,(Ypos)),'-k',alpha=0.3,linewidth=0.5)
+    axs[0,0].plot(Xmod,Ymod,'.', color='seagreen',label='Expected position')
+    axs[0,0].plot((Xmod,(Xpos)),(Ymod,(Ypos)),'-',
+                  color='seagreen',alpha=0.8,linewidth=1.)
+
+    axs[0,0].plot((Xpos),(Ypos),'.-',label='Detected position', color='orange')
+    axs[0,0].plot((Xcen,(Xpos)),(Ycen,(Ypos)),'--',color='.8', marker='', linewidth=0.5)
     
     # axs[0,0].plot((d.xmod[0],(Xpos)),(d.ymod[0],(Ypos)),'-c',alpha=0.3,linewidth=0.5)
     # axs[0,0].plot((d.xmod[0],(Xcen)),(d.ymod[0],(Ycen)),'-m',alpha=0.3,linewidth=0.5)
-    axs[0,0].plot(Xmod,Ymod,'om',alpha=0.3,linewidth=0.5)
     
     # axs[0].set_title(basenames[i][8:])
     axs[0,0].set_xlabel("X [mas]")

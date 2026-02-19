@@ -567,13 +567,17 @@ def main():
     if not set(wollastons).issubset(valid_wollastons):
         invalid_wollastons = set(wollastons) - valid_wollastons
         unknown_files = [f for f in filelist if fits.getheader(f).get('X_FIRWOL', 'UNKNOWN') == 'UNKNOWN']
-        raise ValueError(f"Found {len(unknown_files)} files with UNKNOWN wollaston status. Update manually wollaston status with runPL_changeKeyword.py")
+        print(f"Found {len(unknown_files)} files with UNKNOWN wollaston status. Update manually wollaston status with runPL_changeKeyword.py")
 
-    for wollaston in wollastons:
+    for wollaston in ['IN', 'OUT']:
         print(f"Processing files with wollaston status: {wollaston}")
         # Filter files based on wollaston status
 
-        fileList = FileList(file_patterns, first_type='RAW', wollaston=wollaston)
+        try:
+            fileList = FileList(file_patterns, first_type='RAW', wollaston=wollaston)
+        except Exception as e:
+            print(f"Error occurred while creating FileList for wollaston status {wollaston}:\n {e}")
+            continue
 
         if wollaston == 'IN':
             output_channels = 38
@@ -581,6 +585,19 @@ def main():
             output_channels = 19
 
         raw_image, header = raw_image_clean(fileList.filelist)
+
+        ny,nx = raw_image.shape
+        # Validate and adjust pixel_min and pixel_max to be within bounds
+        if pixel_min < 0:
+            print(f"Warning: pixel_min ({pixel_min}) is below 0, setting to 0")
+            pixel_min = 0
+        if pixel_max >= nx:
+            print(f"Warning: pixel_max ({pixel_max}) is >= image width ({nx}), setting to {nx-1}")
+            pixel_max = nx - 1
+        if pixel_min >= pixel_max:
+            print(f"Warning: pixel_min ({pixel_min}) >= pixel_max ({pixel_max}), adjusting to maintain valid range")
+            pixel_min = max(0, pixel_max - 100)  # Ensure at least 100 pixel range
+
         try:
             traces_loc, traces_loc_double, x_found,y_found, x_none, y_none = generate_pixelmap(raw_image, pixel_min, pixel_max, output_channels, fileList.filelist)
         except Exception as e:

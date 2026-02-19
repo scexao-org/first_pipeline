@@ -339,7 +339,8 @@ class FileList:
         files_with_pixelmap = sum(1 for assoc in self.files_with_associated_files if assoc['pixelMap'] is not None)
         files_with_both = sum(1 for assoc in self.files_with_associated_files if assoc['dark'] is not None and assoc['pixelMap'] is not None)
 
-        print(f"\nFile Association Statistics:")
+        print(f"   ")
+        print(f"File Association Statistics:")
         print(f"Total files: {total_files}")
         if darks_pattern is not None:
             print(f"Files with dark: {files_with_dark} ({files_with_dark/total_files*100:.1f}%)")
@@ -347,7 +348,7 @@ class FileList:
             print(f"Files with pixelMap: {files_with_pixelmap} ({files_with_pixelmap/total_files*100:.1f}%)")
         if darks_pattern is not None and pixelMap is not None:
             print(f"Files with both dark and pixelMap: {files_with_both} ({files_with_both/total_files*100:.1f}%)")
-        print(f"\n")
+        print(f"   ")
 
         return self.files_with_associated_files
 
