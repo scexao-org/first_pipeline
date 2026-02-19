@@ -53,6 +53,10 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     install_requires=read_requirements(),
+    scripts=[
+        "runPL_dfits",
+        "sh_copydatatoGravity.sh",
+    ],
     entry_points={
         'console_scripts': [
             'runPL_changeKeyword=changeKeyword.main:main',
