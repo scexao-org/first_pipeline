@@ -21,7 +21,6 @@ first_pipeline/
 │   └── runPL_class_preproc.py
 ├── libraries/        # Utility functions
 │   ├── __init__.py
-│   ├── runPL_library_basic.py
 │   ├── runPL_library_io.py
 │   ├── runPL_library_linalg.py
 │   └── runPL_library_plots.py

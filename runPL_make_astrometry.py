@@ -40,7 +40,6 @@ from datetime import datetime
 from tqdm import tqdm
 import libraries.runPL_library_io as runlib
 import libraries.runPL_library_plots as runlib_plots
-import libraries.runPL_library_basic as runlib_basic
 import libraries.runPL_library_linalg as runlib_linalg
 from classes.runPL_class_dataCube import DataCube, extract_datalist
 from classes.runPL_class_couplingMap import CouplingMap
@@ -394,9 +393,9 @@ for high-precision applications.
         filename = d.filename
         print( f"---->  Filename : {filename}")
 
-        flux_goodData,flux_threshold = runlib_basic.flux_filtering(flux)
+        flux_goodData,flux_threshold = runlib_linalg.flux_filtering(flux)
         print(f"* Percentage of good data: {np.sum(flux_goodData)/Nimages*100:.1f} % (flux threshold)")
-        data_svdfiltered,fit_goodData,errors = runlib_basic.svd_filtering(datacube,flux_goodData)
+        data_svdfiltered,fit_goodData,errors = runlib_linalg.svd_filtering(datacube,flux_goodData)
         goodData = flux_goodData & fit_goodData
         print(f"* Percentage of good data: {np.sum(goodData)/Nimages*100:.1f} % (flux and svd threshold)")
 

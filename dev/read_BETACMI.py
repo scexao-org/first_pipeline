@@ -32,7 +32,6 @@ from scipy.linalg import pinv
 from scipy.optimize import curve_fit
 import libraries.runPL_library_io as runlib
 import libraries.runPL_library_plots as runlib_i
-import libraries.runPL_library_basic as basic
 from scipy.ndimage import zoom
 from astropy.io import fits
 import shutil

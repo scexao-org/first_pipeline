@@ -12,6 +12,7 @@ def clean_filelist(fits_keywords, filelist):
     if isinstance(filelist, str):
         filelist = [filelist]
     for filename in filelist:
+        # TODO : could be speed up
         try:
             first_file = fits.open(filename, memmap=True)
         except:

@@ -303,3 +303,34 @@ def solve_QR_2(QTdata, R):
     resid = R @ np.array([x_hat, y_hat]) - b
     cost = float(np.sum(resid**2))
     return x_hat, y_hat, cost, resid
+
+
+def flux_filtering(flux):
+    
+    # select data only above a threshold based on flux
+    flux_threshold=np.nanpercentile(flux.mean(axis=(2)),80)/5
+    flux_goodData=np.nanmean(flux,axis=(2)) > flux_threshold
+    # plt.imshow(flux_goodData)
+    if np.sum(flux_goodData)<57:
+        #too little good data, we need to lower the bar
+        flux_threshold /= 2
+        print("Not enough good data, lowering the threshold to ",flux_threshold)
+        flux_goodData=np.nanmean(flux,axis=(2)) > flux_threshold
+
+    return flux_goodData,flux_threshold
+
+
+def svd_filtering(datacube,flux_goodData,Nsingular=19*6,verbose=True):
+
+    datacube_flux_goodData = datacube[flux_goodData]
+    datacube_flux_goodData = datacube_flux_goodData.reshape((datacube_flux_goodData.shape[0], -1))
+    if Nsingular >= len(datacube_flux_goodData):
+        Nsingular = len(datacube_flux_goodData) - 1
+    res = robust_subspace(datacube_flux_goodData, k=Nsingular, center=True, k_sigma=2.5, max_refit=1,verbose=verbose)
+    singular_values = res["model"]["S"][:-1]
+    data_svdfiltered, residuals, errors = project(datacube.reshape((datacube.shape[0]*datacube.shape[1], -1)), res["model"])
+    data_svdfiltered = data_svdfiltered.reshape(datacube.shape)
+    fit_goodData = errors.reshape((datacube.shape[0], -1)) < res["threshold"]
+    
+
+    return data_svdfiltered,fit_goodData,errors
