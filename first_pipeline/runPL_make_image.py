@@ -389,7 +389,7 @@ Optimize smoothing and modulation parameters for best results with your data.
 
     fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
 
-    fileList.make_association(darks_pattern=dark_patterns)
+    fileList.make_association(dark_patterns=dark_patterns)
 
     # reading all the calibration files that should be appended to the cmap files (including wavelength and flat)
     print("Coupling map patterns: ", cmap_patterns)

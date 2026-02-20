@@ -18,6 +18,9 @@ if "VSCODE_PID" in os.environ:
     matplotlib.use('Qt5Agg')
 else:
     matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import plot, hist, clf, figure, legend, imshow
+plt.ion()
 
 import numpy as np
 from typing import List
@@ -263,8 +266,9 @@ def run_createFlatMap(file_patterns=None, dark_patterns=None, wollaston=None,
         print("WARNING: Overriding FLAT keyword requirement. Processing files without DATA-TYP=FLAT constraint.")
     
     # Create file list and extract data
-    fileList = FileList(file_patterns, data_type=data_type, first_type='PREPROC', wollaston=wollaston)
-    fileList.make_association(darks_pattern=dark_patterns)
+    fileList = FileList(file_patterns, data_type=data_type, first_type='PREPROC', wollaston=wollaston, modID=[2,3,4,5,6,7,8])
+    # fileList = FileList(file_patterns, data_type=data_type, first_type='PREPROC', wollaston=wollaston, modID=[0])
+    fileList.make_association(dark_patterns=dark_patterns)
 
     datalist = fileList.extract_data_from_list(center=False)
 
@@ -276,7 +280,7 @@ def run_createFlatMap(file_patterns=None, dark_patterns=None, wollaston=None,
 
     # Save flat field map
     flatMap = FlatMap()
-    flatMap.create_from_data(1/flat_full)  # Inverse for correction
+    flatMap.create_from_data(flat_full)  # Inverse for correction
 
     # Create header with metadata
     header = datalist[-1].header.copy()
@@ -305,13 +309,9 @@ def run_createFlatMap(file_patterns=None, dark_patterns=None, wollaston=None,
     # Save flat field map
     flatMap.save(output_filename, header)
 
-    # Create flat field comparison plots
-    flatMap_loaded = FlatMap(output_filename)
-    # create_flat_comparison_plots(datalist, flatMap_loaded, output_filename)
-
     print(f"Flat field map saved to: {output_filename}")
     
-    return output_filename
+    return flatMap, datalist
 
 
 if __name__ == "__main__":
@@ -326,14 +326,14 @@ if __name__ == "__main__":
         flat_patterns = None
         wollaston = None
         Nflat_smooth = 25
-        override_flat_keyword = True
-        file_patterns = ["/Users/slacour/DATA/LANTERNE/raw/20260114/preproc/"]
+        override_flat_keyword = False
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/preproc/"]
         
         print(f"Development override: dark_patterns={dark_patterns}, flat_patterns={flat_patterns}, wollaston={wollaston}, Nflat_smooth={Nflat_smooth}")
         print(f"Development file patterns: {file_patterns}")
 
     # Process flat field data
-    output_filename = run_createFlatMap(
+    flatMap, datalist  = run_createFlatMap(
         file_patterns=file_patterns,
         dark_patterns=dark_patterns,
         wollaston=wollaston,
@@ -341,6 +341,32 @@ if __name__ == "__main__":
         override_flat_keyword=override_flat_keyword
     )
     
-    print(f"Successfully created flat field map: {output_filename}")
+    print(f"Successfully created flat field map: {flatMap.filename}")
     
+    flatMap_2 = FlatMap()
+    flatMap_2.load(flatMap.filename)
+
+    data= datalist[0].data
+
+
+    flux = np.array([np.nanmean(d.data, axis=(0,1)) for d in datalist])
+    flux_flat = np.array([np.nanmean(d.data*flatMap_2.inv_flat, axis=(0,1)) for d in datalist])
+
+    figure("flat field comparison", clear=True, figsize=(18,6))
+    plot(flux.mean(axis=(0,1)))
+    plot(flux_flat.mean(axis=(0,1)))
+    
+    # dit = np.array([d.dit for d in datalist])
+
+    # ratio = flux.mean(axis=1)/dit
+
+    # f_n = flux/dit[:,None]
+
+    # gain = f_n / f_n[dit==dit[-1]].mean(axis=0)
+
+    # plot(plot(flux.T,gain.T,'.'))
+    # plt.xlabel("flux pixel")
+    # plt.ylabel("gain")
+    # plt.title("Gain vs flux for flat field data")
+
 # %%

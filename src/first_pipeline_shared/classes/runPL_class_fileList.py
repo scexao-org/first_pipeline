@@ -139,16 +139,38 @@ def find_closest_dark(cmap_file, dark_files):
     Finds the closest dark file to a given coupling map file, prioritizing files in the same directory.
     """
 
+    gain = fits.getheader(cmap_file)['GAIN']
+    dit = fits.getheader(cmap_file)['EXPTIME']
+    date = fits.getheader(cmap_file)['DATE']
     cmap_dir = os.path.dirname(cmap_file)
-    dark_samegain = [dark for dark in dark_files if fits.getheader(dark)['GAIN'] == fits.getheader(cmap_file)['GAIN']]
-    
-    # Filter dark files by the same directory
-    same_dir_darks = [dark for dark in dark_samegain if os.path.dirname(dark) == cmap_dir]
-    
+
+    # Filter dark files by the same directory, gain, and dit
+    same_dir_darks = [dark for dark in dark_files 
+                      if os.path.dirname(dark) == cmap_dir 
+                      and fits.getheader(dark)['GAIN'] == gain
+                      and fits.getheader(dark)['EXPTIME'] == dit]
+
     if same_dir_darks:
-        return find_closest_in_time_dark(cmap_file, same_dir_darks)  # Return the first match in the same directory    
-    else:
-        return find_closest_in_time_dark(cmap_file, dark_samegain) 
+        return find_closest_in_time_dark(cmap_file, same_dir_darks)
+
+    # Fall back to same gain and dit only
+    same_gain_dit_darks = [dark for dark in dark_files 
+                           if fits.getheader(dark)['GAIN'] == gain
+                           and fits.getheader(dark)['EXPTIME'] == dit]
+
+    if same_gain_dit_darks:
+        return find_closest_in_time_dark(cmap_file, same_gain_dit_darks)
+
+    # Fall back to same gain only
+    same_gain_darks = [dark for dark in dark_files if fits.getheader(dark)['GAIN'] == gain]
+
+    if same_gain_darks:
+        return find_closest_in_time_dark(cmap_file, same_gain_darks)
+
+    # Last resort: closest by time from all dark files
+    return find_closest_in_time_dark(cmap_file, dark_files)
+
+
 
 class FileList:
     """
@@ -291,7 +313,7 @@ class FileList:
         return filelist_waveMap[-1]
     
 
-    def make_association(self, darks_pattern=None, pixelMap=None):
+    def make_association(self, dark_patterns=None, pixelMap=None):
         """
         Get wavelength calibration files matching constraints.
         
@@ -304,12 +326,12 @@ class FileList:
         filelist_pixelMap = []
 
         # Finding dark files (not mandatory)
-        if darks_pattern is not None:
+        if dark_patterns is not None:
             fits_keywords= {'DATA-TYP': ['DARK'],
                        'X_FIRTYP': ['PREPROC']
                        }
             try:
-                filelist_darks = get_filelist(darks_pattern, fits_keywords, name_search="dark")
+                filelist_darks = get_filelist(dark_patterns, fits_keywords, name_search="dark")
             except FileNotFoundError as e:
                 print(f"WARNING!!! {e}")
 
@@ -342,11 +364,11 @@ class FileList:
         print(f"   ")
         print(f"File Association Statistics:")
         print(f"Total files: {total_files}")
-        if darks_pattern is not None:
+        if dark_patterns is not None:
             print(f"Files with dark: {files_with_dark} ({files_with_dark/total_files*100:.1f}%)")
         if pixelMap is not None:
             print(f"Files with pixelMap: {files_with_pixelmap} ({files_with_pixelmap/total_files*100:.1f}%)")
-        if darks_pattern is not None and pixelMap is not None:
+        if dark_patterns is not None and pixelMap is not None:
             print(f"Files with both dark and pixelMap: {files_with_both} ({files_with_both/total_files*100:.1f}%)")
         print(f"   ")
 

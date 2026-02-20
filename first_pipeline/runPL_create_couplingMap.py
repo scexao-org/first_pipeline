@@ -403,7 +403,7 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
 
     fileList = FileList(file_patterns, data_type= "OBJECT", first_type='PREPROC', wollaston=wollaston, object_name=object_name, modID=modID, modScale=modScale)
 
-    fileList.make_association(darks_pattern=dark_patterns)
+    fileList.make_association(dark_patterns=dark_patterns)
     file_flat = fileList.get_flatmap_file(flat_patterns)
     file_wave = fileList.get_wavemap_file(wave_patterns)
 

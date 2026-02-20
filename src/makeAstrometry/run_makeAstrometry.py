@@ -120,7 +120,7 @@ def get_filelist_astrometry(file_patterns, dark_patterns=None, cmap_patterns=Non
     fileList = FileList(file_patterns, data_type="OBJECT", first_type='PREPROC',
                        wollaston=wollaston, object_name=object_name)
 
-    fileList.make_association(darks_pattern=dark_patterns)
+    fileList.make_association(dark_patterns=dark_patterns)
 
     # Load coupling map
     file_coup = fileList.get_couplingmap_file(cmap_patterns)

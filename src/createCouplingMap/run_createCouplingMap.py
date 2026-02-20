@@ -19,6 +19,9 @@ elif os.environ.get('SPYDER_DEBUG_FILE'):
     print("Running in Spyder")
 else:
     matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import plot, hist, clf, figure, legend, imshow
+plt.ion()
 
 import numpy as np
 from typing import List, Tuple
@@ -270,7 +273,7 @@ def get_filelist_coupling(file_patterns, dark_patterns=None, flat_patterns=None,
                        modID=modID, modScale=modScale)
 
     # Set up associations and maps
-    fileList.make_association(darks_pattern=dark_patterns)
+    fileList.make_association(dark_patterns=dark_patterns)
     file_flat = fileList.get_flatmap_file(flat_patterns)
     file_wave = fileList.get_wavemap_file(wave_patterns)
 
@@ -280,7 +283,7 @@ def get_filelist_coupling(file_patterns, dark_patterns=None, flat_patterns=None,
     return fileList, flatMap, waveMap
 
 
-def create_diagnostic_plots(flux, data_svdfiltered, goodData, flux_goodData,
+def create_diagnostic_plots(flux, data_svdfiltered, flux_2_data, flux_goodData,
                            fit_goodData, errors, center_all, QT, R,
                            flatMap=None):
     """
@@ -327,7 +330,7 @@ def create_diagnostic_plots(flux, data_svdfiltered, goodData, flux_goodData,
     fig, axs = plt.subplots(2, 2, num="Dataset Information", figsize=(16, 12), clear=True)
 
     # Mean flux per (wavelength, output)
-    axs[0, 0].imshow(flux.mean(axis=(2))[0], aspect='auto', origin='lower', 
+    axs[0, 0].imshow(flux.mean(axis=(2)), aspect='auto', origin='lower', 
                      cmap='viridis', interpolation='none', rasterized=True)
     axs[0, 0].set_title("From flux, Dataset (flux)")
     axs[0, 0].set_xlabel("Output")
@@ -375,7 +378,7 @@ def create_diagnostic_plots(flux, data_svdfiltered, goodData, flux_goodData,
 
     # Covariance and correlation matrix plots
     if len(center_all) > 0:
-        fig_cov = runlib_plots.plot_covariance(flux[goodData].mean(axis=0), center_all, "Triangles")
+        fig_cov = runlib_plots.plot_covariance(flux_2_data, center_all, "Triangles")
         figures.append(fig_cov)
 
     # R amplitude analysis
@@ -455,7 +458,7 @@ def save_coupling_map(couplingMap, header, output_dir, flatMap=None, waveMap=Non
     couplingMap.save(output_filename, new_header, flat_map=flatMap, 
                     wave_map=waveMap, modulation_hdu=modulation_hdu)
 
-    return output_filename
+    return couplingMap
 
 
 def run_createCouplingMap(file_patterns=None, object_name=None, dark_patterns=None,
@@ -604,7 +607,7 @@ def run_createCouplingMap(file_patterns=None, object_name=None, dark_patterns=No
         pass
 
     # Save coupling map
-    output_filename = save_coupling_map(
+    couplingMap = save_coupling_map(
         couplingMap, header, output_dir, flatMap, waveMap,
         wavelength_smooth, wavelength_bin, Nsingular,
         center_data, use_pyramids, flux_threshold,
@@ -613,25 +616,18 @@ def run_createCouplingMap(file_patterns=None, object_name=None, dark_patterns=No
 
     # Create diagnostic plots
     figures = create_diagnostic_plots(
-        flux, data_svdfiltered, goodData, flux_goodData,
+        flux, data_svdfiltered, flux_2_data, flux_goodData,
         fit_goodData, errors, center_all, QT, R, flatMap
     )
 
     # Save plots
-    runlib_plots.save_pdf_in_file(output_filename)
+    runlib_plots.save_pdf_in_file(couplingMap.filename)
 
     print("----------------------------------------------------")
     print("Coupling Map stored. You can quit by ctrl+C")
     print("----------------------------------------------------")
 
-    return {
-        'output_filename': output_filename,
-        'couplingMap': couplingMap,
-        'QT': QT,
-        'R': R,
-        'center_all': center_all,
-        'figures': figures
-    }
+    return couplingMap, datalist
 
 
 if __name__ == "__main__":
@@ -656,17 +652,19 @@ if __name__ == "__main__":
         modScale = None
         wollaston = None
         use_pyramids = False
-        center_data = True
+        center_data = False
 
         file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
-        file_patterns = ["/Users/slacour/DATA/LANTERNE/raw/20260114/firstpl/*3.fits"]
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12?2*.fits"]
+        wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
+        # file_patterns += ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12?1[5-9]*.fits"]
         
     print(f"Development override: wavelength_smooth={wavelength_smooth}, wavelength_bin={wavelength_bin}, Nsingular={Nsingular}")
     print(f"Development file patterns: {file_patterns}")
 
 
     # Process coupling map data
-    result = run_createCouplingMap(
+    couplingMap,datalist = run_createCouplingMap(
         file_patterns=file_patterns,
         object_name=object_name,
         dark_patterns=dark_patterns,
@@ -682,9 +680,57 @@ if __name__ == "__main__":
         center_data=center_data
     )
 
-    print(f"Coupling map created successfully: {result['output_filename']}")
-    print(f"Number of triangles/pyramids: {result['QT'].shape[0]}")
-    print(f"QT shape: {result['QT'].shape}")
-    print(f"R shape: {result['R'].shape}")
+    print(f"Coupling map created successfully: {couplingMap.filename}")
+    print(f"Number of triangles/pyramids: {couplingMap.QT.shape[0]}")
+    print(f"QT shape: {couplingMap.QT.shape}")
+    print(f"R shape: {couplingMap.R.shape}")
+
+    couplingMap_2 = CouplingMap()
+    couplingMap_2.load(couplingMap.filename)
+    print(f"Coupling map loaded successfully: {couplingMap_2.filename}")
+
+    QT = couplingMap.QT
+    R = couplingMap.R
+    position = couplingMap.position
+    Ntriangles = QT.shape[0]
+    Nqr = QT.shape[2]
+
+    datacube=np.concatenate([d.data for d in datalist])
+    # datacube[np.isnan(datacube)] = 0
+
+    datacube_T=datacube.transpose((3,2,0,1))
+    # datacube_T=data_svdfiltered.transpose((3,2,0,1))
+    Nwave, Noutput, Ncube, Nmod = datacube_T.shape
+
+    datacube_T=datacube_T.reshape((datacube_T.shape[0], datacube_T.shape[1], -1))
+    chi2_max = np.sum(datacube_T**2, axis=(0,1))
+
+    chi2_map = np.zeros((Ntriangles,Ncube * Nmod))
+    chi2_map = np.zeros((Ntriangles, Ncube * Nmod))
+    chi2_map[:] =  chi2_max
+    # Here, the computation of the chi2 is simplified by the fact that QT is orthonormal
+    # chi2 = ||data - Q @ Q.T @ data||^2 = ||data||^2 - ||Q.T @ data||^2
+    for t in tqdm(range(Ntriangles), desc="Computing chi2 map"):
+        k= QT[t] @ datacube_T
+        chi2_map[t,:] -= np.sum(k ** 2, axis=(0,1))
+
+    chi2_argmin = np.nanargmin(chi2_map,axis=0)
+    plot(position[chi2_argmin])
+
+    QTdata = np.zeros((Nwave,Nqr,Ncube * Nmod))
+    ZXY = np.zeros((Nwave,Nqr,Ncube * Nmod))
+    for i in tqdm(range(Ncube * Nmod), desc="Projection onto QT space"):
+        t = chi2_argmin[i]
+        data = datacube_T[:,:,i]
+        QTdata[:,:,i] = (QT[t] @ data[:,:,None])[:,:,0]
+        for w in range(Nwave):
+            ZXY[w,:,i] = solve_triangular(R[t,w], QTdata[w,:,i], lower=False)
+
+
+    # for i in tqdm(range(Ncube * Nmod), desc="Computing XY positions"):
+    #     t = chi2_argmin[i]
+    #     solve_triangular(R, b, lower=False)
+    # XY = 
+
 
 # %%

@@ -407,7 +407,7 @@ def get_filelist_wave(file_patterns, dark_patterns, flat_patterns, wollaston):
         Flat field map object if available
     """
     fileList = FileList(file_patterns, data_type='COMPARISON', first_type='PREPROC', wollaston=wollaston)
-    fileList.make_association(darks_pattern=dark_patterns)
+    fileList.make_association(dark_patterns=dark_patterns)
     file_flat = fileList.get_flatmap_file(flat_patterns)
     flatMap = FlatMap(file_flat) if file_flat is not None else None
     

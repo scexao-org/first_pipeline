@@ -137,7 +137,7 @@ def get_filelist_image(file_patterns, dark_patterns=None, cmap_patterns=None,
                        wollaston=wollaston, object_name=object_name, 
                        modID=modID, modScale=modScale)
 
-    fileList.make_association(darks_pattern=dark_patterns)
+    fileList.make_association(dark_patterns=dark_patterns)
 
     # Load coupling map and associated calibrations
     print("Coupling map patterns: ", cmap_patterns)

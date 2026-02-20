@@ -313,7 +313,7 @@ def main():
     if override_flat_keyword:
         print("WARNING: Overriding FLAT keyword requirement. Processing files without DATA-TYP=FLAT constraint.")
     fileList = FileList(file_patterns, data_type=data_type, first_type='PREPROC', wollaston=wollaston)
-    fileList.make_association(darks_pattern=dark_patterns)
+    fileList.make_association(dark_patterns=dark_patterns)
 
     datalist : List[DataCube] = fileList.extract_data_from_list(center = False)
 

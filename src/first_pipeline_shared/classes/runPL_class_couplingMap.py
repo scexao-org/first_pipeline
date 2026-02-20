@@ -227,6 +227,10 @@ class CouplingMap:
         print(f"Saving coupling map to {output_filename}")
         hdul.writeto(output_filename, overwrite=True)
 
+        self.basename = os.path.basename(output_filename)
+        self.filename = output_filename
+        self.is_loaded = True
+
     def return_hdu_list(self):
         """
         Return a list of FITS HDUs representing the coupling map.

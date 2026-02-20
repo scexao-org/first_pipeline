@@ -133,6 +133,10 @@ class FlatMap:
         print(f"Saving flat field map to {output_filename}")
         hdul.writeto(output_filename, overwrite=True)
 
+        self.filename = output_filename
+        self.basename = os.path.basename(output_filename)
+        self.is_loaded = True
+
 
     def normalize_with_flat(self, dataCube):
         """
