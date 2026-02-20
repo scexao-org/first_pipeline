@@ -17,8 +17,7 @@ class CouplingMap:
         wavelength_bin (int): Wavelength binning factor
         flux_2_data (numpy.ndarray): Flux to data transformation matrix
         data_2_flux (numpy.ndarray): Data to flux transformation matrix
-        QT (numpy.ndarray): QT transformation matrices
-        R (numpy.ndarray): R matrices for coupling analysis
+        vectors_all_triangles (numpy.ndarray): Singular vectors for all valid triangles/pyramids
         position (numpy.ndarray): Position data for coupling points
         ref_spectra (numpy.ndarray): Reference spectra data
         Npositions (int): Number of positions
@@ -36,8 +35,7 @@ class CouplingMap:
         self.wavelength_bin = None
         self.flux_2_data = None
         self.data_2_flux = None
-        self.QT = None
-        self.R = None
+        self.vectors_all_triangles = None
         self.position = None
         self.ref_spectra = None
         self.Npositions = None
@@ -75,7 +73,7 @@ class CouplingMap:
             
         self.wavelength_bin = header['Q_CMWBIN']
         
-        required_extensions = ['F2DATA', 'DATA2F', 'QT', 'R', 'XY', 'SPECTRA']
+        required_extensions = ['F2DATA', 'DATA2F', 'VECTORS', 'XY', 'SPECTRA']
         available_extensions = [hdu.name for hdu in cmap_file]
         missing_extensions = [ext for ext in required_extensions if ext not in available_extensions]
         
@@ -85,32 +83,30 @@ class CouplingMap:
 
         self.flux_2_data = cmap_file['F2DATA'].data
         self.data_2_flux = cmap_file['DATA2F'].data
-        self.QT = cmap_file['QT'].data
-        self.R = cmap_file['R'].data
+        self.vectors_all_triangles = cmap_file['VECTORS'].data
         self.position = cmap_file['XY'].data
         self.ref_spectra = cmap_file['SPECTRA'].data
 
-        if self.QT is None or self.QT.size == 0:
+        if self.vectors_all_triangles is None or self.vectors_all_triangles.size == 0:
             cmap_file.close()
             raise ValueError("Coupling map data is empty or invalid")
             
         self.Npositions = self.position.shape[0]
-        self.Nqr = self.R.shape[2]
-        self.Nwave = self.R.shape[1]
-        self.Ntriangles = self.R.shape[0]
-        self.Noutput = self.QT.shape[3]
+        self.Nqr = self.vectors_all_triangles.shape[3]
+        self.Nwave = self.vectors_all_triangles.shape[2]
+        self.Ntriangles = self.vectors_all_triangles.shape[0]
+        self.Noutput = self.vectors_all_triangles.shape[1]
 
         cmap_file.close()
         self.is_loaded = True
 
-    def create_from_data(self, flux_2_data, data_2_flux, QT, R, position, spectra, wavelength_bin, filename=None):
+    def create_from_data(self, flux_2_data, data_2_flux, vectors_all_triangles, position, spectra, wavelength_bin, filename=None):
         """
         Create a coupling map from data arrays.
         Args:
             flux_2_data: Flux to data transformation matrix
             data_2_flux: Data to flux transformation matrix  
-            QT: QT transformation matrices
-            R: R matrices for coupling analysis
+            vectors_all_triangles: Singular vectors for all valid triangles/pyramids
             position: Position data for coupling points
             spectra: Reference spectra array
             wavelength_bin: Wavelength binning factor
@@ -119,8 +115,7 @@ class CouplingMap:
         # Store the data arrays directly
         self.flux_2_data = flux_2_data
         self.data_2_flux = data_2_flux 
-        self.QT = QT
-        self.R = R
+        self.vectors_all_triangles = vectors_all_triangles
         self.position = position
         self.ref_spectra = spectra
         self.wavelength_bin = wavelength_bin
@@ -128,12 +123,11 @@ class CouplingMap:
         # Set dimensions
         if self.position is not None:
             self.Npositions = self.position.shape[0]
-        if self.R is not None:
-            self.Nqr = self.R.shape[2]
-            self.Nwave = self.R.shape[1]
-            self.Ntriangles = self.R.shape[0]
-        if self.QT is not None:
-            self.Noutput = self.QT.shape[3]
+        if self.vectors_all_triangles is not None:
+            self.Nqr = self.vectors_all_triangles.shape[3]
+            self.Nwave = self.vectors_all_triangles.shape[2]
+            self.Ntriangles = self.vectors_all_triangles.shape[0]
+            self.Noutput = self.vectors_all_triangles.shape[1]
         
         if filename:
             self.filename = filename
@@ -155,12 +149,11 @@ class CouplingMap:
         # distinguish between triangle and pyramid data
         if self.position is not None:
             self.Npositions = self.position.shape[0]
-        if self.R is not None:
-            self.Nqr = self.R.shape[2]
-            self.Nwave = self.R.shape[1]
-            self.Ntriangles = self.R.shape[0]
-        if self.QT is not None:
-            self.Noutput = self.QT.shape[3]
+        if self.vectors_all_triangles is not None:
+            self.Nqr = self.vectors_all_triangles.shape[3]
+            self.Nwave = self.vectors_all_triangles.shape[2]
+            self.Ntriangles = self.vectors_all_triangles.shape[0]
+            self.Noutput = self.vectors_all_triangles.shape[1]
 
     def save(self, output_filename, header=None, flat_map=None, wave_map=None, modulation_hdu=None):
         """
@@ -186,8 +179,7 @@ class CouplingMap:
         # Create HDUs for coupling map data
         hdu = [fits.ImageHDU(data=self.flux_2_data, name='F2DATA')]
         hdu += [fits.ImageHDU(data=self.data_2_flux, name='DATA2F')]
-        hdu += [fits.ImageHDU(data=self.QT, name='QT')]
-        hdu += [fits.ImageHDU(data=self.R, name='R')]
+        hdu += [fits.ImageHDU(data=self.vectors_all_triangles, name='VECTORS')]
         hdu += [fits.ImageHDU(data=self.position, name='XY')]
         hdu += [fits.ImageHDU(data=self.ref_spectra, name='SPECTRA')]
         
@@ -244,8 +236,7 @@ class CouplingMap:
         # Use current active data
         hdu = [fits.ImageHDU(data=self.flux_2_data, name='F2DATA')]
         hdu += [fits.ImageHDU(data=self.data_2_flux, name='DATA2F')]
-        hdu += [fits.ImageHDU(data=self.QT, name='QT')]
-        hdu += [fits.ImageHDU(data=self.R, name='R')]
+        hdu += [fits.ImageHDU(data=self.vectors_all_triangles, name='VECTORS')]
         hdu += [fits.ImageHDU(data=self.position, name='XY')]
         hdu += [fits.ImageHDU(data=self.ref_spectra, name='SPECTRA')]
         return hdu
@@ -265,44 +256,6 @@ class CouplingMap:
             # Return empty header if no file is loaded
             return fits.Header()
 
-    def compute_broadband_QR(self, wmin, wmax, spectra):
-        self._check_loaded()
-        """
-        Compute broadband QR matrices over a wavelength range.
-        typically for Nqr=6
-        Parameters
-        ----------
-        wmin : int
-            Start index for wavelength range
-        wmax : int
-            End index for wavelength range
-        spectra : np.ndarray
-            Shape (Nwave)
-
-        Returns
-        -------
-        QT_broadband : np.ndarray
-            Shape (Ntriangles, Nqr, wmax-wmin, Nqr)
-        R_broadband : np.ndarray
-            Shape (Ntriangles, Nqr, Nqr)
-        """
-        Ntriangles, Nwave, Nqr, _ = self.R.shape
-        if wmin < 0 or wmax > Nwave or wmin >= wmax:
-            raise ValueError("Invalid wavelength range")
-
-        QT_broadband = np.zeros((Ntriangles, Nqr, (wmax-wmin) * Nqr))
-        R_broadband = np.zeros((Ntriangles, Nqr, Nqr))
-
-        for t in tqdm(range(Ntriangles),desc="commputing broad band QT"):
-            R_scaled = self.R[t,wmin:wmax] * spectra[wmin:wmax, None, None]
-            R_stack = np.vstack(R_scaled)        # (num_wave*6, 6)
-            Q_new, R_new = np.linalg.qr(R_stack, mode='reduced')     # Q_intermediate: (num_wave*6,6), R_new: (6,6)
-
-            R_broadband[t] = R_new
-            QT_broadband[t]= Q_new.T
-
-        return QT_broadband, R_broadband
-    
     def QT_dot_data(self, index , data):
         self._check_loaded()
                 

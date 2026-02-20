@@ -284,7 +284,7 @@ def get_filelist_coupling(file_patterns, dark_patterns=None, flat_patterns=None,
 
 
 def create_diagnostic_plots(flux, data_svdfiltered, flux_2_data, flux_goodData,
-                           fit_goodData, errors, center_all, QT, R,
+                           fit_goodData, errors, center_all,
                            flatMap=None):
     """
     Generate comprehensive diagnostic plots for coupling map analysis.
@@ -305,10 +305,6 @@ def create_diagnostic_plots(flux, data_svdfiltered, flux_2_data, flux_goodData,
         SVD reconstruction errors
     center_all : numpy.ndarray
         Triangle/pyramid center positions
-    QT : numpy.ndarray
-        QT matrices
-    R : numpy.ndarray
-        R matrices
     flatMap : FlatMap, optional
         Flat field map for additional diagnostics
         
@@ -382,9 +378,9 @@ def create_diagnostic_plots(flux, data_svdfiltered, flux_2_data, flux_goodData,
         figures.append(fig_cov)
 
     # R amplitude analysis
-    R_amplitude = np.linalg.norm(R, axis=2)
-    fig_r = runlib_plots.plot_R_amplitude(R, name="coupling_analysis")
-    figures.append(fig_r)
+    # R_amplitude = np.linalg.norm(R, axis=2)
+    # fig_r = runlib_plots.plot_R_amplitude(R, name="coupling_analysis")
+    # figures.append(fig_r)
 
     return figures
 
@@ -508,8 +504,6 @@ def run_createCouplingMap(file_patterns=None, object_name=None, dark_patterns=No
         Dictionary containing:
         - 'output_filename': path to saved coupling map
         - 'couplingMap': CouplingMap object
-        - 'QT': QT matrices
-        - 'R': R matrices
         - 'center_all': triangle/pyramid centers
         - 'figures': list of diagnostic figures
     """
@@ -585,12 +579,11 @@ def run_createCouplingMap(file_patterns=None, object_name=None, dark_patterns=No
 
     # Compute transformation matrices
     flux_2_data, data_2_flux = flux_matrices(vectors_all_triangles)
-    QT, R = Q_and_R_matrices(vectors_all_triangles)
 
     # Create CouplingMap object
     couplingMap = CouplingMap()
     couplingMap.create_from_data(
-        flux_2_data, data_2_flux, QT, R, center_all,
+        flux_2_data, data_2_flux, vectors_all_triangles, center_all,
         spectra, wavelength_bin
     )
 
@@ -615,9 +608,9 @@ def run_createCouplingMap(file_patterns=None, object_name=None, dark_patterns=No
     )
 
     # Create diagnostic plots
-    figures = create_diagnostic_plots(
+    create_diagnostic_plots(
         flux, data_svdfiltered, flux_2_data, flux_goodData,
-        fit_goodData, errors, center_all, QT, R, flatMap
+        fit_goodData, errors, center_all, flatMap
     )
 
     # Save plots
@@ -657,6 +650,8 @@ if __name__ == "__main__":
         file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
         file_patterns = ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12?2*.fits"]
         wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
+        flat_patterns = wave_patterns
+
         # file_patterns += ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12?1[5-9]*.fits"]
         
     print(f"Development override: wavelength_smooth={wavelength_smooth}, wavelength_bin={wavelength_bin}, Nsingular={Nsingular}")
@@ -681,13 +676,14 @@ if __name__ == "__main__":
     )
 
     print(f"Coupling map created successfully: {couplingMap.filename}")
-    print(f"Number of triangles/pyramids: {couplingMap.QT.shape[0]}")
-    print(f"QT shape: {couplingMap.QT.shape}")
-    print(f"R shape: {couplingMap.R.shape}")
+
 
     couplingMap_2 = CouplingMap()
     couplingMap_2.load(couplingMap.filename)
     print(f"Coupling map loaded successfully: {couplingMap_2.filename}")
+    vectors_all_triangles = couplingMap_2.vectors_all_triangles
+
+    QT, R = Q_and_R_matrices(vectors_all_triangles)
 
     QT = couplingMap.QT
     R = couplingMap.R
