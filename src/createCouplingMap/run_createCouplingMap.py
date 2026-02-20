@@ -758,7 +758,8 @@ if __name__ == "__main__":
         data = datacube_T[:,:,i]
         QTdata[:,:,i] = (QT[t] @ data[:,:,None])[:,:,0]
         for w in range(Nwave):
-            ZXY[w,:,i] = solve_triangular(R[t,w], QTdata[w,:,i], lower=False)
+            if not np.isnan(QTdata[w,:,i]).any():
+                ZXY[w,:,i] = solve_triangular(R[t,w], QTdata[w,:,i], lower=False)
 
     xyz = ZXY[pix_min-10:pix_max+10].mean(axis=2)
 
@@ -787,6 +788,7 @@ if __name__ == "__main__":
     axs[1].grid(True, alpha=0.3)
 
     fig.tight_layout()
+    fig.savefig("/Users/slacour/Desktop/xy_vs_wavelength.png", dpi=300)
 
     # for i in tqdm(range(Ncube * Nmod), desc="Computing XY positions"):
     #     t = chi2_argmin[i]
