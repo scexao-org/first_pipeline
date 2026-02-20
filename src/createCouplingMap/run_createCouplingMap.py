@@ -26,7 +26,7 @@ plt.ion()
 import numpy as np
 from typing import List, Tuple
 from scipy.signal import correlate
-from scipy import linalg
+from scipy import interpolate, linalg
 from scipy.linalg import solve_triangular, pinv
      
 import matplotlib.pyplot as plt
@@ -652,7 +652,7 @@ if __name__ == "__main__":
         wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
         flat_patterns = wave_patterns
 
-        # file_patterns += ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12?1[5-9]*.fits"]
+        file_patterns += ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12*.fits"]
         
     print(f"Development override: wavelength_smooth={wavelength_smooth}, wavelength_bin={wavelength_bin}, Nsingular={Nsingular}")
     print(f"Development file patterns: {file_patterns}")
@@ -682,16 +682,51 @@ if __name__ == "__main__":
     couplingMap_2.load(couplingMap.filename)
     print(f"Coupling map loaded successfully: {couplingMap_2.filename}")
     vectors_all_triangles = couplingMap_2.vectors_all_triangles
+    
+    # Interpolate values in the pixel range [pix_min, pix_max]
+    Ntriangles, Noutput, Nwave, Nqr = vectors_all_triangles.shape
+    
+
+    pix_min=1195
+    pix_max=1205
+
+    vectors_all_triangles_init=vectors_all_triangles.copy()
+
+    # Create interpolation for each triangle and QR dimension
+    for t in tqdm(range(Ntriangles), desc="Interpolating triangles over Halpah"):
+        for q in range(Nqr):
+            for i in range(Noutput):
+                # Extract the full wavelength vector
+                vec = vectors_all_triangles[t, i, :, q]
+                
+                # Use 5 pixels above and below the window for smoother interpolation
+                window_size = 5
+                pix_before_start = max(0, pix_min - window_size)
+                pix_after_end = min(Nwave, pix_max + window_size)
+                
+                # Get pixels before and after the gap (excluding the gap itself)
+                x_before = np.arange(pix_before_start, pix_min)
+                x_after = np.arange(pix_max, pix_after_end)
+                x_known = np.concatenate([x_before, x_after])
+                y_known = np.concatenate([vec[pix_before_start:pix_min], 
+                                         vec[pix_max:pix_after_end]])
+                
+                if len(x_known) >= 6:  # Need enough points for polynomial fit
+                    # Fit a 3rd order polynomial for smooth interpolation
+                    poly_coeffs = np.polyfit(x_known, y_known, deg=3)
+                    x_interp = np.arange(pix_min, pix_max)
+                    vectors_all_triangles[t, i, pix_min:pix_max, q] = np.polyval(poly_coeffs, x_interp)
+
 
     QT, R = Q_and_R_matrices(vectors_all_triangles)
 
-    QT = couplingMap.QT
-    R = couplingMap.R
     position = couplingMap.position
     Ntriangles = QT.shape[0]
     Nqr = QT.shape[2]
 
+    wave = datalist[0].wave
     datacube=np.concatenate([d.data for d in datalist])
+    spectra = datacube.mean(axis=(0,1,2))
     # datacube[np.isnan(datacube)] = 0
 
     datacube_T=datacube.transpose((3,2,0,1))
@@ -701,17 +736,20 @@ if __name__ == "__main__":
     datacube_T=datacube_T.reshape((datacube_T.shape[0], datacube_T.shape[1], -1))
     chi2_max = np.sum(datacube_T**2, axis=(0,1))
 
-    chi2_map = np.zeros((Ntriangles,Ncube * Nmod))
     chi2_map = np.zeros((Ntriangles, Ncube * Nmod))
-    chi2_map[:] =  chi2_max
+    chi2_map[:] = chi2_max
     # Here, the computation of the chi2 is simplified by the fact that QT is orthonormal
     # chi2 = ||data - Q @ Q.T @ data||^2 = ||data||^2 - ||Q.T @ data||^2
     for t in tqdm(range(Ntriangles), desc="Computing chi2 map"):
-        k= QT[t] @ datacube_T
-        chi2_map[t,:] -= np.sum(k ** 2, axis=(0,1))
+        k = QT[t] @ datacube_T
+        chi2_map[t, :] -= np.sum(k ** 2, axis=(0, 1))
 
-    chi2_argmin = np.nanargmin(chi2_map,axis=0)
+    # Replace inf/nan values with a large number before finding argmin
+    chi2_map = np.nan_to_num(chi2_map, nan=np.inf, posinf=np.inf, neginf=np.inf)
+    chi2_argmin = np.argmin(chi2_map, axis=0)
+    figure(num="Chi2 map arg min", figsize=(16, 6), clear=True)
     plot(position[chi2_argmin])
+
 
     QTdata = np.zeros((Nwave,Nqr,Ncube * Nmod))
     ZXY = np.zeros((Nwave,Nqr,Ncube * Nmod))
@@ -722,6 +760,33 @@ if __name__ == "__main__":
         for w in range(Nwave):
             ZXY[w,:,i] = solve_triangular(R[t,w], QTdata[w,:,i], lower=False)
 
+    xyz = ZXY[pix_min-10:pix_max+10].mean(axis=2)
+
+    x = xyz[:,1]/xyz[:,0]
+    y = xyz[:,2]/xyz[:,0]
+    w = wave[pix_min-10:pix_max+10]
+
+    fig, ax = plt.subplots(figsize=(10, 8), num="X  vs Y with wavelength", clear=True)
+    scatter = ax.scatter(y, x, c=w, cmap='viridis', s=50, edgecolors='k', linewidth=0.5)
+    ax.set_xlabel("y")
+    ax.set_ylabel("x")
+    cbar = plt.colorbar(scatter, ax=ax)
+    cbar.set_label("Wavelength [nm]")
+    fig.tight_layout()
+
+    fig, axs = plt.subplots(1, 2, figsize=(14, 5), num="X and Y vs Wavelength", clear=True)
+
+    axs[0].scatter(w, x, c=w, cmap='viridis', s=50, edgecolors='k', linewidth=0.5)
+    axs[0].set_xlabel("Wavelength [nm]")
+    axs[0].set_ylabel("x")
+    axs[0].grid(True, alpha=0.3)
+
+    axs[1].scatter(w, y, c=w, cmap='viridis', s=50, edgecolors='k', linewidth=0.5)
+    axs[1].set_xlabel("Wavelength [nm]")
+    axs[1].set_ylabel("y")
+    axs[1].grid(True, alpha=0.3)
+
+    fig.tight_layout()
 
     # for i in tqdm(range(Ncube * Nmod), desc="Computing XY positions"):
     #     t = chi2_argmin[i]
