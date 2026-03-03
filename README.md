@@ -92,18 +92,46 @@ runPL_create_couplingMap --wavelength_smooth=7 *.fits
 **Interactive Usage** (via `run_*.py` modules):
 ```python
 # Import functions directly from run_* modules
-from first_pipeline.src.makePreproc.run_makePreproc import run_preprocess
-from first_pipeline.src.createCouplingMap.run_createCouplingMap import process_coupling_map_data
+from createCouplingMap.run_createCouplingMap import run_createCouplingMap
 
 # Use with your own parameters
-results = run_preprocess(
-    file_patterns=["/path/to/data/*.fits"],
-    pixel_map="/path/to/pixel_map.fits"
+couplingMap, datalist = run_createCouplingMap(
+    file_patterns=["/path/to/preproc/*.fits"],
+    wavelength_smooth=1,
+    wavelength_bin=1,
+    Nsingular=114
+)
+```
+
+### VS Code Interactive Mode (Direct `run_*.py` Execution)
+
+Another supported workflow is to execute directly the Python module used by each `main.py` entry point.
+For example, `runPL_create_couplingMap` calls `run_createCouplingMap`, which you can run directly in VS Code.
+
+1. Open `src/createCouplingMap/run_createCouplingMap.py` in VS Code.
+2. Select your pipeline interpreter (same one used for `pip install -e .`).
+3. Run the file in the Interactive Window (`Run Current File in Interactive Window`) or execute `#%%` cells.
+4. Edit the parameters in the `if __name__ == "__main__":` block, or call `run_createCouplingMap(...)` manually from a cell.
+
+Example cell in VS Code Interactive Window:
+
+```python
+from createCouplingMap.run_createCouplingMap import run_createCouplingMap
+
+couplingMap, datalist = run_createCouplingMap(
+    file_patterns=["/Users/slacour/DATA/LANTERNE/20251230/preproc/*.fits"],
+    object_name=None,
+    wavelength_smooth=1,
+    wavelength_bin=1,
+    Nsingular=19*6,
+    use_pyramids=False,
+    center_data=False,
 )
 
-# Or use development defaults (auto-detects user and paths)
-results = process_coupling_map_data()  # Uses defaults for your user automatically!
+print(couplingMap.filename)
 ```
+
+This interactive path is useful for debugging, parameter tuning, and quick algorithm checks without going through the CLI parser.
 
 ### Autonomous Development Defaults System
 
@@ -121,7 +149,7 @@ The pipeline auto-detects your username and loads corresponding default paths:
 # - ehuby: Uses /home/ehuby/WORK/DATA/FIRST-PL/... paths
 
 # No parameters needed - functions work autonomously with defaults
-from first_pipeline.src.createPixelMap.run_createPixelMap import run_createPixelMap
+from createPixelMap.run_createPixelMap import run_createPixelMap
 result = run_createPixelMap()  # Automatically uses your user's default paths!
 
 # You can still override any parameter as needed
@@ -169,9 +197,7 @@ This separation allows using functions interactively in notebooks or IDEs withou
 
 ## Installation
 
-There are two ways to install and use the FIRST Pipeline:
-
-### Option 1: Package Installation (Recommended)
+### Package Installation (Recommended)
 
 1. **Clone the repository:**
    ```bash
@@ -200,35 +226,7 @@ There are two ways to install and use the FIRST Pipeline:
    # All runPL_* commands should work from any directory
    ```
 
-### Option 2: Direct Script Usage
-
-If you prefer to run scripts directly without package installation:
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/scexao-org/first_pipeline.git
-   cd first_pipeline
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Run scripts directly:**
-   ```bash
-   # Navigate to the scripts directory
-   cd first_pipeline
-   
-   # Run scripts with full path
-   python runPL_changeKeyword.py [options] [files...]
-   python runPL_create_pixelMap.py [options] [files...]
-   # etc.
-   ```
-
-**Note**: 
-- **Option 1** (recommended) allows you to run commands from anywhere as `runPL_changeKeyword`, `runPL_create_pixelMap`, etc.
-- **Option 2** requires you to navigate to the `first_pipeline/first_pipeline/` directory and use `python script_name.py`
+**Note**: Installed commands can be run from any directory as `runPL_changeKeyword`, `runPL_create_pixelMap`, etc.
 
 ## Interactive Development & Core Functions
 
@@ -242,15 +240,15 @@ The pipeline automatically detects when you're running in development environmen
 # No setup required - the pipeline detects your environment and user automatically!
 
 # VS Code Interactive Window
-from first_pipeline.src.makePreproc.run_makePreproc import process_with_monitoring
-results = process_with_monitoring()  # Uses your user's default paths automatically
+from makePreproc.run_makePreproc import run_preprocess
+results = run_preprocess()  # Uses your user's default paths automatically
 
 # Jupyter Notebook
-from first_pipeline.src.createCouplingMap.run_createCouplingMap import process_coupling_map_data  
-coupling_map = process_coupling_map_data()  # Automatic user detection & defaults
+from createCouplingMap.run_createCouplingMap import run_createCouplingMap
+coupling_map, datalist = run_createCouplingMap()  # Automatic user detection & defaults
 
 # Python REPL/Script
-from first_pipeline.src.makeImage.run_makeImage import process_image_reconstruction_data
+from makeImage.run_makeImage import process_image_reconstruction_data
 images = process_image_reconstruction_data()  # Works out of the box!
 ```
 
@@ -268,7 +266,7 @@ Each module provides powerful core functions for interactive use:
 
 **Pixel Map Creation:**
 ```python
-from first_pipeline.src.createPixelMap.run_createPixelMap import run_createPixelMap
+from createPixelMap.run_createPixelMap import run_createPixelMap
 
 # Use development defaults
 raw_image, traces, header, x_found, y_found = run_createPixelMap()
@@ -284,13 +282,13 @@ result = run_createPixelMap(
 
 **Preprocessing:**
 ```python
-from first_pipeline.src.makePreproc.run_makePreproc import process_with_monitoring
+from makePreproc.run_makePreproc import run_preprocess
 
 # Automatic development defaults
-processed_files = process_with_monitoring()
+processed_files = run_preprocess()
 
 # Custom parameters  
-processed_files = process_with_monitoring(
+processed_files = run_preprocess(
     file_patterns=["/path/to/raw/*.fits"],
     pixel_map="/path/to/pixel_map.fits",
     object_name="HD 164461"
@@ -299,27 +297,25 @@ processed_files = process_with_monitoring(
 
 **Wavelength Calibration:**
 ```python
-from first_pipeline.src.createWaveMap.run_createWaveMap import process_wavelength_map_data
+from createWaveMap.run_createWaveMap import run_createWaveMap
 
 # Development defaults
-result = process_wavelength_map_data()
-print(f"Wavelength map saved: {result['output_filename']}")
-print(f"1D coefficients: {result['coef_1d']}")
+waveMap = run_createWaveMap()
+print(f"Wavelength map saved: {waveMap.filename}")
 ```
 
 **Coupling Map Generation:**
 ```python
-from first_pipeline.src.createCouplingMap.run_createCouplingMap import process_coupling_map_data
+from createCouplingMap.run_createCouplingMap import run_createCouplingMap
 
 # Full SVD analysis with defaults
-result = process_coupling_map_data()
-coupling_map = result['couplingMap']
-print(f"Singular values shape: {result['singular_values'].shape}")
+coupling_map, datalist = run_createCouplingMap()
+print(coupling_map.filename)
 ```
 
 **Image Reconstruction:**
 ```python
-from first_pipeline.src.makeImage.run_makeImage import process_image_reconstruction_data
+from makeImage.run_makeImage import process_image_reconstruction_data
 
 # Reconstruct images with automatic setup
 result = process_image_reconstruction_data()
@@ -332,7 +328,7 @@ figures = result['figures']  # Diagnostic plots
 
 **Astrometric Analysis:**
 ```python
-from first_pipeline.src.makeAstrometry.run_makeAstrometry import process_astrometric_data
+from makeAstrometry.run_makeAstrometry import process_astrometric_data
 
 # High-precision astrometry
 result = process_astrometric_data()
@@ -367,10 +363,10 @@ runPL_make_preproc /large/dataset/*.fits
 
 ```python
 # Interactive analysis of CLI results
-from first_pipeline.src.createCouplingMap.run_createCouplingMap import process_coupling_map_data
+from createCouplingMap.run_createCouplingMap import run_createCouplingMap
 
 # Process specific files interactively with custom parameters
-result = process_coupling_map_data(
+coupling_map, datalist = run_createCouplingMap(
     file_patterns=["/large/dataset/preproc/specific_target*.fits"],
     wavelength_smooth=3,
     Nsingular=120
@@ -396,11 +392,8 @@ Essential tool for classifying files and tracking their processing stages throug
 
 **Usage:**
 ```bash
-# After package installation (Option 1):
+# After package installation:
 runPL_changeKeyword [options] [files...]
-
-# Or running directly (Option 2, from first_pipeline/first_pipeline/):
-python runPL_changeKeyword.py [options] [files...]
 
 # Examples (using installed commands):
 runPL_changeKeyword --DATA-TYP=FLAT --X_FIRTYP=RAW *.fits
@@ -438,16 +431,15 @@ Pixel maps detect and calibrate the positions of spectral traces across all fibe
 runPL_create_pixelMap [options] [file_patterns...]
 
 # Examples:
-runPL_create_pixelMap --pixel_min=100 --pixel_max=1600 --pixel_wide=2 --filter_files *.fits
+runPL_create_pixelMap --pixel_min=100 --pixel_max=1600 --pixel_wide=2 *.fits
 runPL_create_pixelMap --pixel_min=50 --pixel_max=1500 data/*.fits
-runPL_create_pixelMap --filter_files /data/raw/*.fits
+runPL_create_pixelMap /data/raw/*.fits
 ```
 
 **Key Options:**
 - `--pixel_min`: Minimum pixel value along wavelength axis (default: 100)
 - `--pixel_max`: Maximum pixel value along wavelength axis (default: 2100)  
 - `--pixel_wide`: Window half width for peak detection (default: 2)
-- `--filter_files`: Quality control to exclude low-flux files for reliable detection
 
 **Pipeline Integration:**
 - Processes RAW files to create pixel alignment maps
@@ -464,7 +456,7 @@ runPL_create_pixelMap --filter_files /data/raw/*.fits
 Python script to preprocess raw FIRST Photonic Lantern data using pixel maps for spectral extraction and calibration.  
 Transforms raw detector images into calibrated spectral data with quality assessment and diagnostic analysis.
 
-📝 **Interactive Development**: Also available as `process_with_monitoring()` function with automatic development defaults. Ideal for interactive data exploration in development environments.
+📝 **Interactive Development**: Also available as `run_preprocess()` function with automatic development defaults. Ideal for interactive data exploration in development environments.
 
 **Usage:**
 ```bash
@@ -473,12 +465,10 @@ runPL_make_preproc [options] [files...]
 # Examples:
 runPL_make_preproc --pixel_map=/path/to/pixel_map.fits /path/to/directory
 runPL_make_preproc --object="HD 164461" /path/to/files*.fits
-runPL_make_preproc --loop 30 /path/to/directory  # Monitor mode
 ```
 
 **Key Options:**
 - `--pixel_map`: Specify pixel map file (auto-detected if not provided)
-- `--loop`: Monitor directory and process new files every X seconds (real-time mode)
 - `--object`: Process only files with specified OBJECT name
 
 **Pipeline Integration:**
@@ -547,29 +537,11 @@ runPL_create_waveMap --Nexclude 3 --dark_files=dark*.fits neon_data/*.fits
 
 ---
 
-### runPL_create_wavelengthMap.py
-Python script to create a Wavelength Map from preprocessed data.  
-Identifies emission lines and maps them to pixel positions for wavelength calibration.
-
-**Usage:**
-```bash
-runPL_create_wavelengthMap [options] [files...]
-
-# Examples:
-runPL_create_wavelengthMap --wave_list="[753.6, 748.9, 743.9]" *.fits
-runPL_create_wavelengthMap --poly_degree=3 data/*.fits
-```
-
-**Input**: Files with `X_FIRTYP=WAVE`  
-**Output**: Wavelength map for spectral calibration
-
----
-
 ### runPL_create_couplingMap.py
 Python script to generate coupling efficiency maps from preprocessed FIRST Photonic Lantern data using SVD analysis.  
 Analyzes coupling efficiency between telescope focal plane and photonic lantern channels, essential for image reconstruction.
 
-📝 **Interactive Development**: Also available as `process_coupling_map_data()` function with automatic development defaults. Excellent for algorithm development and parameter optimization.
+📝 **Interactive Development**: Also available as `run_createCouplingMap()` function with automatic development defaults. Excellent for algorithm development and parameter optimization.
 
 **Usage:**
 ```bash
@@ -681,7 +653,7 @@ runPL_make_astrometry --save_individual_frames --save_individual_wavelength *.fi
 Using installed commands (after `pip install -e .`):
 1. **Inspect FITS files**: `./runPL_dfits <file>`
 2. **Classify raw data**: `runPL_changeKeyword --DATA-TYP=OBJECT --X_FIRTYP=RAW *.fits`
-3. **Create pixel map**: `runPL_create_pixelMap --filter_files *.fits`
+3. **Create pixel map**: `runPL_create_pixelMap *.fits`
 4. **Preprocess data**: `runPL_make_preproc /data/directory`
 5. **Mark preprocessed**: `runPL_changeKeyword --X_FIRTYP=PREPROC preproc/*.fits`
 6. **Create flat field map**: `runPL_create_flatMap *.fits`
@@ -690,44 +662,36 @@ Using installed commands (after `pip install -e .`):
 9. **Perform astrometry**: `runPL_make_astrometry *.fits`
 10. **Reconstruct images**: `runPL_make_image *.fits`
 
-Or using scripts directly (from `first_pipeline/` directory):
-```bash
-python runPL_changeKeyword.py --DATA-TYP=OBJECT --X_FIRTYP=RAW *.fits
-python runPL_create_pixelMap.py --filter_files *.fits
-python runPL_make_preproc.py /data/directory
-# etc.
-```
-
 ### Interactive Development (New)
 
 Using core functions directly for development and exploration:
 
 ```python
 # Complete interactive workflow with automatic defaults
-from first_pipeline.src.createPixelMap.run_createPixelMap import run_createPixelMap  
-from first_pipeline.src.makePreproc.run_makePreproc import process_with_monitoring
-from first_pipeline.src.createFlatMap.run_createFlatMap import process_flat_field_data
-from first_pipeline.src.createWaveMap.run_createWaveMap import process_wavelength_map_data
-from first_pipeline.src.createCouplingMap.run_createCouplingMap import process_coupling_map_data
-from first_pipeline.src.makeAstrometry.run_makeAstrometry import process_astrometric_data
-from first_pipeline.src.makeImage.run_makeImage import process_image_reconstruction_data
+from createPixelMap.run_createPixelMap import run_createPixelMap  
+from makePreproc.run_makePreproc import run_preprocess
+from createFlatMap.run_createFlatMap import run_createFlatMap
+from createWaveMap.run_createWaveMap import run_createWaveMap
+from createCouplingMap.run_createCouplingMap import run_createCouplingMap
+from makeAstrometry.run_makeAstrometry import process_astrometric_data
+from makeImage.run_makeImage import process_image_reconstruction_data
 
 # 1. Create pixel map (automatic user defaults)
 raw_image, traces, header, x_found, y_found = run_createPixelMap()
 
 # 2. Preprocess data  
-processed_files = process_with_monitoring()
+processed_files = run_preprocess()
 
 # 3. Create flat field map
-flat_map_file = process_flat_field_data()
+flatMap = run_createFlatMap()
 
 # 4. Generate wavelength map
-wave_result = process_wavelength_map_data()
-print(f"Wavelength coefficients: {wave_result['coef_1d']}")
+waveMap = run_createWaveMap()
+print(f"Wavelength map: {waveMap.filename}")
 
 # 5. Create coupling maps
-coupling_result = process_coupling_map_data()
-print(f"Coupling map shape: {coupling_result['coupling_map'].Q.shape}")
+coupling_map, datalist = run_createCouplingMap()
+print(coupling_map.filename)
 
 # 6. Perform astrometry
 astro_result = process_astrometric_data()
@@ -750,10 +714,10 @@ runPL_create_flatMap /large/dataset/preproc/*.fits
 
 ```python
 # Then interactive analysis for specific targets
-from first_pipeline.src.createCouplingMap.run_createCouplingMap import process_coupling_map_data
+from createCouplingMap.run_createCouplingMap import run_createCouplingMap
 
 # Custom coupling map for specific target with fine-tuned parameters
-result = process_coupling_map_data(
+coupling_map, datalist = run_createCouplingMap(
     file_patterns=["/large/dataset/preproc/HD164461*.fits"],
     wavelength_smooth=3,
     Nsingular=150,
@@ -764,7 +728,7 @@ result = process_coupling_map_data(
 import matplotlib.pyplot as plt
 plt.figure(figsize=(12, 8))
 plt.subplot(2, 2, 1)
-plt.imshow(result['coupling_map'].Q[:, :, 0])
+plt.imshow(coupling_map.Q[:, :, 0])
 plt.title('Q Matrix - First Channel')
 plt.colorbar()
 ```
@@ -790,15 +754,15 @@ Each module provides high-level processing functions that handle complete workfl
 
 ```python
 # High-level processing functions with development defaults
-from first_pipeline.src.makePreproc.run_makePreproc import process_with_monitoring  
-from first_pipeline.src.createWaveMap.run_createWaveMap import process_wavelength_map_data
-from first_pipeline.src.createCouplingMap.run_createCouplingMap import process_coupling_map_data
-from first_pipeline.src.makeImage.run_makeImage import process_image_reconstruction_data
-from first_pipeline.src.makeAstrometry.run_makeAstrometry import process_astrometric_data
+from makePreproc.run_makePreproc import run_preprocess  
+from createWaveMap.run_createWaveMap import run_createWaveMap
+from createCouplingMap.run_createCouplingMap import run_createCouplingMap
+from makeImage.run_makeImage import process_image_reconstruction_data
+from makeAstrometry.run_makeAstrometry import process_astrometric_data
 
 # All functions support both development defaults and custom parameters
-result = process_wavelength_map_data()  # Uses defaults
-result = process_wavelength_map_data(file_patterns=["/custom/path/*.fits"])  # Custom
+waveMap = run_createWaveMap()  # Uses defaults
+waveMap = run_createWaveMap(file_patterns=["/custom/path/*.fits"])  # Custom
 ```
 
 ### Available Classes (Advanced Usage)
@@ -881,11 +845,6 @@ All scripts provide detailed help information:
 runPL_changeKeyword --help
 runPL_create_pixelMap --help
 runPL_make_preproc --help
-
-# Or using scripts directly (from first_pipeline/first_pipeline/ directory):
-python runPL_changeKeyword.py --help
-python runPL_create_pixelMap.py --help
-python runPL_make_preproc.py --help
 ```
 
 This displays:
