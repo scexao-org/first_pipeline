@@ -150,6 +150,10 @@ class WaveMap:
         print(f"Saving wavelength map to {output_filename}")
         hdul.writeto(output_filename, overwrite=True)
 
+        self.basename = os.path.basename(output_filename)
+        self.filename = output_filename
+
+
     def interpolate_data(self, dataCube):
         """
         Apply the wavelength index to interpolate the data cube.
@@ -187,6 +191,9 @@ class WaveMap:
             new_data[:,:,o,:] = (data[:,:,o,self.index[:,o]] * self.weights[:,o]).sum(axis=2)
             new_variance[:,:,o,:] = (variance[:,:,o,self.index[:,o]] * self.weights[:,o]).sum(axis=2)
 
+        dataCube.wave_label = self.wave_label
+        dataCube.Nwave = self.Nwave
+        dataCube.wave = self.wave
 
         if is_dataCube:
             dataCube.data = new_data

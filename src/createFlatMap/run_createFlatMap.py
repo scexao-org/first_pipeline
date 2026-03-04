@@ -327,7 +327,7 @@ if __name__ == "__main__":
         wollaston = None
         Nflat_smooth = 25
         override_flat_keyword = False
-        file_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/preproc/"]
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*T22h2[5-6]*fits"]
         
         print(f"Development override: dark_patterns={dark_patterns}, flat_patterns={flat_patterns}, wollaston={wollaston}, Nflat_smooth={Nflat_smooth}")
         print(f"Development file patterns: {file_patterns}")
@@ -346,15 +346,23 @@ if __name__ == "__main__":
     flatMap_2 = FlatMap()
     flatMap_2.load(flatMap.filename)
 
-    data= datalist[0].data
+    file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T20h56*.fits"]
+
+    fileList = FileList(file_patterns, first_type='PREPROC', wollaston=wollaston)
+    fileList.make_association(dark_patterns=dark_patterns)
+
+    datalist_1 = fileList.extract_data_from_list(flatMap=None, center=False)
+    datalist_2 = fileList.extract_data_from_list(flatMap=flatMap_2, center=False)
 
 
-    flux = np.array([np.nanmean(d.data, axis=(0,1)) for d in datalist])
-    flux_flat = np.array([np.nanmean(d.data*flatMap_2.inv_flat, axis=(0,1)) for d in datalist])
+    flux = np.array([np.nanmean(d.data, axis=(0,1)) for d in datalist_1])
+    flux_flat = np.array([np.nanmean(d.data, axis=(0,1)) for d in datalist_2])
 
     figure("flat field comparison", clear=True, figsize=(18,6))
-    plot(flux.mean(axis=(0,1)))
-    plot(flux_flat.mean(axis=(0,1)))
+    plot(flux.mean(axis=(0,1)).T, label='Original')
+    plt.gca().set_prop_cycle(None)
+    plot(flux_flat.mean(axis=(0,1)).T, "--",label='Flat corrected')
+    plt.legend()
     
     # dit = np.array([d.dit for d in datalist])
 

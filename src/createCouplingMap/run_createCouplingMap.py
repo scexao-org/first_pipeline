@@ -257,7 +257,10 @@ def get_filelist_coupling(file_patterns, dark_patterns=None, flat_patterns=None,
         modID = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
     # Create initial file list
-    fileList = FileList(file_patterns, data_type="OBJECT", first_type='PREPROC', 
+    # fileList = FileList(file_patterns, data_type="OBJECT", first_type='PREPROC', 
+    #                    wollaston=wollaston, object_name=object_name, 
+    #                    modID=modID, modScale=modScale)
+    fileList = FileList(file_patterns, data_type="FLAT", first_type='PREPROC', 
                        wollaston=wollaston, object_name=object_name, 
                        modID=modID, modScale=modScale)
 
@@ -268,7 +271,7 @@ def get_filelist_coupling(file_patterns, dark_patterns=None, flat_patterns=None,
     modScale = fileList.header.get('X_FIRMSC', None)
 
     # Recreate with constraints
-    fileList = FileList(file_patterns, data_type="OBJECT", first_type='PREPROC',
+    fileList = FileList(file_patterns, data_type="FLAT", first_type='PREPROC',
                        wollaston=wollaston, object_name=object_name, 
                        modID=modID, modScale=modScale)
 
@@ -652,7 +655,12 @@ if __name__ == "__main__":
         wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
         flat_patterns = wave_patterns
 
-        file_patterns += ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12*.fits"]
+
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T20h56*.fits"]
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T21h10*.fits"]
+        wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
+        # flat_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/flatmaps/"]
+
         
     print(f"Development override: wavelength_smooth={wavelength_smooth}, wavelength_bin={wavelength_bin}, Nsingular={Nsingular}")
     print(f"Development file patterns: {file_patterns}")
@@ -680,6 +688,9 @@ if __name__ == "__main__":
 
     couplingMap_2 = CouplingMap()
     couplingMap_2.load(couplingMap.filename)
+    # flatMap = FlatMap()
+    # flatMap.load(couplingMap.filename)
+
     print(f"Coupling map loaded successfully: {couplingMap_2.filename}")
     vectors_all_triangles = couplingMap_2.vectors_all_triangles
     
@@ -767,7 +778,7 @@ if __name__ == "__main__":
     y = xyz[:,2]/xyz[:,0]
     w = wave[pix_min-10:pix_max+10]
 
-    fig, ax = plt.subplots(figsize=(10, 8), num="X  vs Y with wavelength", clear=True)
+    fig, ax = plt.subplots(figsize=(10, 8), num="X  vs Y with wavelength 2", clear=True)
     scatter = ax.scatter(y, x, c=w, cmap='viridis', s=50, edgecolors='k', linewidth=0.5)
     ax.set_xlabel("y")
     ax.set_ylabel("x")

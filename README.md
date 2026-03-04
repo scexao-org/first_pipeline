@@ -11,7 +11,7 @@ All `runPL_*` scripts have been updated and are fully functional after recent pa
 
 ### Modern Modular Architecture with Interactive Development Support
 
-The pipeline uses a sophisticated modular structure where each script is organized as its own subpackage under a `src/` layout with **core algorithms separated from CLI interfaces**. This enables both command-line usage and interactive development in VS Code, Jupyter notebooks, or Python REPL.
+The pipeline uses a modular structure where each script is organized as its own subpackage under a `src/` layout with **core algorithms separated from CLI interfaces**. This enables both command-line usage and interactive development in VS Code, Jupyter notebooks, or Python REPL.
 
 ```
 first_pipeline/

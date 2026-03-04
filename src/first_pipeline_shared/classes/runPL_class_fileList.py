@@ -437,9 +437,6 @@ class FileList:
             # Normalize the data cube by the wavelength map if provided
             if waveMap is not None and isinstance(waveMap, WaveMap):
                 waveMap.interpolate_data(dataCube)
-                dataCube.wave_label = waveMap.wave_label
-                dataCube.Nwave = waveMap.Nwave
-                dataCube.wave = waveMap.wave
 
             # If smoothing and binning is required
             if Nsmooth > 1:

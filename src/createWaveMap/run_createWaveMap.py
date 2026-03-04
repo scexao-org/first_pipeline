@@ -593,13 +593,7 @@ def run_createWaveMap(file_patterns=None, dark_patterns=None, flat_patterns=None
     # Save all plots
     runlib_plots.save_pdf_in_file(output_filename)
 
-    return {
-        'output_filename': output_filename,
-        'waveMap': waveMap,
-        'coef_1d': coef_1d,
-        'coef_2d': coef_2d,
-        'figures': [fig_aberations, fig_1d_mapping, fig_coeffs]
-    }
+    return waveMap, datalist
 
 
 if __name__ == "__main__":
@@ -621,7 +615,7 @@ if __name__ == "__main__":
         print(f"Development file patterns: {file_patterns}")
 
     # Process wavelength map data
-    result = run_createWaveMap(
+    waveMap, datalist = run_createWaveMap(
         file_patterns=file_patterns,
         dark_patterns=dark_patterns,
         flat_patterns=flat_patterns,
@@ -629,9 +623,31 @@ if __name__ == "__main__":
         Nexclude=Nexclude
     )
 
-    print(f"Wavelength map created successfully: {result['output_filename']}")
-    print(f"1D coefficients: {result['coef_1d']}")
-    print(f"2D coefficients: {result['coef_2d']}")
+    waveMap2 = WaveMap(waveMap.filename)
+
+
+    dataset = datalist[0]
+
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+
+    # Plot before wavelength calibration
+    ax1.plot(dataset.wave,dataset.data.mean(axis=(0,1,2)))
+    ax1.set_xlabel(f'{dataset.wave_label}')
+    ax1.set_ylabel('Flux (summed over fibers and exposures)')
+    ax1.set_title('Before Wavelength Calibration')
+
+
+    waveMap2.interpolate_data(dataset)
+
+    # Plot after wavelength calibration
+    ax2.plot(dataset.wave,dataset.data.mean(axis=(0,1,2)))
+    ax2.set_xlabel(f'{dataset.wave_label}')
+    ax2.set_ylabel('Flux (summed over fibers and exposures)')
+    ax2.set_title('After Wavelength Calibration')
+
+    plt.tight_layout()
+    plt.show()
 
 
 # %%
