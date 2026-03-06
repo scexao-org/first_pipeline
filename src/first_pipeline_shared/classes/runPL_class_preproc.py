@@ -343,6 +343,7 @@ class Preproc:
             file_header.extend(header, strip=True)
 
         file_header['X_FIRTYP'] = "PREPROC"
+        file_header['X_FIRWOL'] = file_header.get('X_FIRWOL', 'UNKNOWN')
             
         # Create primary HDU with preprocessed data
         primary_hdu = fits.PrimaryHDU(data=self.data, header=file_header)
