@@ -327,6 +327,7 @@ def save_fits_and_png(raw_image, traces_loc, traces_loc_double, header, x_found,
     save_header['X_FIRTYP'] = 'PIXELMAP'
     basename = runlib_io.create_basename(save_header)
     save_header['Q_PMNAME'] = basename
+    save_header['X_FIRWOL'] = header.get('X_FIRWOL', 'UNKNOWN') 
 
     # Définir le chemin complet du sous-dossier
     if folder.endswith("*fits"):
@@ -446,7 +447,7 @@ def run_createPixelMap(pixel_min=None, pixel_max=None, pixel_wide=None, file_pat
     wollastons = np.unique([fits.getheader(f).get('X_FIRWOL', 'UNKNOWN') for f in filelist])
 
     # Validate Wollaston status
-    valid_wollastons = {'IN', 'OUT'}
+    valid_wollastons = {'IN', 'OUT', 'UNKNOWN'}
     if not set(wollastons).issubset(valid_wollastons):
         invalid_wollastons = set(wollastons) - valid_wollastons
         unknown_files = [f for f in filelist if fits.getheader(f).get('X_FIRWOL', 'UNKNOWN') == 'UNKNOWN']
