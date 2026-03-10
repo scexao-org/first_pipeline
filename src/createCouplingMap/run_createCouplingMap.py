@@ -260,7 +260,7 @@ def get_filelist_coupling(file_patterns, dark_patterns=None, flat_patterns=None,
     # fileList = FileList(file_patterns, data_type="OBJECT", first_type='PREPROC', 
     #                    wollaston=wollaston, object_name=object_name, 
     #                    modID=modID, modScale=modScale)
-    fileList = FileList(file_patterns, data_type="FLAT", first_type='PREPROC', 
+    fileList = FileList(file_patterns, data_type="OBJECT", first_type='PREPROC', 
                        wollaston=wollaston, object_name=object_name, 
                        modID=modID, modScale=modScale)
 
@@ -271,7 +271,7 @@ def get_filelist_coupling(file_patterns, dark_patterns=None, flat_patterns=None,
     modScale = fileList.header.get('X_FIRMSC', None)
 
     # Recreate with constraints
-    fileList = FileList(file_patterns, data_type="FLAT", first_type='PREPROC',
+    fileList = FileList(file_patterns, data_type="OBJECT", first_type='PREPROC',
                        wollaston=wollaston, object_name=object_name, 
                        modID=modID, modScale=modScale)
 
@@ -537,6 +537,7 @@ def run_createCouplingMap(file_patterns=None, object_name=None, dark_patterns=No
     flux = np.concatenate([d.flux for d in datalist])
     datacube = np.concatenate([d.data for d in datalist])
     datacube_var = np.concatenate([d.variance for d in datalist])
+    wave = datalist[0].wave  # Assuming all have the same wavelength grid
     xmod = np.concatenate([d.xmod for d in datalist])
     ymod = np.concatenate([d.ymod for d in datalist])
 
@@ -653,12 +654,16 @@ if __name__ == "__main__":
         file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
         file_patterns = ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12?2*.fits"]
         wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
-        flat_patterns = wave_patterns
+        # flat_patterns = wave_patterns
 
 
         file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T20h56*.fits"]
         file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T21h10*.fits"]
         wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
+        
+        #PDS70
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/20260306/preproc/firstpl*_PDS70_P.fits"]
+        wave_patterns = ["/Users/slacour/DATA/LANTERNE/20260307/wavemaps/"]
         # flat_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/flatmaps/"]
 
         

@@ -52,15 +52,15 @@ neon_wavelengths = np.array([
     659.89543, 667.82752, 671.70456, 692.94672, 703.24128, 717.3938,
     724.51665, 743.88981, 748.88712, 753.57739, 772.46233
 ])
-
-# Corresponding intensities for peak detection weight
-neon_intensity = np.array([
-    0.00734, 1.0, 0.10191, 0.10492, 0.03624,
-    0.0376, 0.15792, 0.20348, 0.34517, 0.11925, 0.05824,
-    0.02077, 0.08928, 0.27498, 0.0414, 0.15098, 0.02809,
-    0.03268, 0.33628, 0.02421, 0.19251, 0.5563, 0.02255,
-    0.19111, 0.04466, 0.03884, 0.04444, 0.03404
+neon_wavelengths = np.array([
+   576.44188, 585.24878, 588.1895, 594.4834, 597.55343,
+    602.99968, 607.43376, 609.6163, 614.30627, 616.35937, 621.72812,
+    626.65085, 633.44304, 638.29917, 640.2231, 650.65279, 653.28825,
+    659.89543, 667.82752, 671.70456, 692.94672, 703.24128, 717.3938,
+    724.51665, 743.88981, 753.57739, 772.46233
 ])
+
+
 
 
 def find_N_peaks(spectrum, N=1000):
@@ -610,6 +610,7 @@ if __name__ == "__main__":
         wollaston = None
         Nexclude = 5
         file_patterns = ["/Users/slacour/DATA/LANTERNE/raw/20260114/preproc/"]
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/20260307/preproc/"]
         
         print(f"Development override: dark_patterns={dark_patterns}, flat_patterns={flat_patterns}, wollaston={wollaston}, Nexclude={Nexclude}")
         print(f"Development file patterns: {file_patterns}")
