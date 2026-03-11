@@ -126,9 +126,6 @@ for high-precision applications.
             coupling_map=coupling_map,
             wavelength_smooth=wavelength_smooth,
             wollaston=wollaston,
-            save_individual_frames=save_individual_frames,
-            save_individual_wavelength=save_individual_wavelength,
-            pyramids=pyramids
         )
         
         print(f"Astrometric analysis completed successfully!")

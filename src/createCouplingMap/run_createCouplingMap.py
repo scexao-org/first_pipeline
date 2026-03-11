@@ -33,7 +33,6 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from collections import defaultdict
 from itertools import product
-import signal
 
 from first_pipeline_shared.classes.runPL_class_flatMap import FlatMap  
 from first_pipeline_shared.classes.runPL_class_waveMap import WaveMap
@@ -657,13 +656,13 @@ if __name__ == "__main__":
         # flat_patterns = wave_patterns
 
 
-        file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T20h56*.fits"]
-        file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T21h10*.fits"]
-        wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
+        # file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T20h56*.fits"]
+        # file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T21h10*.fits"]
+        # wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
         
-        #PDS70
-        file_patterns = ["/Users/slacour/DATA/LANTERNE/20260306/preproc/firstpl*_PDS70_P.fits"]
-        wave_patterns = ["/Users/slacour/DATA/LANTERNE/20260307/wavemaps/"]
+        # #PDS70
+        # file_patterns = ["/Users/slacour/DATA/LANTERNE/20260306/preproc/firstpl*_PDS70_P.fits"]
+        # wave_patterns = ["/Users/slacour/DATA/LANTERNE/20260307/wavemaps/"]
         # flat_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/flatmaps/"]
 
         

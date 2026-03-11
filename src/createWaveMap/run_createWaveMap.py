@@ -17,6 +17,7 @@ if "VSCODE_PID" in os.environ:
     matplotlib.use('Qt5Agg')
 else:
     matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 import numpy as np
 from typing import List, Tuple
@@ -28,14 +29,8 @@ try:
     RankWarning = np.exceptions.RankWarning  # numpy >=2
 except AttributeError:
     RankWarning = np.RankWarning            # numpy <2
-
-import matplotlib
-if "VSCODE_PID" in os.environ:
-    matplotlib.use('Qt5Agg')
-else:
-    matplotlib.use('Agg')
      
-import matplotlib.pyplot as plt
+
 from tqdm import tqdm
 from first_pipeline_shared.libraries import runPL_library_io as runlib_io
 from first_pipeline_shared.libraries import runPL_library_plots as runlib_plots

@@ -164,13 +164,20 @@ class DataCube:
 
         return proj_offsets
 
-    def compute_xy_sky(self,couplingMap):
+    def compute_xy_sky(self,couplingMap = None):
         """
             use PA to project on sky the modulation
         """
-        x_sky = self.xmod[:,:,None] - couplingMap.position[:,0]
-        y_sky = self.ymod[:,:,None] - couplingMap.position[:,1]
+        if couplingMap is not None:
+            x_sky = self.xmod[:,:,None] - couplingMap.position[:,0]
+            y_sky = self.ymod[:,:,None] - couplingMap.position[:,1]
+        else:
+            x_sky = self.xmod[:,:,None]
+            y_sky = self.ymod[:,:,None]
+
         self.ra_dec = self.project_offsets(x_sky,y_sky)
+        if couplingMap is None:
+            self.ra_dec = self.ra_dec[:,:,0]
 
         return self.ra_dec
 
