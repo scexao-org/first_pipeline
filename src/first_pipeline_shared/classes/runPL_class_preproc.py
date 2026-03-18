@@ -143,6 +143,7 @@ class Preproc:
                 modID = raw_header.get('X_FIRMID', 0)
                 if isinstance(modID, str):
                     modID = int(modID)
+                    raw_header['X_FIRMID'] = modID
                 if modID > 0:
                     self.modulation_hdu = hdul['MODULATION'].copy()
         
