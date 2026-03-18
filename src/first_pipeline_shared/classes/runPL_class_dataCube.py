@@ -57,6 +57,7 @@ class DataCube:
 
         # computing the position angle (PA) of each frame
         THETA_OFFSET = 102.2  # degrees
+        # if after spectembre 2025, cahngevalue of THETA_OFFSET
         self.PAangle = -1 * (180.0 - THETA_OFFSET - self.get_parallactic_angle())[:,:,None]/180*np.pi
         # print(f"Image-rotation angle range: {self.PAangle.min()*180/np.pi} to {self.PAangle.max()*180/np.pi} degrees")
         self.wave_label = "Pixel Index"

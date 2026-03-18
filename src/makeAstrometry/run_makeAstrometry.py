@@ -182,7 +182,7 @@ if __name__ == "__main__":
     def process_astrometric_data(
         file_patterns, object_name=None, dark_patterns=None, flat_patterns=None, wave_patterns=None, modID=None, modScale=None, wollaston=None,
         wavelength_smooth=1, wavelength_bin=1, Nsingular=19*6, center_data=False):
-        
+
         # Set up default patterns
         if dark_patterns is None:
             dark_patterns = file_patterns
@@ -309,6 +309,141 @@ if __name__ == "__main__":
 
         plt.savefig("astrometry_result.png", dpi=300)
 
-    # C_tilde_2 = C_tilde.reshape((-1,200,19))
+        # Speed of light in km/s
+        c = 299792.458
+        # Rest wavelength of H-alpha in nm
+        lambda0 = 656.28
 
+        To_plot = (wave > 655.5) & (wave < 657.2)
+        astrometry_xy = w_hat[To_plot]
+        astrometry_wave = wave[To_plot]
+        # Doppler velocity (km/s)
+        velocity = c * (astrometry_wave - lambda0) / lambda0
+
+
+
+
+        fig, ax = plt.subplots(1, 1, figsize=(8, 6), num="astrometry_scatter", clear=True)
+        flux_scaled_filtered = flux_scaled[To_plot]
+        scatter = ax.scatter(astrometry_xy[:, 0], astrometry_xy[:, 1], c=velocity, s=flux_scaled_filtered*1000, cmap='viridis', alpha=0.6)
+        ax.plot(astrometry_xy[:, 0], astrometry_xy[:, 1], 'k-', alpha=0.3, linewidth=1)
+        ax.set_xlabel("RA (mas)")
+        ax.set_ylabel("DEC (mas)")
+        ax.set_aspect('equal')
+        lim = np.max(np.abs(ax.get_xlim() + ax.get_ylim()))
+        ax.set_xlim(lim, -lim)
+        ax.set_ylim(-lim, lim)
+        fig.colorbar(scatter, ax=ax, label="Velocity (km/s)")
+        ax.set_title(f"{object_name} - Astrometry vs Velocity")
+        fig.savefig("astrometry_scatter.png", dpi=300)
+        ax.grid(True, alpha=0.3)
+        ax.xaxis.set_major_locator(plt.MultipleLocator(0.1))
+        ax.yaxis.set_major_locator(plt.MultipleLocator(0.1))
+
+        PA=132*np.pi/180
+        y = np.linspace(-lim,lim,100)
+        x = np.tan(PA)*y
+        ax.plot(x,y,'k--',label="PA=132°") 
+        ax.legend() 
+
+        fig.savefig("astrometry_scatter_PA.png", dpi=300)
+
+
+        C_tilde_2 = J_tilde @ w_hat[:,:,None]
+        residuals = C_tilde - C_tilde_2[:,:,0]
+        halpha_index = 1099
+
+        y = C_tilde[halpha_index] 
+        y_fit = C_tilde_2[halpha_index,:,0]
+
+        x=np.arange(len(y))
+
+        residuals = y - y_fit
+
+        fig, axes = plt.subplots(3, 1, figsize=(8, 10), sharex=False)
+        fig.suptitle("fit residuals")
+
+        # Top: data + fit
+        ax = axes[0]
+        ax.plot(x, y, 'o', label='data', alpha=0.8)
+        order = np.argsort(x)
+        ax.plot(np.array(x)[order], np.array(y_fit)[order], '-', label='fit')
+        ax.set_ylabel("y")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+        # Middle: residuals vs x
+        ax = axes[1]
+        ax.plot(x, residuals, 'o', alpha=0.8)
+        ax.set_ylabel("Residuals")
+        ax.axhline(0, linestyle='--')
+        ax.grid(True, alpha=0.3)
+
+        # Bottom: histogram of residuals
+        ax = axes[2]
+        ax.hist(residuals, bins=20, alpha=0.8)
+        ax.set_xlabel("Residuals")
+        ax.set_ylabel("Count")
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+
+        fig, ax = plt.subplots(1, 2, figsize=(14, 6), num="residual histogram", clear=True)
+
+        res = residuals
+        values = y
+        
+        # Plot residuals histogram
+        ax[0].hist(res, bins=30, edgecolor='black', alpha=0.7)
+        ax[0].set_xlabel("Residuals")
+        ax[0].set_ylabel("Frequency")
+        ax[0].set_title(f"Residual Distribution at H-alpha (λ={wave[halpha_index]:.2f} nm)")
+        ax[0].grid(True, alpha=0.3)
+
+        # Plot values histogram
+        ax[1].hist(values**2-residuals**2, bins=100, edgecolor='black', alpha=0.7, color='orange')
+        ax[1].set_xlabel("Delta chi2 values")
+        ax[1].set_ylabel("Frequency")
+        ax[1].set_title(f"Data Values Distribution at H-alpha (λ={wave[halpha_index]:.2f} nm)")
+        ax[1].grid(True, alpha=0.3)
+
+        # Calculate significance
+        mean_res = np.mean(res)
+        std_res = np.std(res)
+        mean_val = np.mean(values)
+        std_val = np.std(values)
+        significance = np.abs(mean_res) / std_res if std_res > 0 else 0
+        
+        # Compare residuals to values
+        residual_to_data_ratio = std_res / std_val if std_val > 0 else np.inf
+        
+        stats_text = (f"Residuals - Mean: {mean_res:.4f}, Std: {std_res:.4f}\n"
+                    f"Values - Mean: {mean_val:.4f}, Std: {std_val:.4f}\n"
+                    f"Significance: {significance:.2f}σ\n"
+                    f"Residual/Data ratio: {residual_to_data_ratio:.4f}")
+        
+        ax[0].text(0.98, 0.97, stats_text, 
+            transform=ax[0].transAxes, verticalalignment='top', horizontalalignment='right',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5), fontsize=9)
+
+        fig.tight_layout()
+        fig.savefig("residual_histogram.png", dpi=300)
+
+
+
+
+    process_astrometric_data(
+        file_patterns=file_patterns,
+        object_name=object_name,
+        dark_patterns=dark_patterns,
+        flat_patterns=flat_patterns,
+        wave_patterns=wave_patterns,
+        modID=modID,
+        modScale=modScale,
+        wollaston=wollaston,
+        wavelength_smooth=wavelength_smooth,
+        wavelength_bin=wavelength_bin,
+        Nsingular=Nsingular,
+        center_data=center_data)
+        # save_individual_frames=save_individual_frames,)
 # %%
