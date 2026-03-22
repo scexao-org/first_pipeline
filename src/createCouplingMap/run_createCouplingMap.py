@@ -179,42 +179,6 @@ def flux_matrices(singular_vectors):
     return flux_2_data, data_2_flux
 
 
-def Q_and_R_matrices(singular_vectors):
-    """
-    Compute QR decomposition matrices for singular vectors.
-    
-    Parameters
-    ----------
-    singular_vectors : numpy.ndarray
-        Singular vectors array with shape (Ntriangles, Noutput, Nwave, Nqr)
-        
-    Returns
-    -------
-    QT_singular_vectors : numpy.ndarray
-        Transpose of Q matrices from QR decomposition
-    R_singular_vectors : numpy.ndarray
-        R matrices from QR decomposition
-    """
-    Ntriangles = singular_vectors.shape[0]
-    Noutput = singular_vectors.shape[1]
-    Nwave = singular_vectors.shape[2]
-    Nqr = singular_vectors.shape[3]
-
-    QT_singular_vectors = np.zeros((Ntriangles, Nwave, Nqr, Noutput))
-    R_singular_vectors = np.zeros((Ntriangles, Nwave, Nqr, Nqr))
-
-    if Nqr == 3:
-        description = "Calculating QR matrices for triangles"
-    else:
-        description = "Calculating QR matrices for pyramids"
-
-    for t in tqdm(range(Ntriangles), desc=description):
-        for w in range(Nwave):
-            Q, R = np.linalg.qr(singular_vectors[t, :, w], mode="reduced")
-            QT_singular_vectors[t, w] = Q.T
-            R_singular_vectors[t, w] = R
-
-    return QT_singular_vectors, R_singular_vectors
 
 
 def get_filelist_coupling(file_patterns, dark_patterns=None, flat_patterns=None, 
@@ -632,7 +596,6 @@ if __name__ == "__main__":
     Perfect for testing and direct execution of core functionality.
     """
     print("Running createCouplingMap core with development defaults...")
-    
 
     # Development/interactive mode handling
     print("Running in compiler")
@@ -650,9 +613,9 @@ if __name__ == "__main__":
         use_pyramids = False
         center_data = False
 
-        file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
-        file_patterns = ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12?2*.fits"]
-        wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
+        # file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
+        # file_patterns = ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12?2*.fits"]
+        # wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
         # flat_patterns = wave_patterns
 
 
@@ -665,7 +628,10 @@ if __name__ == "__main__":
         # wave_patterns = ["/Users/slacour/DATA/LANTERNE/20260307/wavemaps/"]
         # flat_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/flatmaps/"]
 
+        # HIP81126
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/20250510/preproc/firstpl_2025-05-14T09h59*fits"]
         
+
     print(f"Development override: wavelength_smooth={wavelength_smooth}, wavelength_bin={wavelength_bin}, Nsingular={Nsingular}")
     print(f"Development file patterns: {file_patterns}")
 
@@ -733,7 +699,7 @@ if __name__ == "__main__":
                     vectors_all_triangles[t, i, pix_min:pix_max, q] = np.polyval(poly_coeffs, x_interp)
 
 
-    QT, R = Q_and_R_matrices(vectors_all_triangles)
+    QT, R = couplingMap_2.QT_and_R_matrices()
 
     position = couplingMap.position
     Ntriangles = QT.shape[0]

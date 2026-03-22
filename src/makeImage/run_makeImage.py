@@ -1,5 +1,5 @@
-#! /usr/bin/env python3
-# -*- coding: iso-8859-15 -*-
+#%%
+
 """
 FIRST Pipeline - Image Reconstruction Core Algorithms
 
@@ -10,11 +10,18 @@ Created on Wed May 21 22:56:25 2025
 @author: slacour
 """
 
-import sys
 import os
-# Add src directory to path for imports to work in both interactive and package contexts
-if os.path.join(os.path.dirname(__file__), '..') not in sys.path:
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+import getpass
+import matplotlib
+if "VSCODE_PID" in os.environ:
+    matplotlib.use('Qt5Agg')
+elif os.environ.get('SPYDER_DEBUG_FILE'):
+    print("Running in Spyder")
+else:
+    matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import plot, hist, clf, figure, legend, imshow
+plt.ion()
 
 import numpy as np
 from typing import List, Tuple, Optional
@@ -43,42 +50,6 @@ from first_pipeline_shared.classes.runPL_class_couplingMap import CouplingMap
 from first_pipeline_shared.libraries import runPL_library_io as runlib_io
 from first_pipeline_shared.libraries import runPL_library_plots as runlib_plots
 
-
-def get_development_defaults():
-    """
-    Get development environment default parameters.
-    
-    Returns
-    -------
-    dict
-        Dictionary containing default parameters for development environment
-    """
-    defaults = {
-        'file_patterns': ['*.fits'],
-        'object_name': None,
-        'dark_patterns': None,
-        'coupling_map': None,
-        'modID': 0,
-        'modScale': 0,
-        'wavelength_smooth': 1,
-        'save_individual_frames': True,
-        'save_individual_wavelength': False,
-        'wollaston': None
-    }
-    
-    # Check if running in development environment
-    if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode' or 
-        os.environ.get('SPYDER_DEBUG_FILE')):
-        
-        user = getpass.getuser()
-        if user == "slacour":
-            defaults['file_patterns'] = ["/Users/slacour/DATA/LANTERNE/20251125/preproc"]
-        elif user == "jsarrazin":
-            defaults['file_patterns'] = ["/home/jsarrazin/Bureau/PLDATA/novembre/les_preproc"]
-        elif user == "ehuby":
-            defaults['file_patterns'] = ["/home/ehuby/WORK/DATA/FIRST-PL/2025-05-10/preproc/"]
-    
-    return defaults
 
 
 def get_filelist_image(file_patterns, dark_patterns=None, cmap_patterns=None,
@@ -142,7 +113,7 @@ def get_filelist_image(file_patterns, dark_patterns=None, cmap_patterns=None,
     # Load coupling map and associated calibrations
     print("Coupling map patterns: ", cmap_patterns)
     file_coup = fileList.get_couplingmap_file(cmap_patterns)
-    couplingMap = CouplingMap(file_coup, pyramids=True)
+    couplingMap = CouplingMap(file_coup)
 
     # Check for embedded calibrations in coupling map file
     with fits.open(file_coup) as hdul:
@@ -179,10 +150,77 @@ def compute_star_positions(datacube_T, couplingMap, ra_dec):
     chi2 : numpy.ndarray
         Chi-squared values for star detection
     """
-    star_detected, star_index, star_radec, chi2 = couplingMap.chi2_filtering(datacube_T, ra_dec)
+
+    QT, R = couplingMap.QT_and_R_matrices()
+
+    position = couplingMap.position
+    Ntriangles = QT.shape[0]
+    Nqr = QT.shape[2]
+
+    Nwave, Noutput, Nimages = datacube_T.shape
+
+    datacube_T=datacube_T.reshape((datacube_T.shape[0], datacube_T.shape[1], -1))
+    chi2_max = np.sum(datacube_T**2, axis=(0,1))
+
+    chi2_map = np.zeros((Ntriangles,  Nimages))
+    chi2_map[:] = chi2_max
+    # Here, the computation of the chi2 is simplified by the fact that QT is orthonormal
+    # chi2 = ||data - Q @ Q.T @ data||^2 = ||data||^2 - ||Q.T @ data||^2
+    for t in tqdm(range(Ntriangles), desc="Computing chi2 map"):
+        k = QT[t] @ datacube_T
+        chi2_map[t, :] -= np.sum(k ** 2, axis=(0, 1))
+
+    # Replace inf/nan values with a large number before finding argmin
+    chi2_map_nonan = np.nan_to_num(chi2_map, nan=np.inf, posinf=np.inf, neginf=np.inf)
+    chi2_argmin = np.argmin(chi2_map_nonan, axis=0)
+    figure(num="Chi2 map arg min", figsize=(16, 6), clear=True)
+    plot(position[chi2_argmin])
+
+    Npixel = 150
+    grid_x, grid_y = runlib_plots.make_image_grid(ra_dec, Npixel)
+
+    chi2_images = []
+    for i in tqdm(range(Nimages), desc="Calculating chi2 images"):
+            # Interpolate the fluxes onto the grid
+        # chi2_image = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), chi2_map[:,i], (grid_x, grid_y), method='nearest')
+        chi2_image = griddata((ra_dec[i,:,0],ra_dec[i,:,1]), chi2_map[:,i], (grid_x, grid_y), method='cubic')
+        chi2_images.append(chi2_image)
+
+    chi2_images = np.array(chi2_images)
+
+    for i in range(Nimages):
+        point_nan = np.isnan(chi2_images[i])
+        chi2_images[i,point_nan]=np.nanmax(chi2_images[i])
+
+    chi2_images_argmin = np.nansum(chi2_images,axis=0).argmin()
+    star_radec = np.array((grid_x.ravel()[chi2_images_argmin], grid_y.ravel()[chi2_images_argmin]))
+    star_indices = np.linalg.norm(ra_dec - star_radec, axis=-1) < 10
+    chi2_map[~star_indices.T] = np.nan
+    chi2_map_argmin = np.zeros(Nimages, dtype=int)
+    chi2_goodData = np.zeros(Nimages, dtype=bool)
+    for i in range(Nimages):
+        try:
+            chi2_map_argmin[i] = np.nanargmin(chi2_map[:,i], axis=0)
+            chi2_goodData[i] = True
+        except:
+            chi2_goodData[i] = False
+
+    # Instead of np.diag, use advanced indexing for clarity and correctness:
+    chi2_min = chi2_map[chi2_map_argmin, np.arange(Nimages)]
+    chi2_ratio=chi2_min/chi2_max
+
+    # Filter out outliers based on chi2 and chi2_ratio thresholds
+    chi2_min_threshold = np.nanmedian(chi2_min[chi2_goodData]) * 5
+    chi2_ratio_threshold = np.nanmedian(chi2_ratio[chi2_goodData]) * 3.5
+
+    chi2_goodData &= (chi2_min < chi2_min_threshold) & (chi2_ratio < chi2_ratio_threshold)
+
+    star_detected = chi2_goodData
+    star_index = chi2_map_argmin
+
     print(f"* Percentage of data with star detected: {np.sum(star_detected)/len(star_detected)*100:.1f} % (flux, svd and chi2 threshold)")
     
-    return star_detected, star_index, star_radec, chi2
+    return star_detected, star_index, star_radec, chi2_images
 
 
 def compute_residuals(datacube_T, couplingMap, star_detected, star_index):
@@ -206,12 +244,14 @@ def compute_residuals(datacube_T, couplingMap, star_detected, star_index):
         Residual data cube after star removal
     """
     residuals = datacube_T.copy()
+
+    QT, R = couplingMap.QT_and_R_matrices()
     
     for i in tqdm(range(residuals.shape[2]), desc="Calculating residuals of the 3D image"):
         if star_detected[i]:
             t = star_index[i]
-            k = couplingMap.QT[t] @ residuals[:, :, i, None]
-            residuals[:, :, i] -= (couplingMap.QT[t].transpose((0, 2, 1)) @ k)[:, :, 0]
+            k = QT[t] @ residuals[:, :, i, None]
+            residuals[:, :, i] -= (QT[t].transpose((0, 2, 1)) @ k)[:, :, 0]
 
     return residuals
 
@@ -479,7 +519,7 @@ def create_diagnostic_plots(image_data, ra_dec, Npixels=75):
 
 
 def process_image_reconstruction_data(file_patterns=None, object_name=None, dark_patterns=None,
-                                    coupling_map=None, wavelength_smooth=None, modID=None, 
+                                    cmap_patterns=None, wavelength_smooth=None, modID=None, 
                                     modScale=None, wollaston=None, save_individual_frames=None,
                                     save_individual_wavelength=None, Npixels=75):
     """
@@ -523,26 +563,7 @@ def process_image_reconstruction_data(file_patterns=None, object_name=None, dark
         - 'star_detected': star detection results
         - 'figures': list of diagnostic figures
     """
-    # Use development defaults if parameters are None
-    if any(param is None for param in [file_patterns, wavelength_smooth, save_individual_frames, save_individual_wavelength]):
-        defaults = get_development_defaults()
-        if file_patterns is None:
-            file_patterns = defaults['file_patterns']
-        if wavelength_smooth is None:
-            wavelength_smooth = defaults['wavelength_smooth']
-        if save_individual_frames is None:
-            save_individual_frames = defaults['save_individual_frames']
-        if save_individual_wavelength is None:
-            save_individual_wavelength = defaults['save_individual_wavelength']
-        
-        # Also use defaults for modID and modScale if they're None
-        if modID is None:
-            modID = defaults['modID']
-        if modScale is None:
-            modScale = defaults['modScale']
-            
-    # Set up coupling map patterns
-    cmap_patterns = [coupling_map] if coupling_map else None
+
 
     # Get file list and coupling map
     fileList, couplingMap, flatMap, waveMap = get_filelist_image(
@@ -554,6 +575,8 @@ def process_image_reconstruction_data(file_patterns=None, object_name=None, dark
         Nsmooth=wavelength_smooth, Nbin=couplingMap.wavelength_bin,
         flatMap=flatMap, waveMap=waveMap, center=False
     )
+
+
 
     results = []
     figures = []
@@ -647,26 +670,42 @@ if __name__ == "__main__":
     """
     print("Running makeImage core with development defaults...")
     
-    # Get development defaults first
-    defaults = get_development_defaults()
+
+    # Development/interactive mode handling
+    print("Running in compiler")
+    if getpass.getuser() == "slacour":
+
+        object_name = None
+        dark_patterns = None
+        cmap_patterns = None
+        wavelength_smooth = 1
+        modID = None
+        modScale = None
+        wollaston = None
+        save_individual_frames = False
+        save_individual_wavelength = False
+        Npixels = 114
+
+        # HIP81126
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/20250510/preproc/firstpl_2025-05-14T09h59*fits"]
+        
+
+    # Note: Development environment detection and default paths
+    # are handled autonomously in run_makeImage()
+
+    # Process image reconstruction data
+    result = process_image_reconstruction_data(
+        file_patterns=file_patterns,
+        object_name=object_name,
+        dark_patterns=dark_patterns,
+        cmap_patterns=cmap_patterns,
+        wavelength_smooth=wavelength_smooth,
+        modID=modID,
+        modScale=modScale,
+        wollaston=wollaston,
+        save_individual_frames=save_individual_frames,
+        save_individual_wavelength=save_individual_wavelength,
+        Npixels=Npixels
+    )
     
-    # Run image reconstruction with defaults
-    try:
-        result = process_image_reconstruction_data()
-        
-        print(f"Image reconstruction completed successfully!")
-        print(f"Processed {len(result['results'])} file(s)")
-        
-        for i, file_result in enumerate(result['results']):
-            print(f"  File {i+1}: {file_result['output_filename']}")
-            print(f"    Stars detected: {file_result['star_detected'].sum() if hasattr(file_result['star_detected'], 'sum') else len(file_result['star_detected'])} frames")
-            if 'image_data' in file_result:
-                print(f"    Image data shape: {file_result['image_data'][0].shape if file_result['image_data'] else 'N/A'}")
-        
-    except Exception as e:
-        print(f"Error running image reconstruction: {e}")
-        print("This may be due to missing preprocessed data files or coupling maps in default paths")
-        
-        # Show default paths being used
-        print(f"Default file patterns: {defaults['file_patterns']}")
-        print("Note: Requires preprocessed files and coupling maps")
+# %%

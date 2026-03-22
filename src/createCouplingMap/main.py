@@ -145,7 +145,7 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
         wave_patterns = file_patterns + [os.path.join(folder,"../wavemaps")] + [os.path.join(folder,"wavemaps")]
 
     # Process coupling map data
-    result = run_createCouplingMap(
+    couplingMap,_ = run_createCouplingMap(
         file_patterns=file_patterns,
         object_name=object_name,
         dark_patterns=dark_patterns,
@@ -161,10 +161,7 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
         center_data=center_data
     )
 
-    print(f"Coupling map created successfully: {result['output_filename']}")
-    print(f"Number of triangles/pyramids: {result['QT'].shape[0]}")
-    print(f"QT shape: {result['QT'].shape}")
-    print(f"R shape: {result['R'].shape}")
+    print(f"Coupling map created successfully:\n{couplingMap.filename}")
 
 
 if __name__ == "__main__":

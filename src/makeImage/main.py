@@ -131,7 +131,7 @@ Optimize smoothing and modulation parameters for best results with your data.
     # Extract the parsed arguments
     object_name = args.object_name
     dark_patterns = args.dark_files
-    coupling_map = args.coupling_map
+    cmap_patterns = args.coupling_map
     wavelength_smooth = args.wavelength_smooth
     modID = args.modID
     modScale = args.modScale
@@ -148,7 +148,7 @@ Optimize smoothing and modulation parameters for best results with your data.
         file_patterns=file_patterns,
         object_name=object_name,
         dark_patterns=dark_patterns,
-        coupling_map=coupling_map,
+        cmap_patterns=cmap_patterns,
         wavelength_smooth=wavelength_smooth,
         modID=modID,
         modScale=modScale,
