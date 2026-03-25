@@ -93,7 +93,7 @@ logic in downstream pipeline scripts (createPixelMap, preprocess, wavelengthMap,
     
     # Add optional arguments for header keywords
     parser.add_argument("-c", "--DATA-TYP", 
-                       choices=["OBJECT", "TEST", "ACQUISITION", "DARK", "FLAT", "COMPARAISON"],
+                       choices=["OBJECT", "TEST", "ACQUISITION", "DARK", "FLAT", "COMPARISON"],
                        help="Classify data type for pipeline processing: FLAT (SuperK data), DARK (background), OBJECT (science targets), ACQUISITION (target acquisition), COMPARAISON (Neon calibration), TEST (validation)")
     parser.add_argument("-o", "--OBJECT", 
                        help="Target name for science observations (e.g., 'HD 164461', 'Beta Pic')")
