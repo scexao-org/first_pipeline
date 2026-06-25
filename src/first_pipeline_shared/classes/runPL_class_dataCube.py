@@ -1,6 +1,5 @@
 import os
 import numpy as np
-from astropy.io import fits
 from astroplan import Observer
 from astropy.time import Time, TimeDelta
 from astropy.coordinates import SkyCoord
@@ -21,25 +20,44 @@ class DataCube:
         header (astropy.io.fits.Header): The header information.
     """
 
-    def __init__(self, data, variance, dark, dark_variance, filename, header):
-        self.data = data
-        self.variance = variance
-        self.dark = dark
-        self.dark_variance = dark_variance
+    def __init__(self, preproc, dark_preproc=None):
+        """
+        Build a DataCube from a Preproc object and an optional dark Preproc.
+
+        The DataCube does not read any file itself: the object data, header and
+        modulation information are taken from `preproc`, and the dark frame (when
+        available) from `dark_preproc`. Dark subtraction and variance estimation
+        are performed here.
+
+        Args:
+            preproc (Preproc): Loaded Preproc object for the science/object file,
+                providing data, filename, header and modulation data.
+            dark_preproc (Preproc, optional): Loaded Preproc object for the dark
+                file. If None, default dark values are derived from the header.
+        """
+        self.preproc = preproc
+        self.dark_preproc = dark_preproc
+        filename = preproc.filename
+        header = preproc.header
         self.dirname = os.path.dirname(filename)
         self.basename = os.path.basename(filename)
         self.filename = filename
         self.header = header
         self.dit = header.get('EXPTIME', 0.0)
         self.gain = header.get('GAIN', 1.0)
-        self.Ndit = data.shape[0]
-        self.Noutput = data.shape[1]
-        self.Nwave = data.shape[2]
+
+        # cast data to double, subtract the dark and estimate the variance
+        data = np.double(preproc.data)
+        self.data, self.variance, self.dark, self.dark_variance = \
+            self._subtract_dark_and_variance(data, dark_preproc)
+
+        self.Ndit = self.data.shape[0]
+        self.Noutput = self.data.shape[1]
+        self.Nwave = self.data.shape[2]
         self.modID = int(header.get('X_FIRMID', 0))
         self.modScale = int(header.get('X_FIRMSC', 1))
         self.object_name = header.get('OBJECT', 'Unknown')
         self.wollaston = header.get('X_FIRWOL', 'IN')
-        self.add_modulation()
 
         self.x_object = header.get('X_FIROBX', 0.0)
         self.y_object = header.get('X_FIROBY', 0.0)
@@ -55,6 +73,11 @@ class DataCube:
         if self.time_end < self.time_start:
             self.time_end += TimeDelta(1, format='jd')
 
+        # getting parameters of metrology glitches
+        self.glitch_on=header.get('X_FIRGON', 0)
+        self.glitch_frame=header.get('X_FIRGFR', 0)
+        self.glitch_delay=header.get('X_FIRGEX', 0) # in ms
+
         # computing the position angle (PA) of each frame
         THETA_OFFSET = 102.2  # degrees
         # if after spectembre 2025, cahngevalue of THETA_OFFSET
@@ -62,44 +85,85 @@ class DataCube:
         # print(f"Image-rotation angle range: {self.PAangle.min()*180/np.pi} to {self.PAangle.max()*180/np.pi} degrees")
         self.wave_label = "Pixel Index"
         self.wave = np.arange(self.Nwave)
-        
+
+        self.add_modulation()
+
+    def _subtract_dark_and_variance(self, data, dark_preproc):
+        """
+        Subtract the dark frame from the data and estimate the variance.
+
+        Args:
+            data (numpy.ndarray): Object data already cast to double.
+            dark_preproc (Preproc or None): Loaded dark Preproc object, or None
+                to fall back on default dark values derived from the header.
+
+        Returns:
+            tuple: (data, variance, dark, dark_variance)
+        """
+        header = self.header
+
+        if dark_preproc is not None:
+            data_dark = dark_preproc.data
+            if len(data_dark) == 1:
+                data_dark = data_dark[0]
+                data_dark_std = data_dark[0] * 0 + 12
+            else:
+                data_dark = data_dark.mean(axis=0)
+                data_dark_std = data_dark.std(axis=0)
+        else:
+            # using default values if we do not know the dark
+            data_dark = header["DETBIAS"] * (2 + 2 * header["PIX_WIDE"])
+            data_dark_std = 12 * np.sqrt(2 + 2 * header["PIX_WIDE"])
+
+        data -= data_dark
+        dark_variance = data_dark_std ** 2
+        variance = dark_variance + self.gain * np.abs(data)  # +0.05*np.abs(data)**2
+        variance[np.abs(data) > 2 ** 16] = np.inf  # saturating values
+
+        return data, variance, data_dark, dark_variance
+
     def add_modulation(self):
         """ 
         Adds modulation information to the data cube.
-        Reads the 'MODULATION' extension from the FITS file and extracts xmod and ymod arrays.
-        If the extension does not exist, initializes xmod and ymod to zeros.
+        Reads the modulation data from the Preproc object and extracts xmod and ymod arrays.
+        If the modulation data is not available, initializes xmod and ymod to zeros.
         """
 
-        # Check if 'MODULATION' extension exists in the FITS file
-        with fits.open(self.filename) as hdul:
-            if 'MODULATION' not in hdul:
-                print(f"WARNING: 'MODULATION' extension not found in {self.filename}")
-                xmod = np.zeros(1)
-                ymod = np.zeros(1)
-            elif hdul[0].header.get('X_FIRMID', -1) < 0:
-                xmod = np.zeros(1)
-                ymod = np.zeros(1)
-            else:
-                # reading modulation data
-                modulation_data = hdul['MODULATION'].data
-                xmod = np.double(modulation_data['xmod'])
-                ymod = np.double(modulation_data['ymod'])
-                # Ensure xmod and ymod are arrays, even if they are scalars
-                if np.isscalar(xmod):
-                    xmod = np.array([xmod])
-                if np.isscalar(ymod):
-                    ymod = np.array([ymod])
+        # Read modulation information from the Preproc object
+        modulation_data = self.preproc.modulation_data
+        if modulation_data is None:
+            print(f"WARNING: 'MODULATION' extension not found in {self.filename}")
+            xmod = np.zeros(1)
+            ymod = np.zeros(1)
+        elif self.header.get('X_FIRMID', -1) < 0:
+            xmod = np.zeros(1)
+            ymod = np.zeros(1)
+        else:
+            # reading modulation data
+            xmod = np.double(modulation_data['xmod'])
+            ymod = np.double(modulation_data['ymod'])
+            # Ensure xmod and ymod are arrays, even if they are scalars
+            if np.isscalar(xmod):
+                xmod = np.array([xmod])
+            if np.isscalar(ymod):
+                ymod = np.array([ymod])
 
-            # Fix known issue with ymod[373] if necessary
-        
         # Fix known issue with ymod[373] if necessary (only for 2024-2025 data)
         try:
             year = int(self.date.split('-')[0])
             if year >= 2024 and len(xmod) == 595:
                 if ymod[373] < 1e-5:
                     ymod[373] = ymod[372]
-        except:
+        except (ValueError, IndexError):
             pass
+
+        # Modulation-to-frame shift measured from the metrology glitch. It is
+        # applied when copying the data into the padded cube below, so that the
+        # frames shifted out are filled with padding (NaN / inf) instead of
+        # wrapping around like np.roll would.
+        frame_shift = int(round(self.header.get('X_FIRGSH', 0)))
+        if len(xmod) <= 1:
+            frame_shift = 0
 
         self.xmod = xmod
         self.ymod = ymod
@@ -111,18 +175,30 @@ class DataCube:
             print("filling with zeros file: ",self.filename)
 
         size_new = (self.Ncube,self.Nmod,self.Noutput,self.Nwave)
-        size_old = np.prod((self.Ndit,self.Noutput,self.Nwave))
+        size_old = int(np.prod((self.Ndit,self.Noutput,self.Nwave)))
+        size_total = int(np.prod(size_new))
 
-        # Reshape data and variance arrays accordingly to datacube size
-        # padding with NaN if needed
-        if np.prod(size_new) != size_old:
-            data_padded=np.full(np.prod(size_new), np.nan)
-            data_padded[np.prod(size_new)-size_old:]=self.data.ravel()[:size_old]
-            self.data=data_padded.reshape(size_new)
+        # Frame shift expressed in flattened-array elements (one frame is
+        # Noutput * Nwave elements).
+        frame_offset = frame_shift * self.Noutput * self.Nwave
 
-            variance_padded=np.full(np.prod(size_new), np.inf)
-            variance_padded[np.prod(size_new)-size_old:]=self.variance.ravel()[:size_old]
-            self.variance=variance_padded.reshape(size_new)
+        # Reshape data and variance arrays accordingly to datacube size,
+        # applying the frame shift and padding with NaN / inf where needed.
+        if (size_total != size_old) or (frame_offset != 0):
+            data_padded = np.full(size_total, np.nan)
+            variance_padded = np.full(size_total, np.inf)
+
+            # Non-cyclic shift: a positive frame_shift drops the leading frames
+            # and appends padding at the end; a negative one prepends padding.
+            src_start = max(frame_offset, 0)
+            dst_start = max(-frame_offset, 0)
+            n = min(size_old - src_start, size_total - dst_start)
+            if n > 0:
+                data_padded[dst_start:dst_start + n] = self.data.ravel()[src_start:src_start + n]
+                variance_padded[dst_start:dst_start + n] = self.variance.ravel()[src_start:src_start + n]
+
+            self.data = data_padded.reshape(size_new)
+            self.variance = variance_padded.reshape(size_new)
         else:
             self.data = self.data.reshape(size_new)
             self.variance = self.variance.reshape(size_new)
@@ -146,14 +222,14 @@ class DataCube:
         # we could aslo use FRATE, but I am not sure it is better in triggered mode
         frame_sampling = (self.time_end - self.time_start).sec / self.Ndit
 
-        times = self.time_start + (frame_sampling/2 + np.linspace(0, frame_sampling * self.Ncube * self.Nmod, self.Ncube * self.Nmod) ) * u.s
+        times = self.time_start + (frame_sampling/2 + np.linspace(0, frame_sampling * self.Ndit, self.self.Ndit) ) * u.s
         par_angles = subaru.parallactic_angle(times, target).deg
         if False:
             par_angle = subaru.parallactic_angle(self.time_start, target).deg
             from_header = self.pupil_PA
             print("Difference between computed and header parangle: ", par_angle - from_header)
 
-        return par_angles.reshape(self.Ncube, self.Nmod)
+        return par_angles
 
     ## calculate the projection of the offset in the field based on the current parangle and delta-coordinates of target */
     def project_offsets(self, x_sky, y_sky):
@@ -184,9 +260,8 @@ class DataCube:
 
     def compute_flux(self):
         """
-        Get the mean spectra of the 38 outputs.
-        Returns:
-            numpy.ndarray: The mean spectra of the 38 outputs.
+        Compute the common-mode flux by averaging over the outputs (axis 2).
+        Stores the result in self.flux with shape (Ncube, Nmod, Nwave).
         """
         self.flux = self.data.mean(axis=(2))
 

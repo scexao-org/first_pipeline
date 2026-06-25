@@ -15,7 +15,7 @@ import os
 import getpass
 import matplotlib
 if "VSCODE_PID" in os.environ:
-    matplotlib.use('Qt5Agg')
+    matplotlib.use('macosx')
 else:
     matplotlib.use('Agg')
 
@@ -59,6 +59,7 @@ def preprocess_files(fileList, overwrite=False, plot_sum=False):
     dir_path_0 = fileList.get_most_common_dir()
     files_out = []
     centroid_data = []  # Store centroid data for summary plot
+    shift_data = []  # Store modulation-to-frame shift for summary plot
 
     # Process each file using the Preproc class
     for file_withpixelmap in tqdm(fileList.files_with_associated_files, desc=f"Pre-processing of files in {dir_path_0}"):
@@ -73,13 +74,27 @@ def preprocess_files(fileList, overwrite=False, plot_sum=False):
             print(f"No pixel map associated with {file}, skipping.")
             continue
 
+        # Check if a txt file with same name exists
+        file_base = os.path.splitext(file)[0]
+        txt_file = file_base + ".txt"
+        if not os.path.exists(txt_file):
+            txt_file = None
+
+        
+
         pixelmap = PixelMap(pixelmap_file)
             
         try:
             # Create Preproc instance and process the file
             preproc = Preproc()
             
-            preproc_created = preproc.create_from_raw(file, pixelmap, output_dir, check_if_exist=not overwrite)
+            preproc_created = preproc.create_from_raw(
+                file,
+                pixelmap,
+                output_dir,
+                check_if_exist=not overwrite,
+                telemetry_txt_file=txt_file,
+            )
             
             if preproc_created:
                 # Generate diagnostic figures
@@ -89,6 +104,7 @@ def preprocess_files(fileList, overwrite=False, plot_sum=False):
                 if preproc.quality_metrics:
                     files_out.append(preproc.basename)
                     centroid_data.append(preproc.quality_metrics.get('Q_P_CENT', 0))
+                    shift_data.append(preproc.header.get('X_FIRGSH', np.nan))
                     
                 # Save the preprocessed file
                 preproc.save()
@@ -103,12 +119,14 @@ def preprocess_files(fileList, overwrite=False, plot_sum=False):
 
     # Create summary centroid shift plot if requested
     if plot_sum and len(centroid_data) > 0:
-        create_centroid_summary_plot(files_out, centroid_data, dir_path_0)
+        create_centroid_summary_plot(files_out, centroid_data, shift_data, dir_path_0)
             
+
+
     return files_out
 
 
-def create_centroid_summary_plot(files_out, centroid_data, dir_path_0):
+def create_centroid_summary_plot(files_out, centroid_data, shift_data, dir_path_0):
     """
     Create a summary plot for centroid shifts across all processed files.
     
@@ -118,6 +136,8 @@ def create_centroid_summary_plot(files_out, centroid_data, dir_path_0):
         List of output filenames
     centroid_data : list
         List of centroid shift values
+    shift_data : list
+        List of modulation-to-frame shift values (X_FIRGSH)
     dir_path_0 : str
         Base directory path for saving the plot
     """
@@ -127,25 +147,40 @@ def create_centroid_summary_plot(files_out, centroid_data, dir_path_0):
     filename_out_full = os.path.join(preproc_dir_path, filename_out)
     
     try:
-        fig = figure("Centroid shift summary", clear=True, figsize=(max(8, len(files_out)*0.3), 6))
-        plt.plot(range(len(centroid_data)), centroid_data, 'o-', color='red', markersize=4)
-        plt.axhline(y=0, color='black', linestyle=':', alpha=0.7)
-        plt.title("Vertical offset of extracted windows (centroid shift)")
-        plt.xlabel("File index")
-        plt.ylabel("Pixel shift")
-        plt.grid(True, alpha=0.3)
-        
-        # Set x-axis labels if not too many files
+        fig, (ax_centroid, ax_shift) = plt.subplots(
+            2, 1, sharex=True, clear=True,
+            num="Centroid shift summary",
+            figsize=(max(8, len(files_out) * 0.3), 9),
+        )
+
+        # Centroid shift (top axis)
+        ax_centroid.plot(range(len(centroid_data)), centroid_data, 'o-', color='red', markersize=4)
+        ax_centroid.axhline(y=0, color='black', linestyle=':', alpha=0.7)
+        ax_centroid.set_title("Vertical offset of extracted windows (centroid shift)")
+        ax_centroid.set_ylabel("Pixel shift")
+        ax_centroid.grid(True, alpha=0.3)
+
+        # Modulation-to-frame shift (bottom axis)
+        ax_shift.plot(range(len(shift_data)), shift_data, 'o-', color='blue', markersize=4)
+        ax_shift.axhline(y=0, color='black', linestyle=':', alpha=0.7)
+        ax_shift.set_title("Modulation-to-frame shift (metrology glitch)")
+        ax_shift.set_xlabel("File index")
+        ax_shift.set_ylabel("Frame shift")
+        ax_shift.grid(True, alpha=0.3)
+
+        # Set x-axis labels if not too many files (shared x-axis -> set on bottom)
         if len(files_out) <= 20:
-            plt.xticks(range(len(files_out)), files_out, rotation=90)
+            ax_shift.set_xticks(range(len(files_out)))
+            ax_shift.set_xticklabels(files_out, rotation=90)
         else:
             # For many files, show only some labels
             step = max(1, len(files_out) // 10)
-            indices = range(0, len(files_out), step)
+            indices = list(range(0, len(files_out), step))
             labels = [files_out[i] for i in indices]
-            plt.xticks(indices, labels, rotation=90)
-            
-        plt.tight_layout()
+            ax_shift.set_xticks(indices)
+            ax_shift.set_xticklabels(labels, rotation=90)
+
+        fig.tight_layout()
         fig.savefig(filename_out_full + "_PREPROCSHIFT.png", dpi=300)
         plt.close(fig)
         print("PNG saved as: " + filename_out_full + "_PREPROCSHIFT.png")
@@ -218,7 +253,7 @@ if __name__ == "__main__":
         only_with_modulation = False
         overwrite = True
         file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
-        file_patterns = ["/Users/slacour/DATA/LANTERNE/raw/20260114/firstpl/"]
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260608/firstpl/firstpl_10:10:12.570875507.fits"]
         
         print(f"Development override: pixel_map={pixel_map}, object_name={object_name}, only_with_modulation={only_with_modulation}, overwrite={overwrite}")
         print(f"Development file patterns: {file_patterns}")

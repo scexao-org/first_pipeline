@@ -6,6 +6,7 @@ from datetime import datetime
 from .runPL_class_dataCube import DataCube
 from .runPL_class_flatMap import FlatMap
 from .runPL_class_waveMap import WaveMap
+from .runPL_class_preproc import Preproc
 
 def clean_filelist(fits_keywords, filelist):
     filelist_cleaned = []
@@ -404,31 +405,12 @@ class FileList:
             data_file = association['file']
             dark_file = association['dark']
 
-            # reading header data
-            header=fits.getheader(data_file)
-            # important to cast the data in double!
-            data=np.double(fits.getdata(data_file))
+            # load the object and dark files as Preproc objects
+            preproc = Preproc(data_file)
+            dark_preproc = Preproc(dark_file) if dark_file is not None else None
 
-            if dark_file is not None:
-                data_dark=fits.getdata(dark_file)
-                if len(data_dark)==1:
-                    data_dark=data_dark[0]
-                    data_dark_std=data_dark[0]*0+12
-                else:
-                    data_dark=data_dark.mean(axis=0)
-                    data_dark_std=data_dark.std(axis=0)
-            else:
-                # using default values if we do not know the dark
-                data_dark=header["DETBIAS"]*(2+2*header["PIX_WIDE"])
-                data_dark_std=12*np.sqrt(2+2*header["PIX_WIDE"])
-
-            data-=data_dark
-            gain=header['GAIN']
-            data_dark_var=data_dark_std**2
-            data_var=data_dark_var+gain*np.abs(data)#+0.05*np.abs(data)**2
-            data_var[np.abs(data)>2**16]=np.inf #saturating values
-
-            dataCube = DataCube(data, data_var, data_dark, data_dark_var, data_file, header)
+            # dark subtraction and variance estimation are performed in DataCube
+            dataCube = DataCube(preproc, dark_preproc)
             
             # Normalize the data cube by the flat field if provided
             if flatMap is not None and isinstance(flatMap, FlatMap):

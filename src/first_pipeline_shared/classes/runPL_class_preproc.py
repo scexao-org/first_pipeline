@@ -32,6 +32,8 @@ class Preproc:
         self.header = None
         self.modulation_hdu = None
         self.modulation_data = None
+        self.telemetry_hdu = None
+        self.telemetry_data = None
         self.quality_metrics = {}
         self.pixel_map_info = {}
         self.raw_data = None
@@ -67,12 +69,22 @@ class Preproc:
                 self.modulation_hdu = hdul['MODULATION'].copy()
             else:   
                 self.modulation_hdu = None
+
+            if 'TELEMETRY' in [hdu.name for hdu in hdul]:
+                self.telemetry_hdu = hdul['TELEMETRY'].copy()
+            else:
+                self.telemetry_hdu = None
                 
         self.modulation_data = None
         # Handle modulation data
         if self.modulation_hdu is not None:
             self.modulation_data = self.modulation_hdu.data
             self.header['MOD_LEN'] = self.modulation_hdu.header['NAXIS2']
+
+        self.telemetry_data = None
+        if self.telemetry_hdu is not None:
+            self.telemetry_data = self.telemetry_hdu.data
+            self.header['TEL_LEN'] = self.telemetry_hdu.header.get('NAXIS2', 0)
 
 
         # Extract quality metrics from header
@@ -86,6 +98,90 @@ class Preproc:
         """Check if the preprocessed data is properly loaded."""
         if not self.is_loaded:
             raise ValueError("Preprocessed data not loaded. Use load() or create_from_raw() first.")
+
+    def detect_frame_shifts(self, tolerance=0.01):
+        """
+        Detect the frame shift between the modulation pattern and the acquired
+        frames using the metrology glitch recorded in the telemetry timing.
+
+        The metrology system introduces a deliberate timing glitch (an extra
+        delay) on a known modulation frame (X_FIRGFR). By locating that glitch in
+        the telemetry log timestamps (ABS_LOG) and comparing the frame index at
+        which it is detected, modulo the modulation length, to the expected
+        frame, the offset between the modulation pattern and the data frames is
+        recovered.
+
+        Args:
+            tolerance (float): Half-width, in seconds, used to match the measured
+                inter-frame delay to the expected glitch delay. Default 0.01 s.
+
+        Returns:
+            dict or None: ``{'frame_shifts': list, 'median_frame_shift': float}``
+                if the glitch is enabled and detected; ``None`` if telemetry or
+                modulation data is missing, the glitch is off, or no glitch is
+                found within the tolerance.
+        """
+        self._check_loaded()
+
+        # Need telemetry timing and a modulation pattern to compute a frame shift
+        if self.telemetry_data is None:
+            print(f"WARNING: no telemetry data available in {self.basename}")
+            return None
+        if self.modulation_data is None:
+            print(f"WARNING: no modulation data available in {self.basename}")
+            return None
+
+        # Nmod is the length of the modulation array
+        Nmod = len(self.modulation_data)
+
+        # getting parameters of the metrology glitch
+        glitch_on = self.header.get('X_FIRGON', 0)
+        glitch_frame = self.header.get('X_FIRGFR', 0)
+        glitch_delay = self.header.get('X_FIRGEX', 0) / 1000  # ms -> s
+
+        if not glitch_on:
+            return None
+
+        frame_idx = self.telemetry_data['FRAME_IDX']
+        abs_log = self.telemetry_data['ABS_LOG']
+
+        # inter-frame delay with the nominal cadence removed
+        dif_minus_median = np.diff(abs_log) - np.median(np.diff(abs_log))
+
+        # Find where the inter-frame delay matches the expected glitch delay
+        glitch_mask = np.abs(dif_minus_median - glitch_delay) <= tolerance
+        glitch_indices = np.where(glitch_mask)[0]
+
+        if len(glitch_indices) == 0:
+            print(f"No glitch detected within +/-{tolerance} s of "
+                  f"{glitch_delay} s in {self.basename}")
+            return None
+
+        frame_shifts = []
+        for glitch_idx in glitch_indices:
+            # +1 because diff shifts the index by one
+            glitch_detected_frame = frame_idx[glitch_idx + 1] % Nmod
+            frame_shifts.append(glitch_detected_frame - glitch_frame)
+
+        median_frame_shift = np.median(frame_shifts)
+
+        return {'frame_shifts': frame_shifts,
+                'median_frame_shift': median_frame_shift}
+
+    def _record_frame_shift(self):
+        """
+        Compute the modulation-to-frame shift from the metrology glitch and store
+        its median value in the header under the ``X_FIRGSH`` keyword.
+
+        Does nothing if no shift can be measured (missing telemetry/modulation,
+        glitch off, or no glitch detected).
+        """
+        result = self.detect_frame_shifts()
+        if result is not None:
+            self.header['X_FIRGSH'] = (
+                float(result['median_frame_shift']),
+                'median modulation frame shift (frames)'
+            )
 
     def _extract_quality_metrics(self):
         """Extract quality control metrics from the FITS header."""
@@ -112,7 +208,7 @@ class Preproc:
             if key.startswith('P_PM'):
                 self.pixel_map_info[key] = self.header[key]
 
-    def create_from_raw(self, raw_file, pixelMap, output_dir=None, check_if_exist= True):
+    def create_from_raw(self, raw_file, pixelMap, output_dir=None, check_if_exist= True, telemetry_txt_file=None):
         """
         Create preprocessed data from a raw FITS file using a pixel map.
         
@@ -200,9 +296,68 @@ class Preproc:
                 self.modulation_data = self.modulation_hdu.data
                 self.header['MOD_LEN'] = self.modulation_hdu.header['NAXIS2']
 
+            self.telemetry_hdu = self._build_telemetry_hdu_from_txt(telemetry_txt_file)
+            if self.telemetry_hdu is not None:
+                self.telemetry_data = self.telemetry_hdu.data
+                self.header['TEL_FILE'] = os.path.basename(telemetry_txt_file)
+                self.header['TEL_LEN'] = self.telemetry_hdu.header.get('NAXIS2', 0)
+            else:
+                self.telemetry_data = None
+
             self.is_loaded = True
-        
+
+            # Detect and record the modulation-to-frame shift from the metrology glitch
+            self._record_frame_shift()
+
         return self.is_loaded
+
+    def _build_telemetry_hdu_from_txt(self, telemetry_txt_file):
+        """Read telemetry timing txt file and return a TELEMETRY binary table HDU."""
+        if telemetry_txt_file is None:
+            return None
+        if not os.path.exists(telemetry_txt_file):
+            return None
+
+        rows = []
+        with open(telemetry_txt_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split()
+                if len(parts) < 7:
+                    continue
+                try:
+                    rows.append((
+                        int(parts[0]),
+                        int(parts[1]),
+                        float(parts[2]),
+                        float(parts[3]),
+                        float(parts[4]),
+                        int(parts[5]),
+                        int(parts[6]),
+                    ))
+                except ValueError:
+                    continue
+
+        if len(rows) == 0:
+            return None
+
+        telemetry_dtype = np.dtype([
+            ('FRAME_IDX', np.int32),
+            ('MAIN_IDX', np.int32),
+            ('DT_ORIGIN_LOG', np.float64),
+            ('ABS_LOG', np.float64),
+            ('ABS_ACQ', np.float64),
+            ('CNT0_IDX', np.int32),
+            ('CNT1_IDX', np.int32),
+        ])
+        telemetry_data = np.array(rows, dtype=telemetry_dtype)
+
+        hdu = fits.BinTableHDU(data=telemetry_data, name='TELEMETRY')
+        hdu.header['TLMTXT'] = (os.path.basename(telemetry_txt_file), 'source telemetry txt file')
+        hdu.header['TLMNROW'] = (len(telemetry_data), 'number of telemetry rows')
+        return hdu
 
     def _create_preproc_header(self, raw_header, pixelMap, raw_file):
         """Create the header for the preprocessed file."""
@@ -320,7 +475,8 @@ class Preproc:
             string_title = (f"{self.header['OBJECT']} - {self.header['DATA-TYP']} - "
                           f"{self.header['EXPTIME']}s\n"
                           f"X_FIROBX = {self.header.get('X_FIROBX', 'N/A')}, "
-                          f"X_FIROBY = {self.header.get('X_FIROBY', 'N/A')}")
+                          f"X_FIROBY = {self.header.get('X_FIROBY', 'N/A')}\n"
+                          f"number of DIT to be shifted = {self.header.get('X_FIRGSH', 'N/A')}")
             fig.suptitle(string_title)
             fig.savefig(self.filename[:-5] + "_2.png", dpi=300)
 
@@ -356,6 +512,9 @@ class Preproc:
         # Add modulation data if available
         if self.modulation_hdu is not None:
             hdu_list.append(self.modulation_hdu)
+
+        if self.telemetry_hdu is not None:
+            hdu_list.append(self.telemetry_hdu)
         
         # Create HDU list
         hdul = fits.HDUList(hdu_list)
@@ -383,6 +542,10 @@ class Preproc:
         if self.modulation_data is not None:
             modulation_hdu = fits.BinTableHDU(data=self.modulation_data, name='MODULATION')
             hdu_list.append(modulation_hdu)
+
+        if self.telemetry_data is not None:
+            telemetry_hdu = fits.BinTableHDU(data=self.telemetry_data, name='TELEMETRY')
+            hdu_list.append(telemetry_hdu)
             
         return hdu_list
 

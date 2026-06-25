@@ -143,8 +143,18 @@ class FlatMap:
         Normalize the data cube by a flat field.
         Args:
                 dataCube (DataCube): The data cube to normalize.
+        Raises:
+            ValueError: If the flat field trailing dimensions are not
+                broadcast-compatible with the data cube.
         """
         self._check_loaded()
+        flat_shape = self.flat.shape
+        data_shape = dataCube.data.shape[-self.flat.ndim:]
+        if not all(f in (1, d) for f, d in zip(flat_shape, data_shape)):
+            raise ValueError(
+                f"Flat field shape {flat_shape} is not broadcast-compatible "
+                f"with data cube trailing dimensions {data_shape}"
+            )
         dataCube.data *= self.inv_flat
         dataCube.variance *= self.inv_flat_squared
     

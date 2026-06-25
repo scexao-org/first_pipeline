@@ -21,7 +21,7 @@ from typing import List, Tuple
 import getpass
 import matplotlib
 if "VSCODE_PID" in os.environ:
-    matplotlib.use('Qt5Agg')
+    matplotlib.use('macosx')
 elif os.environ.get('SPYDER_DEBUG_FILE'):
     print("Running in Spyder")
 else:
@@ -157,7 +157,8 @@ if __name__ == "__main__":
 
         file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
         file_patterns = ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12?2*.fits"]
-        wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260608/preproc/firstpl_2026-06-08T06h5*.fits"]
+        # wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
         # flat_patterns = wave_patterns
 
 
@@ -170,10 +171,10 @@ if __name__ == "__main__":
         # wave_patterns = ["/Users/slacour/DATA/LANTERNE/20260307/wavemaps/"]
         # flat_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/flatmaps/"]
 
-        object_name = "HD163296"
-        modID = 2
-        file_patterns = ["/Users/slacour/DATA/LANTERNE/20260306/preproc/firstpl**.fits"]
-        wave_patterns = ["/Users/slacour/DATA/LANTERNE/20260307/wavemaps/"]
+        # object_name = "HD163296"
+        # modID = 2
+        # file_patterns = ["/Users/slacour/DATA/LANTERNE/20260306/preproc/firstpl**.fits"]
+        # wave_patterns = ["/Users/slacour/DATA/LANTERNE/20260307/wavemaps/"]
 
         
     print(f"Development override: wavelength_smooth={wavelength_smooth}, wavelength_bin={wavelength_bin}, Nsingular={Nsingular}")

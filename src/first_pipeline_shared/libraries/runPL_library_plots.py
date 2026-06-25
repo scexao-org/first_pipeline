@@ -284,7 +284,7 @@ def plot_flux_map(fluxes, xmod, ymod, desc = "Flux Map"):
 
     if plt.fignum_exists(desc):
         plt.close(desc)
-    fig,axs = plt.subplots(Ncube, 1, num=desc, figsize=(8, 1.5+4.5*Ncube), clear=True,squeeze=False)
+    fig,axs = plt.subplots(Ncube, 1, num=desc, figsize=(8, 3.+4.5*Ncube), clear=True,squeeze=False)
     
     for c in range(Ncube):
         fluxes = flux_padded[c]
