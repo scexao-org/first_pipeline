@@ -14,7 +14,7 @@ import os
 import getpass
 import matplotlib
 if "VSCODE_PID" in os.environ:
-    matplotlib.use('Qt5Agg')
+    matplotlib.use('macosx')
 elif os.environ.get('SPYDER_DEBUG_FILE'):
     print("Running in Spyder")
 else:
@@ -630,7 +630,8 @@ if __name__ == "__main__":
 
         # HIP81126
         file_patterns = ["/Users/slacour/DATA/LANTERNE/20250510/preproc/firstpl_2025-05-14T09h59*fits"]
-        
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260608/preproc/firstpl_2026-06-08T06h5*.fits"]
+
 
     print(f"Development override: wavelength_smooth={wavelength_smooth}, wavelength_bin={wavelength_bin}, Nsingular={Nsingular}")
     print(f"Development file patterns: {file_patterns}")

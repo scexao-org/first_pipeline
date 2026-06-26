@@ -109,7 +109,7 @@ Review diagnostic plots to ensure proper line detection and fitting.
     # are handled autonomously in run_createWaveMap()
 
     # Process wavelength map data
-    result = run_createWaveMap(
+    waveMap, datalist, residual_rms_nm = run_createWaveMap(
         file_patterns=file_patterns,
         dark_patterns=dark_patterns,
         flat_patterns=flat_patterns,
@@ -117,9 +117,8 @@ Review diagnostic plots to ensure proper line detection and fitting.
         Nexclude=Nexclude
     )
 
-    print(f"Wavelength map created successfully: {result['output_filename']}")
-    print(f"1D coefficients: {result['coef_1d']}")
-    print(f"2D coefficients: {result['coef_2d']}")
+    print(f"Wavelength map created successfully: {waveMap.filename}")
+    print(f"Wavelength solution residuals (RMS): {residual_rms_nm:.4f} nm")
 
 
 if __name__ == "__main__":

@@ -157,8 +157,8 @@ if __name__ == "__main__":
 
         file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
         file_patterns = ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12?2*.fits"]
-        file_patterns = ["/Users/slacour/DATA/FIRST/20260608/preproc/firstpl_2026-06-08T06h5*.fits"]
-        # wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260608/preproc/firstpl_2026-06-08T10h[1-2]*_RASALHAGUE_P.fits"]
+        wave_patterns = ["/Users/slacour/DATA/FIRST/20260608/wavemaps/"]
         # flat_patterns = wave_patterns
 
 
@@ -234,7 +234,7 @@ if __name__ == "__main__":
         # Plot flux map
         runlib_plots.plot_flux_map(flux.mean(axis=(2))[0], xmod[0], ymod[0])
 
-        data_normalized = data_svdfiltered / flux.mean(axis=(0,1))
+        data_normalized = data_svdfiltered / np.nanmean(flux, axis=(0,1))
 
         Nhanning = 20
         Nzeros = 11
@@ -301,7 +301,7 @@ if __name__ == "__main__":
         plt.title(object_name)
         plot(wave, w_hat[:,0],label="RA")
         plot(wave, w_hat[:,1],label="DEC")
-        flux_scaled = flux.mean(axis=(0,1)) / np.max(flux.mean(axis=(0,1)))*0.1
+        flux_scaled = np.nanmean(flux, axis=(0,1)) / np.nanmax(np.nanmean(flux, axis=(0,1)))*0.1
         # flux_scaled = f / f[:,1000:].max(axis=1)[:,None] *0.1
         plot(wave, flux_scaled.T,'k',label="Flux (scaled)")
         plt.ylabel("Astrometric signal (mas)")

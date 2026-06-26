@@ -14,7 +14,7 @@ import os
 import getpass
 import matplotlib
 if "VSCODE_PID" in os.environ:
-    matplotlib.use('Qt5Agg')
+    matplotlib.use('macosx')
 else:
     matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -358,7 +358,11 @@ def calculate_the_pixel_to_wavelength_mapping(ref_pixels_lines, neon_wavelengths
     x = ref_pixels_lines[best_valid_idx]
     
     coeffs_poly = np.polyfit(x, y, 2)
-    
+
+    # Residuals of the wavelength solution, in nanometers
+    residuals_nm = y - np.poly1d(coeffs_poly)(x)
+    rms_nm = np.std(residuals_nm)
+
     # Generate spectrum for plotting
     if neon_spectrum is not None:
         spectrum = neon_spectrum.sum(axis=0)
@@ -376,7 +380,7 @@ def calculate_the_pixel_to_wavelength_mapping(ref_pixels_lines, neon_wavelengths
     p2w = np.poly1d(coeffs_poly)
     wave_1D_mapping = p2w(np.arange(n_pixels))
 
-    return wave_1D_mapping, coeffs_poly, fig
+    return wave_1D_mapping, coeffs_poly, fig, rms_nm
 
 
 def get_filelist_wave(file_patterns, dark_patterns, flat_patterns, wollaston):
@@ -549,7 +553,7 @@ def run_createWaveMap(file_patterns=None, dark_patterns=None, flat_patterns=None
     ref_pixels_lines, aberated_image, coef_2d, fig_aberations = calculate_pixel_peaks_and_aberations(neon)
 
     # Calculate 1D wavelength mapping
-    wave_1D_mapping, coef_1d, fig_1d_mapping = calculate_the_pixel_to_wavelength_mapping(
+    wave_1D_mapping, coef_1d, fig_1d_mapping, residual_rms_nm = calculate_the_pixel_to_wavelength_mapping(
         ref_pixels_lines, neon_wavelengths, Nexclude, neon)
 
     # Compute final 2D wavelength map
@@ -588,7 +592,7 @@ def run_createWaveMap(file_patterns=None, dark_patterns=None, flat_patterns=None
     # Save all plots
     runlib_plots.save_pdf_in_file(output_filename)
 
-    return waveMap, datalist
+    return waveMap, datalist, residual_rms_nm
 
 
 if __name__ == "__main__":
@@ -605,13 +609,13 @@ if __name__ == "__main__":
         wollaston = None
         Nexclude = 5
         file_patterns = ["/Users/slacour/DATA/LANTERNE/raw/20260114/preproc/"]
-        file_patterns = ["/Users/slacour/DATA/LANTERNE/20260307/preproc/"]
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260609/preproc"]
         
         print(f"Development override: dark_patterns={dark_patterns}, flat_patterns={flat_patterns}, wollaston={wollaston}, Nexclude={Nexclude}")
         print(f"Development file patterns: {file_patterns}")
 
     # Process wavelength map data
-    waveMap, datalist = run_createWaveMap(
+    waveMap, datalist, residual_rms_nm = run_createWaveMap(
         file_patterns=file_patterns,
         dark_patterns=dark_patterns,
         flat_patterns=flat_patterns,

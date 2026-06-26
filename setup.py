@@ -15,7 +15,7 @@ try:
     from first_pipeline_shared import __version__, __author__, __email__, __description__
 except ImportError:
     # Fallback version info if import fails
-    __version__ = "1.1.1"
+    __version__ = "1.2.1"
     __author__ = "sylacour"
     __email__ = "sylvestre.lacour@observatoiredeparis.psl.eu"
     __description__ = "FIRST Pipeline for Visible Photonic Lantern data reduction at SUBARU/SCEXAO"
@@ -67,6 +67,7 @@ setup(
             'runPL_create_couplingMap=createCouplingMap.main:main',
             'runPL_make_image=makeImage.main:main',
             'runPL_make_astrometry=makeAstrometry.main:main',
+            'runPL_auto_process=autoProcess.main:main',
         ],
     },
     classifiers=[

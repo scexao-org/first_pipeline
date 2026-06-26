@@ -81,7 +81,7 @@ class DataCube:
         # computing the position angle (PA) of each frame
         THETA_OFFSET = 102.2  # degrees
         # if after spectembre 2025, cahngevalue of THETA_OFFSET
-        self.PAangle = -1 * (180.0 - THETA_OFFSET - self.get_parallactic_angle())[:,:,None]/180*np.pi
+        self.PAangle = -1 * (180.0 - THETA_OFFSET - self.get_parallactic_angle())/180*np.pi
         # print(f"Image-rotation angle range: {self.PAangle.min()*180/np.pi} to {self.PAangle.max()*180/np.pi} degrees")
         self.wave_label = "Pixel Index"
         self.wave = np.arange(self.Nwave)
@@ -187,21 +187,45 @@ class DataCube:
         if (size_total != size_old) or (frame_offset != 0):
             data_padded = np.full(size_total, np.nan)
             variance_padded = np.full(size_total, np.inf)
+            PAangle_padded = np.full(self.Ncube * self.Nmod, np.nan)
 
             # Non-cyclic shift: a positive frame_shift drops the leading frames
             # and appends padding at the end; a negative one prepends padding.
             src_start = max(frame_offset, 0)
             dst_start = max(-frame_offset, 0)
+            src_start_PAangle = max(frame_shift, 0)
+            dst_start_PAangle = max(-frame_shift, 0)
+
             n = min(size_old - src_start, size_total - dst_start)
             if n > 0:
                 data_padded[dst_start:dst_start + n] = self.data.ravel()[src_start:src_start + n]
                 variance_padded[dst_start:dst_start + n] = self.variance.ravel()[src_start:src_start + n]
 
+            # PAangle holds one value per frame, so its shift/count is expressed
+            # in frames rather than in flattened data elements.
+            n_PAangle = min(self.Ndit - src_start_PAangle,
+                            self.Ncube * self.Nmod - dst_start_PAangle)
+            if n_PAangle > 0:
+                PAangle_padded[dst_start_PAangle:dst_start_PAangle + n_PAangle] = \
+                    self.PAangle.ravel()[src_start_PAangle:src_start_PAangle + n_PAangle]
+
+            # The padded frames carry no data (NaN above) and are masked out
+            # downstream, but PAangle is a geometric quantity used in
+            # (non-NaN-tolerant) matrix inversions. Fill the padded slots with
+            # the nearest valid angle so the geometry stays finite.
+            valid_mask = ~np.isnan(PAangle_padded)
+            if valid_mask.any():
+                valid_idx = np.where(valid_mask)[0]
+                PAangle_padded[:valid_idx[0]] = PAangle_padded[valid_idx[0]]
+                PAangle_padded[valid_idx[-1] + 1:] = PAangle_padded[valid_idx[-1]]
+
             self.data = data_padded.reshape(size_new)
             self.variance = variance_padded.reshape(size_new)
+            self.PAangle = PAangle_padded.reshape(size_new[0], size_new[1])
         else:
             self.data = self.data.reshape(size_new)
             self.variance = self.variance.reshape(size_new)
+            self.PAangle = self.PAangle.reshape(size_new[0], size_new[1])
 
 
         self.xmod=np.zeros((size_new[0],size_new[1]))
@@ -222,7 +246,7 @@ class DataCube:
         # we could aslo use FRATE, but I am not sure it is better in triggered mode
         frame_sampling = (self.time_end - self.time_start).sec / self.Ndit
 
-        times = self.time_start + (frame_sampling/2 + np.linspace(0, frame_sampling * self.Ndit, self.self.Ndit) ) * u.s
+        times = self.time_start + (frame_sampling/2 + np.linspace(0, frame_sampling * self.Ndit, self.Ndit) ) * u.s
         par_angles = subaru.parallactic_angle(times, target).deg
         if False:
             par_angle = subaru.parallactic_angle(self.time_start, target).deg
@@ -234,8 +258,9 @@ class DataCube:
     ## calculate the projection of the offset in the field based on the current parangle and delta-coordinates of target */
     def project_offsets(self, x_sky, y_sky):
         proj_offsets = np.zeros((*x_sky.shape, 2))
-        proj_offsets[..., 0] = np.sin(self.PAangle) * y_sky + np.cos(self.PAangle) * x_sky
-        proj_offsets[..., 1] = np.cos(self.PAangle) * y_sky - np.sin(self.PAangle) * x_sky
+        PAangle = self.PAangle[..., None]
+        proj_offsets[..., 0] = np.sin(PAangle) * y_sky + np.cos(PAangle) * x_sky
+        proj_offsets[..., 1] = np.cos(PAangle) * y_sky - np.sin(PAangle) * x_sky
         proj_offsets[..., 0] += self.x_object
         proj_offsets[..., 1] += self.y_object
 
