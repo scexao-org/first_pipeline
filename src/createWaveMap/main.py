@@ -119,6 +119,12 @@ Review diagnostic plots to ensure proper line detection and fitting.
 
     print(f"Wavelength map created successfully: {waveMap.filename}")
     print(f"Wavelength solution residuals (RMS): {residual_rms_nm:.4f} nm")
+    if residual_rms_nm > 0.1:
+        print("\n" + "!" * 72)
+        print("!!! WARNING: FIT RESIDUAL IS TOO LARGE !!!")
+        print(f"!!! Residual RMS = {residual_rms_nm:.4f} nm (> 0.1 nm) !!!")
+        print("!!! Increase or decrease --Nexclude and run the fit again. !!!")
+        print("!" * 72 + "\n")
 
 
 if __name__ == "__main__":

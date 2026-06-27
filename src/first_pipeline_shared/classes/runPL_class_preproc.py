@@ -457,7 +457,7 @@ class Preproc:
         fig, ax = runlib_io.make_figure_of_trace(self.raw_image, pixelMap.traces_loc, 
                                                  pixelMap.pixel_wide, pixelMap.pixel_min, 
                                                  pixelMap.pixel_max)
-        fig.savefig(self.filename[:-5] + "_1.png", dpi=300)
+        fig.savefig(self.filename[:-5] + "_1.png", dpi=250)
         
         # Create coupling map figure if modulation data is available
         if (self.modulation_data is not None and 
@@ -478,7 +478,7 @@ class Preproc:
                           f"X_FIROBY = {self.header.get('X_FIROBY', 'N/A')}\n"
                           f"number of DIT to be shifted = {self.header.get('X_FIRGSH', 'N/A')}")
             fig.suptitle(string_title)
-            fig.savefig(self.filename[:-5] + "_2.png", dpi=300)
+            fig.savefig(self.filename[:-5] + "_2.png", dpi=250)
 
     def save(self, header=None):
         self._check_loaded()

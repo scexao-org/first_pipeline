@@ -16,6 +16,8 @@ if os.path.join(os.path.dirname(__file__), '..') not in sys.path:
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import numpy as np
+from scipy.ndimage import convolve1d
+from scipy.constants import speed_of_light
 from typing import List, Tuple
 
 import getpass
@@ -33,6 +35,7 @@ plt.ion()
 from tqdm import tqdm
 from astroplan import Observer
 from astropy.time import Time
+from astropy.io import fits
 
 from first_pipeline_shared.classes.runPL_class_flatMap import FlatMap  
 from first_pipeline_shared.classes.runPL_class_waveMap import WaveMap
@@ -114,7 +117,7 @@ def get_filelist_astrometry(file_patterns, dark_patterns=None, flat_patterns=Non
     flatMap = FlatMap(file_flat) if file_flat is not None else None
     waveMap = WaveMap(file_wave) if file_wave is not None else None
 
-    return fileList, flatMap, waveMap
+    return fileList, flatMap, waveMap, object_name
 
 def check_observatory_status():
     """
@@ -130,6 +133,414 @@ def check_observatory_status():
         return "It's night at Subaru Observatory."
     else:
         return "It's day at Subaru Observatory."
+    
+
+def compute_smoothed_data(data_normalized, x_hanning):
+    """Compute the Hanning-smoothed (continuum) data cube for a given window size."""
+    Nwave = data_normalized.shape[-1]
+    x_zeros = x_hanning // 2
+    Nhanning = x_hanning * 2 + 1
+    hanning_window = np.hanning(Nhanning)
+    hanning_window[x_hanning - x_zeros:x_hanning + 1 + x_zeros] = 0
+    hanning_window /= hanning_window.sum()  # Normalize the window
+    # Edge normalization: weights overlapping the valid (zero-padded) region
+    edge_norm = np.convolve(np.ones(Nwave), hanning_window, mode='same')
+    # Vectorized convolution along the wavelength axis (zero-padded boundary,
+    # equivalent to np.convolve mode='same'); the symmetric odd window keeps
+    # the kernel centered.
+    data_smoothed = convolve1d(data_normalized, hanning_window, axis=-1,
+                                mode='constant', cval=0.0)
+    data_smoothed = data_smoothed / edge_norm
+    return data_smoothed, hanning_window
+
+
+def compute_smoothed_line(data_normalized, wave, line_aera, poly_deg):
+    """Estimate the continuum under a line with a low-order polynomial fit.
+
+    The continuum is fitted on two side windows (each as wide as the line) on
+    either side of the line and evaluated across the line wavelengths.
+    """
+    line_idx = np.where(line_aera)[0]
+    i0, i1 = line_idx[0], line_idx[-1]
+    n_line = i1 - i0 + 1
+    left = slice(max(i0 - n_line, 0), i0)
+    right = slice(i1 + 1, i1 + 1 + n_line)
+    cont_idx = np.r_[np.arange(left.start, left.stop),
+                     np.arange(right.start, right.stop)]
+    # Fit all (cube, step, output) continua at once on the side windows
+    y_cont = data_normalized[..., cont_idx]                          # (Ncube, Nstep, Noutput, Ncont)
+    cont_shape = y_cont.shape[:-1]
+    coeffs = np.polyfit(wave[cont_idx],
+                        y_cont.reshape(-1, len(cont_idx)).T, poly_deg)  # (poly_deg+1, Nseries)
+    # Evaluate the polynomial continuum across the line wavelengths
+    V_line = np.vander(wave[line_aera], poly_deg + 1)                # (n_line, poly_deg+1)
+    data_smoothed_line = (V_line @ coeffs).T.reshape(*cont_shape, -1)  # (..., n_line)
+    return data_smoothed_line
+
+
+def process_astrometric_data(
+    file_patterns, object_name=None, dark_patterns=None, flat_patterns=None, wave_patterns=None, modID=None, modScale=None, wollaston=None,
+    Nsingular=19*6, center_data=False, line_center=656.28, line_width= 3.0, poly_deg=2, PA=137.0):
+    """
+    Measure the wavelength-dependent photocenter shift (spectro-astrometry).
+
+    Equation being solved
+    ----------------------
+    For a source at sky position p = (alpha, delta), each lantern output flux
+    in `data_normalized` is locally linear in p:
+
+        data_normalized(p) ~= data_normalized(p_k) + jacobian (p - p_k)
+
+    where `jacobian` = d(data_normalized)/dp in R^(Nout x 2).
+
+    The known modulation dither provides, around each interior point k, two
+    sky steps and the corresponding measured output differences:
+
+        sky_step_basis = [ sky_step_fwd , sky_step_bwd ]       (2 x 2)
+                        = [ p_{k+1}-p_k , p_{k-1}-p_k ]
+
+        data_diff_basis = [ data_diff_fwd , data_diff_bwd ]    (Nout x 2)
+                        = [ D_{k+1}-D_k , D_{k-1}-D_k ]
+
+    Since data_diff_basis = jacobian @ sky_step_basis, the local response
+    Jacobian is recovered by inverting the (known) dither geometry:
+
+        jacobian = data_diff_basis @ sky_step_basis_inv
+
+    (only well-conditioned, non-collinear bases are kept, via `valid_basis`).
+
+    The signal of interest is a small, wavelength-dependent astrometric shift
+    `astrometry_shift`(lambda) = (d_alpha(lambda), d_delta(lambda)) shared by
+    all outputs, steps and exposures. In addition, each output o carries an
+    unknown multiplicative gain `flat`[o] (shape Noutput x Nwave) relative to
+    the smooth spectral continuum (`data_smoothed`, Hanning smoothing). The
+    forward model relating both unknowns to the data is:
+
+        jacobian @ astrometry_shift = data_normalized * flat - data_smoothed
+
+    Here `astrometry_shift` (2 values per wavelength) is shared by every output
+    and block, while `flat` (one value per output per wavelength) is shared by
+    every block but free across outputs. The system decouples per wavelength;
+    at each wavelength the unknowns are `astrometry_shift` (2) plus `flat`
+    (Noutput). Because `flat`[o] enters linearly and only in the rows of output
+    o, it is eliminated analytically for any given `astrometry_shift`
+    (separable / variable-projection least squares):
+
+        flat[o] = sum_b data_b[o] (jacobian[o] @ astrometry_shift + data_smoothed[o])
+                    / sum_b data_b[o]^2
+
+    Substituting the optimal `flat` back projects the per-block Jacobian and
+    the smoothed data onto the complement of the flat directions (`J_proj`,
+    `s_proj`) and leaves a single 2x2 normal system per wavelength:
+
+        M(lambda) @ astrometry_shift(lambda) = -sum_{b,o} J_proj * s_proj
+        M(lambda) = sum_{b,o} J_proj @ J_proj^T
+
+    solved by inverting the 2x2 matrix `M_inv`. The two columns of
+    `astrometry_shift` are the RA and DEC astrometric signals versus
+    wavelength. `M` (like `J_proj`) depends only on the dither geometry and the
+    measured data, not on the smoothing window, so it is built and inverted
+    once; the solve is repeated for a range of Hanning window sizes
+    (`x_hanning`).
+
+    Identifiability: a single output cannot separate astrometry from its own
+    flat gain, but `flat`[o] is constant across the dither blocks whereas the
+    astrometric response `jacobian` varies block to block, so several dither
+    positions are required to break the degeneracy (and the extra Noutput free
+    parameters per wavelength do inflate the astrometric noise).
+
+    `PA` (degrees) is used for plotting only: it draws a reference position
+    angle line on the astrometry_scatter figure and does not affect any of the
+    computed results.
+    """
+
+    # Set up default patterns
+    if dark_patterns is None:
+        dark_patterns = file_patterns
+    if flat_patterns is None and file_patterns:
+        folder = os.path.dirname(file_patterns[0])
+        flat_patterns = file_patterns + [os.path.join(folder, "../flatmaps")] + [os.path.join(folder, "flatmaps")]
+    if wave_patterns is None and file_patterns:
+        folder = os.path.dirname(file_patterns[0])
+        wave_patterns = file_patterns + [os.path.join(folder, "../wavemaps")] + [os.path.join(folder, "wavemaps")]
+
+    # Get file list and calibration maps
+    fileList, flatMap, waveMap, object_name = get_filelist_astrometry(
+        file_patterns, dark_patterns, flat_patterns, wave_patterns,
+        object_name, modID, modScale, wollaston
+    )
+
+    # Extract data
+    datalist: List[DataCube] = fileList.extract_data_from_list(
+        flatMap=flatMap,
+        waveMap=waveMap, center=center_data
+    )
+
+    # Concatenate data arrays
+    flux = np.concatenate([d.flux for d in datalist])
+    datacube = np.concatenate([d.data for d in datalist])
+    datacube_var = np.concatenate([d.variance for d in datalist])
+    wave = datalist[0].wave  # Assuming all have the same wavelength grid
+    xmod = np.concatenate([d.xmod for d in datalist])
+    ymod = np.concatenate([d.ymod for d in datalist])
+    ra_dec = np.concatenate([d.compute_xy_sky() for d in datalist])
+
+    # Create filename associations
+    basenames = []
+    for d in datalist:
+        n = d.data.shape[0]
+        basenames.extend([d.basename] * n)
+    filenames = [d.filename for d in datalist]
+
+    # Data quality filtering
+    flux_goodData, flux_threshold = runlib_linalg.flux_filtering(flux)
+    print(f"* Percentage of good data: {np.sum(flux_goodData)/len(flux_goodData.ravel())*100:.1f} % (flux threshold)")
+
+    # SVD filtering
+    data_svdfiltered, fit_goodData, errors = runlib_linalg.svd_filtering(datacube, flux_goodData, Nsingular)
+    goodData = flux_goodData & fit_goodData
+    print(f"* Percentage of good data: {np.sum(goodData)/len(goodData.ravel())*100:.1f} % (flux and svd threshold)")
+
+    # Plot flux map
+    runlib_plots.plot_flux_map(flux.mean(axis=(2))[0], xmod[0], ymod[0])
+
+    mean_flux = np.nanmean(flux, axis=(0,1))
+    data_normalized = data_svdfiltered / mean_flux
+
+    # ra_dec = np.stack([xmod,ymod],axis=-1)
+    # Known sky steps from each interior modulation point to its two neighbours
+    sky_step_fwd = ra_dec[:,2:] - ra_dec[:,1:-1]    # p_{k+1} - p_k
+    sky_step_bwd = ra_dec[:,:-2] - ra_dec[:,1:-1]   # p_{k-1} - p_k
+
+    # 2x2 basis of known sky steps (columns are the two step vectors)
+    sky_step_basis = np.stack([sky_step_fwd, sky_step_bwd], axis=-1)
+    sky_step_basis_inv = np.linalg.pinv(sky_step_basis)
+
+    # Keep only well-conditioned (non-collinear) bases and good-quality data
+    sky_step_basis_det = np.linalg.det(sky_step_basis)
+    valid_basis = np.abs(sky_step_basis_det) > np.max(np.abs(sky_step_basis_det)) * 1e-2
+    valid_basis &= goodData[:,2:] & goodData[:,:-2] & goodData[:,1:-1]
+
+    # Measured output changes for the same forward/backward steps
+    data_diff_fwd = data_normalized[:,2:] - data_normalized[:,1:-1]    # D_{k+1} - D_k
+    data_diff_bwd = data_normalized[:,:-2] - data_normalized[:,1:-1]   # D_{k-1} - D_k
+
+
+    # now do the calculations for a list of x_hanning values
+
+    Ncube = data_normalized.shape[0]
+    Nwave = data_normalized.shape[3]
+
+    # Pixel-to-wavelength scale and central-notch half-width (in pixels) so that
+    # the zeroed middle of the Hanning window spans the spectral line width.
+    # Use abs() since `wave` may be stored in decreasing order.
+    dwave = np.abs(np.median(np.diff(wave)))
+    line_width_pix = line_width / dwave
+
+    # Build the per-block response Jacobian once: it does not depend on x_hanning.
+    # Each block is a valid interior modulation point (i_cube, j_step); for that
+    # block we also keep the measured (interior) data that multiplies the flat.
+    jacobian_blocks = []
+    data_blocks = []
+    valid_indices = []
+    data_interior = data_normalized[:, 1:-1]
+    for i_cube in range(Ncube):
+        for j_step in range(data_diff_fwd.shape[1]):
+
+            if valid_basis[i_cube, j_step] == False:
+                continue
+
+            # Stack the two measured output differences: [D_{k+1}-D_k , D_{k-1}-D_k]
+            data_diff_basis = np.stack(
+                [data_diff_fwd[i_cube, j_step], data_diff_bwd[i_cube, j_step]], axis=-1)
+
+            # Local response Jacobian J = (data differences) @ (sky-step basis)^-1
+            jacobian = data_diff_basis @ sky_step_basis_inv[i_cube, j_step]
+
+            jacobian_blocks.append(jacobian)
+            data_blocks.append(data_interior[i_cube, j_step])
+            valid_indices.append((i_cube, j_step))
+
+    # (Nblocks, Noutput, Nwave, 2) and (Nblocks, Noutput, Nwave)
+    J_blocks = np.stack(jacobian_blocks, axis=0)
+    data_b = np.stack(data_blocks, axis=0)
+
+    # Joint forward model, per block b, output o and wavelength (decouples per wave):
+    #     jacobian @ astrometry = data * flat - data_smoothed
+    # astrometry = (d_alpha, d_delta) is shared by all (b, o); flat[o] is an
+    # unknown gain shared by all blocks b but free across outputs. For fixed
+    # astrometry the optimal flat is linear in astrometry, so it is eliminated
+    # analytically (variable projection), leaving a 2x2 system per wavelength.
+    # The projected Jacobian and the 2x2 normal matrix do not depend on the
+    # smoothing window, so they are built (and inverted) once.
+    D2 = np.sum(data_b ** 2, axis=0)                          # (Noutput, Nwave)
+    G = np.sum(data_b[..., None] * J_blocks, axis=0)          # (Noutput, Nwave, 2)
+    J_proj = J_blocks - data_b[..., None] * (G / D2[..., None])[None]
+    M = np.einsum('bowi,bowj->wij', J_proj, J_proj)           # (Nwave, 2, 2)
+    M_inv = np.linalg.inv(M)
+
+    # Solve for astrometry (and recover flat) for a list of x_hanning windows
+    # Largest window is twice the line width (in pixels)
+    x_hanning_max = int(round(line_width_pix * 2))
+    x_hanning_values = list(range(3, x_hanning_max + 1, 3))
+    astrometry_shift_list = []
+    flat_list = []
+    hanning_window_list = []
+    for x_hanning in tqdm(x_hanning_values, desc="x_hanning"):
+        data_smoothed, hanning_window = compute_smoothed_data(data_normalized, x_hanning)
+        sm_b = np.stack([data_smoothed[:, 1:-1][i_cube, j_step]
+                            for (i_cube, j_step) in valid_indices], axis=0)
+
+        # Project out the flat directions, then solve the 2x2 normal system
+        H = np.sum(data_b * sm_b, axis=0)                     # (Noutput, Nwave)
+        s_proj = sm_b - data_b * (H / D2)[None]
+        rhs = -np.einsum('bowi,bow->wi', J_proj, s_proj)      # (Nwave, 2)
+        astrometry_shift = (M_inv @ rhs[:, :, None])[:, :, 0]
+
+        # Recover the eliminated flat gains: flat = (G . astrometry + H) / D2
+        flat = (np.einsum('owi,wi->ow', G, astrometry_shift) + H) / D2
+
+        astrometry_shift_list.append(astrometry_shift)
+        flat_list.append(flat)
+        hanning_window_list.append(hanning_window)
+
+    flux_scaled = np.nanmean(flux, axis=(0,1)) / np.nanmax(np.nanmean(flux, axis=(0,1)))
+
+    # Speed of light in km/s (precise CODATA value)
+    c = speed_of_light / 1e3
+    line_aera = (wave > line_center - line_width/2) & (wave < line_center + line_width/2)
+
+    # Prepare output paths (mirrors run_createCouplingMap save logic)
+    new_header = datalist[-1].header.copy()
+    new_header['X_FIRTYP'] = 'ASTROMETRY'
+    new_header['Q_ASLINE'] = (line_center, 'line center wavelength (nm)')
+    new_header['Q_ASLWID'] = (line_width, 'line width (nm)')
+    new_header['Q_ASPDEG'] = (poly_deg, 'polynomial degree of the continuum fit')
+    new_header['Q_ASSING'] = (Nsingular, 'number of singular values')
+    new_header['Q_ASNAME'] = (runlib_io.create_basename(new_header), 'name of the astrometry file')
+
+    output_dir = os.path.join(datalist[-1].dirname, "../astrometry")
+    os.makedirs(output_dir, exist_ok=True)
+    output_filename = os.path.join(output_dir, new_header['Q_ASNAME'])
+    pdf_filename = os.path.splitext(output_filename)[0] + ".pdf"
+
+    # Collect the requested figures (astrometry_1, astrometry_2,
+    # astrometry_scatter_PA) into a single multi-page PDF next to the FITS file.
+    from matplotlib.backends.backend_pdf import PdfPages
+    pdf = PdfPages(pdf_filename)
+
+    # Compare RA and DEC astrometry for the different x_hanning values
+    fig, axes = plt.subplots(2, 1, figsize=(10, 9), num="astromet_comparison_2",
+                                clear=True, sharex=True)
+    axes[1].sharey(axes[0])
+    cmap = plt.cm.viridis
+    norm_color = plt.Normalize(vmin=min(x_hanning_values), vmax=max(x_hanning_values))
+    for x_hanning, astrometry_shift in zip(x_hanning_values, astrometry_shift_list):
+        color = cmap(norm_color(x_hanning))
+        axes[0].plot(wave, astrometry_shift[:, 0], color=color, alpha=0.7)
+        axes[1].plot(wave, astrometry_shift[:, 1], color=color, alpha=0.7)
+    # Shade the line area
+    for ax in axes:
+        ax.axvspan(line_center - line_width/2, line_center + line_width/2,
+                    color='gray', alpha=0.2)
+    # Flux plotted on its own (right) y-axis in red
+    ax0_flux = axes[0].twinx()
+    ax1_flux = axes[1].twinx()
+    for ax_flux in (ax0_flux, ax1_flux):
+        ax_flux.plot(wave, flux_scaled.T, 'r', alpha=0.5)
+        ax_flux.set_ylabel("Flux (scaled)", color='r')
+        ax_flux.tick_params(axis='y', colors='r')
+    axes[0].set_ylabel("RA astrometric signal (mas)")
+    axes[1].set_ylabel("DEC astrometric signal (mas)")
+    axes[1].set_xlabel("Wavelength")
+    axes[0].set_title(f"{object_name} - RA astrometry")
+    axes[1].set_title(f"{object_name} - DEC astrometry")
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm_color)
+    sm.set_array([])
+    fig.colorbar(sm, ax=axes, label="size of Hanning smoothing window (in pixels)")
+
+    fig.savefig("astrometry_1.pdf")
+    pdf.savefig(fig)  # page 1: astrometry_1 (full-band view)
+
+
+    axes[0].set_xlim(line_center - line_width*2, line_center + line_width*2)
+    # Scale the y-axis to the peak |astrometry_shift| inside the plotted x-range
+    wave_mask = (wave > line_center - line_width*2) & (wave < line_center + line_width*2)
+    y_max = np.nanmax([np.nanmax(np.abs(a[wave_mask])) for a in astrometry_shift_list])
+    axes[0].set_ylim(-y_max, y_max)
+    fig.savefig("astrometry_2.pdf")
+    pdf.savefig(fig)  # page 2: astrometry_2 (zoom on the line)
+
+
+    # here, do the work to plot the astrometry vs velocity, using the line_center and line_width to select the relevant wavelengths
+
+    # Astrometry over the line, using a polynomial continuum
+    # ------------------------------------------------------
+    # Estimate the continuum under the line (polynomial fit on the side
+    # windows) instead of the notch-Hanning smoothing.
+    data_smoothed_line = compute_smoothed_line(data_normalized, wave, line_aera, poly_deg)
+
+    # Solve the same variable-projection 2x2 system, restricted to the line
+    # wavelengths, reusing the precomputed projected Jacobian and 2x2 inverse.
+    sm_b_line = np.stack([data_smoothed_line[:, 1:-1][i_cube, j_step]
+                            for (i_cube, j_step) in valid_indices], axis=0)
+    data_b_line = data_b[..., line_aera]
+    D2_line = D2[..., line_aera]
+    J_proj_line = J_proj[..., line_aera, :]
+    M_inv_line = M_inv[line_aera]
+    H_line = np.sum(data_b_line * sm_b_line, axis=0)
+    s_proj_line = sm_b_line - data_b_line * (H_line / D2_line)[None]
+    rhs_line = -np.einsum('bowi,bow->wi', J_proj_line, s_proj_line)
+    astrometry_xy = (M_inv_line @ rhs_line[:, :, None])[:, :, 0]     # (n_line, 2)
+
+    astrometry_wave = wave[line_aera]
+    # Doppler velocity (km/s)
+    velocity = c * (astrometry_wave - line_center) / line_center
+
+
+
+
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6), num="astrometry_scatter", clear=True)
+    flux_scaled_filtered = flux_scaled[line_aera]
+    scatter = ax.scatter(astrometry_xy[:, 0], astrometry_xy[:, 1], c=velocity, s=flux_scaled_filtered*1000, cmap='viridis', alpha=0.6)
+    ax.plot(astrometry_xy[:, 0], astrometry_xy[:, 1], 'k-', alpha=0.3, linewidth=1)
+    ax.set_xlabel("RA (mas)")
+    ax.set_ylabel("DEC (mas)")
+    ax.set_aspect('equal')
+    lim = np.max(np.abs(ax.get_xlim() + ax.get_ylim()))
+    ax.set_xlim(lim, -lim)
+    ax.set_ylim(-lim, lim)
+    fig.colorbar(scatter, ax=ax, label="Velocity (km/s)")
+    ax.set_title(f"{object_name} - Astrometry vs Velocity, poly deg={poly_deg}")
+    fig.savefig("astrometry_scatter.png", dpi=300)
+    ax.grid(True, alpha=0.3)
+    ax.xaxis.set_major_locator(plt.MultipleLocator(0.05))
+    ax.yaxis.set_major_locator(plt.MultipleLocator(0.05))
+
+    PA_rad = PA*np.pi/180
+    y = np.linspace(-lim,lim,100)
+    x = np.tan(PA_rad)*y
+    ax.plot(x,y,'k--',label=f"PA={PA:.2f}°") 
+    ax.legend() 
+
+    fig.savefig("astrometry_scatter_PA.png", dpi=300)
+    pdf.savefig(fig)  # page 3: astrometry_scatter_PA
+    pdf.close()
+    print(f"All figures saved to {pdf_filename}")
+
+    # Save the astrometric results to a FITS file (mirrors run_createCouplingMap)
+    astrometry_shift_all = np.stack(astrometry_shift_list, axis=0)  # (n_hanning, Nwave, 2)
+    hdul = fits.HDUList([
+        fits.PrimaryHDU(header=new_header),
+        fits.ImageHDU(data=np.asarray(wave, dtype=float), name='WAVE'),
+        fits.ImageHDU(data=np.asarray(flux_scaled, dtype=float), name='FLUX_SCALED'),
+        fits.ImageHDU(data=np.asarray(astrometry_shift_all, dtype=float), name='ASTROMETRY_SHIFT'),
+        fits.ImageHDU(data=np.asarray(astrometry_xy, dtype=float), name='ASTROMETRY_XY'),
+        fits.ImageHDU(data=np.asarray(x_hanning_values, dtype=float), name='X_HANNING'),
+    ])
+    hdul.writeto(output_filename, overwrite=True)
+    print(f"Astrometry results saved to {output_filename}")
+
 
 
 if __name__ == "__main__":
@@ -147,20 +558,35 @@ if __name__ == "__main__":
         dark_patterns = None
         flat_patterns = None
         wave_patterns = None
-        wavelength_smooth = 1
-        wavelength_bin = 1
         Nsingular = 19*6
         modID = None
         modScale = None
         wollaston = None
         center_data = False
+        line_center=656.28
+        line_width= 2
+        poly_deg=4
+        PA=137  # for plotting only
 
         file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
         file_patterns = ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12?2*.fits"]
         file_patterns = ["/Users/slacour/DATA/FIRST/20260608/preproc/firstpl_2026-06-08T10h[1-2]*_RASALHAGUE_P.fits"]
+        # file_patterns = ["/Users/slacour/DATA/FIRST/20260608/preproc/firstpl_2026-06-08T10h18*_RASALHAGUE_P.fits"]
         wave_patterns = ["/Users/slacour/DATA/FIRST/20260608/wavemaps/"]
         # flat_patterns = wave_patterns
 
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h3[2-9]*_HD163296_P.fits"]
+        wave_patterns = ["/Users/slacour/DATA/FIRST/20260625/wavemaps/"]
+
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T08h59m59s_HD142527_P.fits",
+                         "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h01m49s_HD142527_P.fits",
+                            "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h19m55s_HD142527_P.fits",
+                         ]
+
+        # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12*_ALTAIR_P.fits"]
+        # # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12h18*_ALTAIR_P.fits"]
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12h2*_ALTAIR_P.fits"]
+        # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T14h36*_ALTAIR_P.fits"]
 
         # file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T20h56*.fits"]
         # file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T21h10*.fits"]
@@ -177,260 +603,7 @@ if __name__ == "__main__":
         # wave_patterns = ["/Users/slacour/DATA/LANTERNE/20260307/wavemaps/"]
 
         
-    print(f"Development override: wavelength_smooth={wavelength_smooth}, wavelength_bin={wavelength_bin}, Nsingular={Nsingular}")
     print(f"Development file patterns: {file_patterns}")
-
-    def process_astrometric_data(
-        file_patterns, object_name=None, dark_patterns=None, flat_patterns=None, wave_patterns=None, modID=None, modScale=None, wollaston=None,
-        wavelength_smooth=1, wavelength_bin=1, Nsingular=19*6, center_data=False):
-
-        # Set up default patterns
-        if dark_patterns is None:
-            dark_patterns = file_patterns
-        if flat_patterns is None and file_patterns:
-            folder = os.path.dirname(file_patterns[0])
-            flat_patterns = file_patterns + [os.path.join(folder, "../flatmaps")] + [os.path.join(folder, "flatmaps")]
-        if wave_patterns is None and file_patterns:
-            folder = os.path.dirname(file_patterns[0])
-            wave_patterns = file_patterns + [os.path.join(folder, "../wavemaps")] + [os.path.join(folder, "wavemaps")]
-
-        # Get file list and calibration maps
-        fileList, flatMap, waveMap = get_filelist_astrometry(
-            file_patterns, dark_patterns, flat_patterns, wave_patterns,
-            object_name, modID, modScale, wollaston
-        )
-
-        # Extract data
-        datalist: List[DataCube] = fileList.extract_data_from_list(
-            Nsmooth=wavelength_smooth, Nbin=wavelength_bin, flatMap=flatMap,
-            waveMap=waveMap, center=center_data
-        )
-
-        # Concatenate data arrays
-        flux = np.concatenate([d.flux for d in datalist])
-        datacube = np.concatenate([d.data for d in datalist])
-        datacube_var = np.concatenate([d.variance for d in datalist])
-        wave = datalist[0].wave  # Assuming all have the same wavelength grid
-        xmod = np.concatenate([d.xmod for d in datalist])
-        ymod = np.concatenate([d.ymod for d in datalist])
-        ra_dec = np.concatenate([d.compute_xy_sky() for d in datalist])
-
-        # Create filename associations
-        basenames = []
-        for d in datalist:
-            n = d.data.shape[0]
-            basenames.extend([d.basename] * n)
-        filenames = [d.filename for d in datalist]
-
-        # Data quality filtering
-        flux_goodData, flux_threshold = runlib_linalg.flux_filtering(flux)
-        print(f"* Percentage of good data: {np.sum(flux_goodData)/len(flux_goodData.ravel())*100:.1f} % (flux threshold)")
-
-        # SVD filtering
-        data_svdfiltered, fit_goodData, errors = runlib_linalg.svd_filtering(datacube, flux_goodData, Nsingular)
-        goodData = flux_goodData & fit_goodData
-        print(f"* Percentage of good data: {np.sum(goodData)/len(goodData.ravel())*100:.1f} % (flux and svd threshold)")
-
-        # Plot flux map
-        runlib_plots.plot_flux_map(flux.mean(axis=(2))[0], xmod[0], ymod[0])
-
-        data_normalized = data_svdfiltered / np.nanmean(flux, axis=(0,1))
-
-        Nhanning = 20
-        Nzeros = 11
-        Nwave = len(wave)
-        Ncube = data_normalized.shape[0]
-        hanning_window = np.hanning(Nhanning)
-        hanning_window = np.append( np.append(hanning_window, np.zeros(Nzeros)), hanning_window)
-        hanning_window /= hanning_window.sum()  # Normalize the window
-        data_hanning = data_normalized.copy()
-        norm = np.convolve(np.ones(Nwave), hanning_window, mode='same')
-        for i in tqdm(range(Ncube)):
-            for j in range(data_normalized.shape[1]):
-                for k in range(data_normalized.shape[2]):
-                    data_hanning[i, j, k] = np.convolve(data_normalized[i, j, k], hanning_window, mode='same')/norm
-
-        # ra_dec = np.stack([xmod,ymod],axis=-1)
-        u = ra_dec[:,2:] - ra_dec[:,1:-1]
-        v=  ra_dec[:,:-2] - ra_dec[:,1:-1]
-
-        M_k = np.stack([u, v], axis=-1)
-        M_k_inv = np.linalg.pinv(M_k)
-
-        det_M = np.linalg.det(M_k)
-        good_M = np.abs(det_M) > np.max(np.abs(det_M)) * 1e-2
-        good_M &=  goodData[:,2:] & goodData[:,:-2] & goodData[:,1:-1]
-
-        data_u = data_normalized[:,2:] - data_normalized[:,1:-1]
-        data_v = data_normalized[:,:-2] - data_normalized[:,1:-1]
-        data_w = data_normalized[:,1:-1] - data_hanning[:,1:-1]
-
-        J_blocks = []
-        C_blocks = []
-        D_blocks = []
-        W_blocks = []
-
-        for i in tqdm(range(Ncube)):
-            for j in range(data_u.shape[1]):
-                    
-                if good_M[i,j] == False:
-                    continue
-
-                # Y_k = [A_k  B_k], shape (19,2)
-                Y_k = np.stack([data_u[i,j], data_v[i,j]], axis=-1)
-
-                # J_k = Y_k @ inv(M_k)
-                # Using solve is numerically better than explicit inverse:
-                # J_k.T = solve(M_k.T, Y_k.T)
-                J_k = Y_k @ M_k_inv[i,j]
-
-                w = (np.linalg.pinv(J_k.transpose((1,0,2))) @ data_w[i,j].T[:,:,None])[:,:,0]
-
-                J_blocks.append(J_k)
-                C_blocks.append(data_w[i,j])
-                D_blocks.append(data_normalized[i,j+1])
-                W_blocks.append(w)
-
-        J_tilde = np.vstack(J_blocks).transpose((1,0,2))
-        C_tilde = np.concatenate(C_blocks).T
-        D_tilde = np.concatenate(D_blocks).T
-        W_tilde = np.array(W_blocks)
-
-        w_hat = (np.linalg.pinv(J_tilde) @ C_tilde[:,:,None])[:,:,0]
-        figure("astromet",clear=True)
-        plt.title(object_name)
-        plot(wave, w_hat[:,0],label="RA")
-        plot(wave, w_hat[:,1],label="DEC")
-        flux_scaled = np.nanmean(flux, axis=(0,1)) / np.nanmax(np.nanmean(flux, axis=(0,1)))*0.1
-        # flux_scaled = f / f[:,1000:].max(axis=1)[:,None] *0.1
-        plot(wave, flux_scaled.T,'k',label="Flux (scaled)")
-        plt.ylabel("Astrometric signal (mas)")
-        plt.xlabel("Wavelength")
-        plt.legend()
-
-        plt.savefig("astrometry_result.png", dpi=300)
-
-        # Speed of light in km/s
-        c = 299792.458
-        # Rest wavelength of H-alpha in nm
-        lambda0 = 656.28
-
-        To_plot = (wave > 655.5) & (wave < 657.2)
-        astrometry_xy = w_hat[To_plot]
-        astrometry_wave = wave[To_plot]
-        # Doppler velocity (km/s)
-        velocity = c * (astrometry_wave - lambda0) / lambda0
-
-
-
-
-        fig, ax = plt.subplots(1, 1, figsize=(8, 6), num="astrometry_scatter", clear=True)
-        flux_scaled_filtered = flux_scaled[To_plot]
-        scatter = ax.scatter(astrometry_xy[:, 0], astrometry_xy[:, 1], c=velocity, s=flux_scaled_filtered*1000, cmap='viridis', alpha=0.6)
-        ax.plot(astrometry_xy[:, 0], astrometry_xy[:, 1], 'k-', alpha=0.3, linewidth=1)
-        ax.set_xlabel("RA (mas)")
-        ax.set_ylabel("DEC (mas)")
-        ax.set_aspect('equal')
-        lim = np.max(np.abs(ax.get_xlim() + ax.get_ylim()))
-        ax.set_xlim(lim, -lim)
-        ax.set_ylim(-lim, lim)
-        fig.colorbar(scatter, ax=ax, label="Velocity (km/s)")
-        ax.set_title(f"{object_name} - Astrometry vs Velocity")
-        fig.savefig("astrometry_scatter.png", dpi=300)
-        ax.grid(True, alpha=0.3)
-        ax.xaxis.set_major_locator(plt.MultipleLocator(0.1))
-        ax.yaxis.set_major_locator(plt.MultipleLocator(0.1))
-
-        PA=132*np.pi/180
-        y = np.linspace(-lim,lim,100)
-        x = np.tan(PA)*y
-        ax.plot(x,y,'k--',label="PA=132°") 
-        ax.legend() 
-
-        fig.savefig("astrometry_scatter_PA.png", dpi=300)
-
-
-        C_tilde_2 = J_tilde @ w_hat[:,:,None]
-        residuals = C_tilde - C_tilde_2[:,:,0]
-        halpha_index = 1099
-
-        y = C_tilde[halpha_index] 
-        y_fit = C_tilde_2[halpha_index,:,0]
-
-        x=np.arange(len(y))
-
-        residuals = y - y_fit
-
-        fig, axes = plt.subplots(3, 1, figsize=(8, 10), sharex=False)
-        fig.suptitle("fit residuals")
-
-        # Top: data + fit
-        ax = axes[0]
-        ax.plot(x, y, 'o', label='data', alpha=0.8)
-        order = np.argsort(x)
-        ax.plot(np.array(x)[order], np.array(y_fit)[order], '-', label='fit')
-        ax.set_ylabel("y")
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-
-        # Middle: residuals vs x
-        ax = axes[1]
-        ax.plot(x, residuals, 'o', alpha=0.8)
-        ax.set_ylabel("Residuals")
-        ax.axhline(0, linestyle='--')
-        ax.grid(True, alpha=0.3)
-
-        # Bottom: histogram of residuals
-        ax = axes[2]
-        ax.hist(residuals, bins=20, alpha=0.8)
-        ax.set_xlabel("Residuals")
-        ax.set_ylabel("Count")
-        ax.grid(True, alpha=0.3)
-
-        plt.tight_layout()
-
-        fig, ax = plt.subplots(1, 2, figsize=(14, 6), num="residual histogram", clear=True)
-
-        res = residuals
-        values = y
-        
-        # Plot residuals histogram
-        ax[0].hist(res, bins=30, edgecolor='black', alpha=0.7)
-        ax[0].set_xlabel("Residuals")
-        ax[0].set_ylabel("Frequency")
-        ax[0].set_title(f"Residual Distribution at H-alpha (λ={wave[halpha_index]:.2f} nm)")
-        ax[0].grid(True, alpha=0.3)
-
-        # Plot values histogram
-        ax[1].hist(values**2-residuals**2, bins=100, edgecolor='black', alpha=0.7, color='orange')
-        ax[1].set_xlabel("Delta chi2 values")
-        ax[1].set_ylabel("Frequency")
-        ax[1].set_title(f"Data Values Distribution at H-alpha (λ={wave[halpha_index]:.2f} nm)")
-        ax[1].grid(True, alpha=0.3)
-
-        # Calculate significance
-        mean_res = np.mean(res)
-        std_res = np.std(res)
-        mean_val = np.mean(values)
-        std_val = np.std(values)
-        significance = np.abs(mean_res) / std_res if std_res > 0 else 0
-        
-        # Compare residuals to values
-        residual_to_data_ratio = std_res / std_val if std_val > 0 else np.inf
-        
-        stats_text = (f"Residuals - Mean: {mean_res:.4f}, Std: {std_res:.4f}\n"
-                    f"Values - Mean: {mean_val:.4f}, Std: {std_val:.4f}\n"
-                    f"Significance: {significance:.2f}σ\n"
-                    f"Residual/Data ratio: {residual_to_data_ratio:.4f}")
-        
-        ax[0].text(0.98, 0.97, stats_text, 
-            transform=ax[0].transAxes, verticalalignment='top', horizontalalignment='right',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5), fontsize=9)
-
-        fig.tight_layout()
-        fig.savefig("residual_histogram.png", dpi=300)
-
-
 
 
     process_astrometric_data(
@@ -442,9 +615,11 @@ if __name__ == "__main__":
         modID=modID,
         modScale=modScale,
         wollaston=wollaston,
-        wavelength_smooth=wavelength_smooth,
-        wavelength_bin=wavelength_bin,
         Nsingular=Nsingular,
-        center_data=center_data)
+        center_data=center_data,
+        line_center=line_center,
+        line_width=line_width,
+        poly_deg=poly_deg,
+        PA=PA)
         # save_individual_frames=save_individual_frames,)
 # %%

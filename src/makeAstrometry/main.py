@@ -22,57 +22,42 @@ def main():
     Main entry point for the astrometric analysis script.
     """
     parser = argparse.ArgumentParser(
-        description="Perform high-precision astrometric measurements from FIRST Photonic Lantern data using coupling map analysis.",
+        description="Measure the wavelength-dependent photocenter shift (spectro-astrometry) from preprocessed FIRST Photonic Lantern data.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-FIRST Pipeline Astrometric Analysis Tool
+FIRST Pipeline Spectro-Astrometry Tool
 
-This script performs precision astrometric measurements using photonic lantern
-data and coupling maps. It enables position measurements with enhanced precision
-for binary stars, exoplanet detection, and fundamental astrometry applications.
+This script recovers the small, wavelength-dependent astrometric shift of a
+source across a spectral line (e.g. H-alpha). The known modulation dither is
+used to build, around each interior dither point, a local response Jacobian
+relating output-flux changes to sky-position changes. A separable (variable-
+projection) least-squares solve then eliminates the per-output flat gains
+analytically and returns the RA/DEC photocenter shift versus wavelength. The
+continuum is estimated both by notched-Hanning smoothing (over a range of
+window sizes) and by a low-order polynomial fit on the line's side windows.
 
 Examples:
-    %(prog)s --wollaston IN --wavelength_smooth=2 *.fits
-    %(prog)s --coupling_map=/path/to/map.fits --pyramids target_data/*.fits
-    %(prog)s --save_individual_frames --save_individual_wavelength *.fits
-    %(prog)s --dark_files=dark*.fits binary_star_data/*.fits
-
-Pipeline Workflow Integration:
-    1. Requires preprocessed data files (X_FIRTYP=PREPROC) and coupling maps
-    2. Final analysis step for precision position measurements
-    3. Leverages photonic lantern spatial resolution enhancement
-    4. Outputs calibrated astrometric measurements for scientific analysis
+    %(prog)s preproc/*_HD163296_P.fits
+    %(prog)s --wollaston IN --object_name HD142527 preproc/*.fits
+    %(prog)s --line_center 656.28 --line_width 1.5 --poly_deg 4 preproc/*.fits
+    %(prog)s --wave_files wavemaps/ --dark_files dark*.fits preproc/*.fits
 
 Input Files:
-    - Preprocessed FITS files: X_FIRTYP=PREPROC containing spectral measurements
-    - Coupling map files: X_FIRTYP=COUPLINGMAP from runPL_create_couplingMap.py
-    - Dark frames for accurate background subtraction
-    - Automatic coupling map detection or manual selection
+    - Preprocessed FITS files: X_FIRTYP=PREPROC (selected as OBJECT data)
+    - Wavelength maps (X_FIRTYP=WAVEMAP) and flat maps (X_FIRTYP=FLATMAP),
+      auto-discovered in sibling ../wavemaps and ../flatmaps folders or set
+      explicitly with --wave_files / --flat_files
+    - Dark frames for background subtraction (default: the input files)
 
-Output Files:
-    - Astrometric measurement FITS files with position data
-    - Time-resolved position measurements for orbital motion
-    - Quality assessment metrics and uncertainty estimates
-    - Optional individual frame analysis for high-cadence observations
-    - Optional wavelength-resolved astrometry for chromatic effects
+Output Files (written to a sibling ../astrometry folder):
+    - ASTROMETRY FITS file (X_FIRTYP=ASTROMETRY) with HDUs:
+      WAVE, FLUX_SCALED, ASTROMETRY_SHIFT (per Hanning window), ASTROMETRY_XY
+      (over the line), and X_HANNING
+    - Multi-page PDF with the RA/DEC astrometry vs wavelength (full band and
+      zoomed on the line) and the RA/DEC scatter colored by Doppler velocity
 
-Astrometric Features:
-    - High-precision position measurements using coupling map analysis
-    - Wavelength smoothing for enhanced signal-to-noise in position determination
-    - Support for both polarimetry (Wollaston IN) and photometry (OUT) modes
-    - Pyramidal fitting options for enhanced spatial resolution
-    - Quality assessment and uncertainty quantification
-
-Scientific Applications:
-    - Binary star orbit determination with enhanced precision
-    - Exoplanet astrometric detection and characterization
-    - Proper motion measurements for stellar kinematics
-    - Reference frame calibration and maintenance
-    - Fundamental astrometry for parallax determination
-
-Note: Astrometric precision depends critically on coupling map quality and
-instrument stability. Review quality metrics and systematic effects carefully
-for high-precision applications.
+Note: the source must be dithered across several modulation positions to break
+the degeneracy between the astrometric signal and the per-output flat gains.
         """
     )
 
@@ -80,36 +65,51 @@ for high-precision applications.
     parser.add_argument('files', nargs='*', default=['*.fits'],
                        help='FITS files to process (supports wildcards)')
 
-    # Add optional arguments
+    # Add optional arguments (mirror process_astrometric_data parameters)
     parser.add_argument("--object_name",
                        help="Selection of the data by the Object name")
     parser.add_argument("--wollaston", 
                        help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
-    parser.add_argument("--coupling_map", 
-                       help="Force to select which coupling map file to use (default: the one in the directory)")
     parser.add_argument("--dark_files", 
                        help="Select one or more specific dark(s) files to use")
-    parser.add_argument("--wavelength_smooth", type=int, default=1,
-                       help="Smoothing factor for wavelength (default: %(default)s)")
-    parser.add_argument("--save_individual_frames", action="store_true", default=True,
-                       help="Save individual frames (default: %(default)s)")
-    parser.add_argument("--save_individual_wavelength", action="store_true", default=False,
-                       help="Save individual wavelength (default: %(default)s)")
-    parser.add_argument("--pyramids", action="store_true", default=False,
-                       help="Use pyramids for data fitting by coupling map (default: %(default)s)")
+    parser.add_argument("--flat_files",
+                       help="Force to select which flat map file(s) to use (default: the one in the directory)")
+    parser.add_argument("--wave_files",
+                       help="Force to select which wavelength map file(s) to use (default: the one in the directory)")
+    parser.add_argument("--modID", type=int,
+                       help="Modulation pattern ID to select (default: all)")
+    parser.add_argument("--modScale", type=int,
+                       help="Modulation scale to select (default: any)")
+    parser.add_argument("--Nsingular", type=int, default=19*6,
+                       help="Number of singular values kept in the SVD filtering (default: %(default)s)")
+    parser.add_argument("--center_data", action="store_true", default=False,
+                       help="Center the data during extraction (default: %(default)s)")
+    parser.add_argument("--line_center", type=float, default=656.28,
+                       help="Central wavelength of the spectral line in nm (default: %(default)s)")
+    parser.add_argument("--line_width", type=float, default=2.0,
+                       help="Width of the spectral line in nm (default: %(default)s)")
+    parser.add_argument("--poly_deg", type=int, default=4,
+                       help="Degree of the polynomial continuum fit under the line (default: %(default)s)")
+    parser.add_argument("--PA", type=float, default=-45.0,
+                       help="Reference position angle in degrees drawn on the scatter plot (for plotting only, does not affect the results; default: %(default)s)")
 
     # Parse command line arguments
     # Development environment defaults are handled autonomously in run_makeAstrometry()
     args = parser.parse_args()
     file_patterns = args.files if args.files else ['*.fits']
     object_name = args.object_name
-    wavelength_smooth = args.wavelength_smooth
     dark_patterns = [args.dark_files] if args.dark_files else None
+    flat_patterns = [args.flat_files] if args.flat_files else None
+    wave_patterns = [args.wave_files] if args.wave_files else None
     wollaston = args.wollaston
-    save_individual_frames = args.save_individual_frames
-    save_individual_wavelength = args.save_individual_wavelength
-    pyramids = args.pyramids
-    coupling_map = args.coupling_map
+    modID = args.modID
+    modScale = args.modScale
+    Nsingular = args.Nsingular
+    center_data = args.center_data
+    line_center = args.line_center
+    line_width = args.line_width
+    poly_deg = args.poly_deg
+    PA = args.PA
 
     try:
         # Check observatory status
@@ -119,21 +119,24 @@ for high-precision applications.
         print(f"Processing astrometric data with patterns: {file_patterns}")
         
         # Run the astrometric analysis
-        results = process_astrometric_data(
+        process_astrometric_data(
             file_patterns=file_patterns,
             object_name=object_name,
             dark_patterns=dark_patterns,
-            coupling_map=coupling_map,
-            wavelength_smooth=wavelength_smooth,
+            flat_patterns=flat_patterns,
+            wave_patterns=wave_patterns,
+            modID=modID,
+            modScale=modScale,
             wollaston=wollaston,
+            Nsingular=Nsingular,
+            center_data=center_data,
+            line_center=line_center,
+            line_width=line_width,
+            poly_deg=poly_deg,
+            PA=PA,
         )
         
         print(f"Astrometric analysis completed successfully!")
-        print(f"Processed {len(results['results'])} file(s)")
-        
-        for i, result in enumerate(results['results']):
-            print(f"- File {i+1}: {result['output_filename']}")
-            print(f"  Stars detected: {result['star_detected'].sum() if hasattr(result['star_detected'], 'sum') else len(result['star_detected'])} frames")
             
     except Exception as e:
         print(f"Error in astrometric analysis: {e}")

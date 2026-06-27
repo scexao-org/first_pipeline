@@ -1,5 +1,4 @@
 {
-    "python.defaultInterpreterPath": "/Users/slacour/venv1/bin/python",
     "python.analysis.extraPaths": ["${workspaceFolder}/src"],
     "python-envs.defaultPackageManager": "ms-python.python:pip",
     "python-envs.defaultEnvManager": "ms-python.python:venv"

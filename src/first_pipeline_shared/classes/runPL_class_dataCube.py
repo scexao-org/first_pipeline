@@ -78,10 +78,17 @@ class DataCube:
         self.glitch_frame=header.get('X_FIRGFR', 0)
         self.glitch_delay=header.get('X_FIRGEX', 0) # in ms
 
-        # computing the position angle (PA) of each frame
-        THETA_OFFSET = 102.2  # degrees
-        # if after spectembre 2025, cahngevalue of THETA_OFFSET
-        self.PAangle = -1 * (180.0 - THETA_OFFSET - self.get_parallactic_angle())/180*np.pi
+        # # computing the position angle (PA) of each frame
+        # THETA_OFFSET = 102.2  # degrees
+        # # if after September 2025, change value of THETA_OFFSET
+        # self.PAangle = -1 * (180.0 - THETA_OFFSET - self.get_parallactic_angle())/180*np.pi
+
+        # new values correct since 2026-06-22:
+        THETA_OFFSET = 129.44 - 180 - 37
+        self.PAangle = (THETA_OFFSET + self.get_parallactic_angle())/180*np.pi
+
+
+        
         # print(f"Image-rotation angle range: {self.PAangle.min()*180/np.pi} to {self.PAangle.max()*180/np.pi} degrees")
         self.wave_label = "Pixel Index"
         self.wave = np.arange(self.Nwave)
@@ -256,28 +263,37 @@ class DataCube:
         return par_angles
 
     ## calculate the projection of the offset in the field based on the current parangle and delta-coordinates of target */
-    def project_offsets(self, x_sky, y_sky):
-        proj_offsets = np.zeros((*x_sky.shape, 2))
+    ## note: imversion of function given by mathias nowak:
+    # def project_offsets(dra, ddec):
+        # proj_offsets = np.zeros(2)
+        # derotangle = (THETA_OFFSET + get_parallactic_angle())/180*M_PI
+        # proj_offsets[0] = np.sin(derotangle) * ddec - np.cos(derotangle) * dra
+        # proj_offsets[1] = np.cos(derotangle) * ddec + np.sin(derotangle) * dra
+        # return proj_offsets
+        
+    def project_on_sky(self, x_mod, y_mod):
+        ra_dec = np.zeros((*x_mod.shape, 2))
         PAangle = self.PAangle[..., None]
-        proj_offsets[..., 0] = np.sin(PAangle) * y_sky + np.cos(PAangle) * x_sky
-        proj_offsets[..., 1] = np.cos(PAangle) * y_sky - np.sin(PAangle) * x_sky
-        proj_offsets[..., 0] += self.x_object
-        proj_offsets[..., 1] += self.y_object
-
-        return proj_offsets
+        dra  = -np.cos(PAangle) * x_mod + np.sin(PAangle) * y_mod
+        ddec =  np.sin(PAangle) * x_mod + np.cos(PAangle) * y_mod
+        ra_dec[..., 0] = dra
+        ra_dec[..., 1] = ddec
+        ra_dec[..., 0] += self.x_object
+        ra_dec[..., 1] += self.y_object
+        return ra_dec
 
     def compute_xy_sky(self,couplingMap = None):
         """
             use PA to project on sky the modulation
         """
         if couplingMap is not None:
-            x_sky = self.xmod[:,:,None] - couplingMap.position[:,0]
-            y_sky = self.ymod[:,:,None] - couplingMap.position[:,1]
+            xmod_2 = self.xmod[:,:,None] - couplingMap.position[:,0]
+            ymod_2 = self.ymod[:,:,None] - couplingMap.position[:,1]
         else:
-            x_sky = self.xmod[:,:,None]
-            y_sky = self.ymod[:,:,None]
+            xmod_2 = self.xmod[:,:,None]
+            ymod_2 = self.ymod[:,:,None]
 
-        self.ra_dec = self.project_offsets(x_sky,y_sky)
+        self.ra_dec = self.project_on_sky(xmod_2, ymod_2)
         if couplingMap is None:
             self.ra_dec = self.ra_dec[:,:,0]
 
