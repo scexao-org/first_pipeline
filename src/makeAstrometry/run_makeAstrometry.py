@@ -154,11 +154,12 @@ def compute_smoothed_data(data_normalized, x_hanning):
     return data_smoothed, hanning_window
 
 
-def compute_smoothed_line(data_normalized, wave, line_aera, poly_deg):
-    """Estimate the continuum under a line with a low-order polynomial fit.
+def line_fit_region(line_aera):
+    """Indices used to fit and evaluate the polynomial continuum under a line.
 
-    The continuum is fitted on two side windows (each as wide as the line) on
-    either side of the line and evaluated across the line wavelengths.
+    The continuum is fitted on two side windows (`cont_idx`, each as wide as the
+    line) and evaluated over the full span `fit_aera` going from the left window
+    start to the right window stop (i.e. the line plus both side windows).
     """
     line_idx = np.where(line_aera)[0]
     i0, i1 = line_idx[0], line_idx[-1]
@@ -167,20 +168,32 @@ def compute_smoothed_line(data_normalized, wave, line_aera, poly_deg):
     right = slice(i1 + 1, i1 + 1 + n_line)
     cont_idx = np.r_[np.arange(left.start, left.stop),
                      np.arange(right.start, right.stop)]
+    fit_aera = slice(left.start, right.stop)
+    return cont_idx, fit_aera
+
+
+def compute_smoothed_line(data_normalized, wave, line_aera, poly_deg):
+    """Estimate the continuum under a line with a low-order polynomial fit.
+
+    The continuum is fitted on two side windows (each as wide as the line) on
+    either side of the line and evaluated over the full span from the left to
+    the right window (`fit_aera`).
+    """
+    cont_idx, fit_aera = line_fit_region(line_aera)
     # Fit all (cube, step, output) continua at once on the side windows
     y_cont = data_normalized[..., cont_idx]                          # (Ncube, Nstep, Noutput, Ncont)
     cont_shape = y_cont.shape[:-1]
     coeffs = np.polyfit(wave[cont_idx],
                         y_cont.reshape(-1, len(cont_idx)).T, poly_deg)  # (poly_deg+1, Nseries)
-    # Evaluate the polynomial continuum across the line wavelengths
-    V_line = np.vander(wave[line_aera], poly_deg + 1)                # (n_line, poly_deg+1)
-    data_smoothed_line = (V_line @ coeffs).T.reshape(*cont_shape, -1)  # (..., n_line)
+    # Evaluate the polynomial continuum across the full left->right span
+    V_line = np.vander(wave[fit_aera], poly_deg + 1)                 # (n_fit, poly_deg+1)
+    data_smoothed_line = (V_line @ coeffs).T.reshape(*cont_shape, -1)  # (..., n_fit)
     return data_smoothed_line
 
 
 def process_astrometric_data(
     file_patterns, object_name=None, dark_patterns=None, flat_patterns=None, wave_patterns=None, modID=None, modScale=None, wollaston=None,
-    Nsingular=19*6, center_data=False, line_center=656.28, line_width= 3.0, poly_deg=2, PA=137.0):
+    Nsingular=19*6, line_center=656.28, line_width= 3.0, PA=137.0):
     """
     Measure the wavelength-dependent photocenter shift (spectro-astrometry).
 
@@ -254,6 +267,9 @@ def process_astrometric_data(
     computed results.
     """
 
+    # Polynomial continuum-fit degrees tested under the line (hard-coded)
+    poly_deg_values = (2, 3, 4, 5)
+
     # Set up default patterns
     if dark_patterns is None:
         dark_patterns = file_patterns
@@ -273,7 +289,7 @@ def process_astrometric_data(
     # Extract data
     datalist: List[DataCube] = fileList.extract_data_from_list(
         flatMap=flatMap,
-        waveMap=waveMap, center=center_data
+        waveMap=waveMap
     )
 
     # Concatenate data arrays
@@ -380,9 +396,9 @@ def process_astrometric_data(
     M_inv = np.linalg.inv(M)
 
     # Solve for astrometry (and recover flat) for a list of x_hanning windows
-    # Largest window is twice the line width (in pixels)
+    # Largest window is twice the line width (in pixels); 10 values over the range
     x_hanning_max = int(round(line_width_pix * 2))
-    x_hanning_values = list(range(3, x_hanning_max + 1, 3))
+    x_hanning_values = [int(round(x)) for x in np.linspace(3, x_hanning_max, 10)]
     astrometry_shift_list = []
     flat_list = []
     hanning_window_list = []
@@ -415,7 +431,7 @@ def process_astrometric_data(
     new_header['X_FIRTYP'] = 'ASTROMETRY'
     new_header['Q_ASLINE'] = (line_center, 'line center wavelength (nm)')
     new_header['Q_ASLWID'] = (line_width, 'line width (nm)')
-    new_header['Q_ASPDEG'] = (poly_deg, 'polynomial degree of the continuum fit')
+    new_header['Q_ASPDEG'] = (str(list(poly_deg_values)), 'polynomial degrees of the continuum fit')
     new_header['Q_ASSING'] = (Nsingular, 'number of singular values')
     new_header['Q_ASNAME'] = (runlib_io.create_basename(new_header), 'name of the astrometry file')
 
@@ -433,12 +449,9 @@ def process_astrometric_data(
     fig, axes = plt.subplots(2, 1, figsize=(10, 9), num="astromet_comparison_2",
                                 clear=True, sharex=True)
     axes[1].sharey(axes[0])
-    cmap = plt.cm.viridis
-    norm_color = plt.Normalize(vmin=min(x_hanning_values), vmax=max(x_hanning_values))
     for x_hanning, astrometry_shift in zip(x_hanning_values, astrometry_shift_list):
-        color = cmap(norm_color(x_hanning))
-        axes[0].plot(wave, astrometry_shift[:, 0], color=color, alpha=0.7)
-        axes[1].plot(wave, astrometry_shift[:, 1], color=color, alpha=0.7)
+        axes[0].plot(wave, astrometry_shift[:, 0], alpha=0.7, label=f"{x_hanning}")
+        axes[1].plot(wave, astrometry_shift[:, 1], alpha=0.7, label=f"{x_hanning}")
     # Shade the line area
     for ax in axes:
         ax.axvspan(line_center - line_width/2, line_center + line_width/2,
@@ -455,11 +468,9 @@ def process_astrometric_data(
     axes[1].set_xlabel("Wavelength")
     axes[0].set_title(f"{object_name} - RA astrometry")
     axes[1].set_title(f"{object_name} - DEC astrometry")
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm_color)
-    sm.set_array([])
-    fig.colorbar(sm, ax=axes, label="size of Hanning smoothing window (in pixels)")
+    axes[0].legend(title="size of Hanning smoothing window (in pixels)", fontsize=8, ncol=2)
 
-    fig.savefig("astrometry_1.pdf")
+    # fig.savefig("astrometry_1.pdf")
     pdf.savefig(fig)  # page 1: astrometry_1 (full-band view)
 
 
@@ -468,7 +479,7 @@ def process_astrometric_data(
     wave_mask = (wave > line_center - line_width*2) & (wave < line_center + line_width*2)
     y_max = np.nanmax([np.nanmax(np.abs(a[wave_mask])) for a in astrometry_shift_list])
     axes[0].set_ylim(-y_max, y_max)
-    fig.savefig("astrometry_2.pdf")
+    # fig.savefig("astrometry_2.pdf")
     pdf.savefig(fig)  # page 2: astrometry_2 (zoom on the line)
 
 
@@ -476,34 +487,68 @@ def process_astrometric_data(
 
     # Astrometry over the line, using a polynomial continuum
     # ------------------------------------------------------
-    # Estimate the continuum under the line (polynomial fit on the side
-    # windows) instead of the notch-Hanning smoothing.
-    data_smoothed_line = compute_smoothed_line(data_normalized, wave, line_aera, poly_deg)
+    # The line-restricted projected Jacobian and 2x2 inverse do not depend on
+    # the polynomial degree, so build them once. The astrometry is estimated and
+    # plotted over the full left->right span (`fit_aera`, the line plus its two
+    # side windows), matching the region evaluated by compute_smoothed_line.
+    cont_idx, fit_aera = line_fit_region(line_aera)
+    data_b_line = data_b[..., fit_aera]
+    D2_line = D2[..., fit_aera]
+    J_proj_line = J_proj[..., fit_aera, :]
+    M_inv_line = M_inv[fit_aera]
 
-    # Solve the same variable-projection 2x2 system, restricted to the line
-    # wavelengths, reusing the precomputed projected Jacobian and 2x2 inverse.
-    sm_b_line = np.stack([data_smoothed_line[:, 1:-1][i_cube, j_step]
-                            for (i_cube, j_step) in valid_indices], axis=0)
-    data_b_line = data_b[..., line_aera]
-    D2_line = D2[..., line_aera]
-    J_proj_line = J_proj[..., line_aera, :]
-    M_inv_line = M_inv[line_aera]
-    H_line = np.sum(data_b_line * sm_b_line, axis=0)
-    s_proj_line = sm_b_line - data_b_line * (H_line / D2_line)[None]
-    rhs_line = -np.einsum('bowi,bow->wi', J_proj_line, s_proj_line)
-    astrometry_xy = (M_inv_line @ rhs_line[:, :, None])[:, :, 0]     # (n_line, 2)
-
-    astrometry_wave = wave[line_aera]
+    astrometry_wave = wave[fit_aera]
     # Doppler velocity (km/s)
     velocity = c * (astrometry_wave - line_center) / line_center
+
+    # Solve the variable-projection 2x2 system over the line for a list of
+    # polynomial continuum degrees; each degree yields one astrometry_xy track.
+    astrometry_xy_list = []
+    for poly_deg in poly_deg_values:
+        # Estimate the continuum under the line (polynomial fit on the side
+        # windows) instead of the notch-Hanning smoothing.
+        data_smoothed_line = compute_smoothed_line(data_normalized, wave, line_aera, poly_deg)
+        sm_b_line = np.stack([data_smoothed_line[:, 1:-1][i_cube, j_step]
+                                for (i_cube, j_step) in valid_indices], axis=0)
+        H_line = np.sum(data_b_line * sm_b_line, axis=0)
+        s_proj_line = sm_b_line - data_b_line * (H_line / D2_line)[None]
+        rhs_line = -np.einsum('bowi,bow->wi', J_proj_line, s_proj_line)
+        astrometry_xy = (M_inv_line @ rhs_line[:, :, None])[:, :, 0]     # (n_line, 2)
+        astrometry_xy_list.append(astrometry_xy)
+
+    # Compare RA and DEC astrometry over the line for the different poly_deg
+    fig, axes = plt.subplots(2, 1, figsize=(10, 9), num="astromet_comparison_poly",
+                                clear=True, sharex=True)
+    axes[1].sharey(axes[0])
+    for poly_deg, astrometry_xy in zip(poly_deg_values, astrometry_xy_list):
+        axes[0].plot(astrometry_wave, astrometry_xy[:, 0], alpha=0.8, label=f"{poly_deg}")
+        axes[1].plot(astrometry_wave, astrometry_xy[:, 1], alpha=0.8, label=f"{poly_deg}")
+    # Shade the line area
+    for ax in axes:
+        ax.axvspan(line_center - line_width/2, line_center + line_width/2,
+                    color='gray', alpha=0.2)
+    axes[0].set_ylabel("RA astrometric signal (mas)")
+    axes[1].set_ylabel("DEC astrometric signal (mas)")
+    axes[1].set_xlabel("Wavelength")
+    axes[0].set_title(f"{object_name} - RA astrometry (over the line)")
+    axes[1].set_title(f"{object_name} - DEC astrometry (over the line)")
+    axes[0].legend(title="polynomial degree of the continuum fit")
+    # fig.savefig("astrometry_3.pdf")
+    pdf.savefig(fig)  # page 3: astrometry_3 (poly_deg comparison)
+
 
 
 
 
     fig, ax = plt.subplots(1, 1, figsize=(8, 6), num="astrometry_scatter", clear=True)
-    flux_scaled_filtered = flux_scaled[line_aera]
-    scatter = ax.scatter(astrometry_xy[:, 0], astrometry_xy[:, 1], c=velocity, s=flux_scaled_filtered*1000, cmap='viridis', alpha=0.6)
-    ax.plot(astrometry_xy[:, 0], astrometry_xy[:, 1], 'k-', alpha=0.3, linewidth=1)
+    # Only show the points falling inside the line (not the side windows)
+    line_mask = line_aera[fit_aera]
+    flux_scaled_filtered = flux_scaled[fit_aera][line_mask]
+    velocity_line = velocity[line_mask]
+    for astrometry_xy in astrometry_xy_list[-2:-1]:
+        astrometry_xy = astrometry_xy[line_mask]
+        scatter = ax.scatter(astrometry_xy[:, 0], astrometry_xy[:, 1], c=velocity_line, s=flux_scaled_filtered*1000, cmap='viridis', alpha=0.6)
+        ax.plot(astrometry_xy[:, 0], astrometry_xy[:, 1], 'k-', alpha=0.3, linewidth=1)
     ax.set_xlabel("RA (mas)")
     ax.set_ylabel("DEC (mas)")
     ax.set_aspect('equal')
@@ -511,8 +556,8 @@ def process_astrometric_data(
     ax.set_xlim(lim, -lim)
     ax.set_ylim(-lim, lim)
     fig.colorbar(scatter, ax=ax, label="Velocity (km/s)")
-    ax.set_title(f"{object_name} - Astrometry vs Velocity, poly deg={poly_deg}")
-    fig.savefig("astrometry_scatter.png", dpi=300)
+    ax.set_title(f"{object_name} - Astrometry vs Velocity, poly deg={list(poly_deg_values)[-2]}")
+    # fig.savefig("astrometry_scatter.png", dpi=300)
     ax.grid(True, alpha=0.3)
     ax.xaxis.set_major_locator(plt.MultipleLocator(0.05))
     ax.yaxis.set_major_locator(plt.MultipleLocator(0.05))
@@ -523,20 +568,22 @@ def process_astrometric_data(
     ax.plot(x,y,'k--',label=f"PA={PA:.2f}°") 
     ax.legend() 
 
-    fig.savefig("astrometry_scatter_PA.png", dpi=300)
-    pdf.savefig(fig)  # page 3: astrometry_scatter_PA
+    # fig.savefig("astrometry_scatter_PA.png", dpi=300)
+    pdf.savefig(fig)  # page 4: astrometry_scatter_PA
     pdf.close()
     print(f"All figures saved to {pdf_filename}")
 
     # Save the astrometric results to a FITS file (mirrors run_createCouplingMap)
     astrometry_shift_all = np.stack(astrometry_shift_list, axis=0)  # (n_hanning, Nwave, 2)
+    astrometry_xy_all = np.stack(astrometry_xy_list, axis=0)        # (n_poly, n_line, 2)
     hdul = fits.HDUList([
         fits.PrimaryHDU(header=new_header),
         fits.ImageHDU(data=np.asarray(wave, dtype=float), name='WAVE'),
         fits.ImageHDU(data=np.asarray(flux_scaled, dtype=float), name='FLUX_SCALED'),
         fits.ImageHDU(data=np.asarray(astrometry_shift_all, dtype=float), name='ASTROMETRY_SHIFT'),
-        fits.ImageHDU(data=np.asarray(astrometry_xy, dtype=float), name='ASTROMETRY_XY'),
+        fits.ImageHDU(data=np.asarray(astrometry_xy_all, dtype=float), name='ASTROMETRY_XY'),
         fits.ImageHDU(data=np.asarray(x_hanning_values, dtype=float), name='X_HANNING'),
+        fits.ImageHDU(data=np.asarray(poly_deg_values, dtype=float), name='POLY_DEG'),
     ])
     hdul.writeto(output_filename, overwrite=True)
     print(f"Astrometry results saved to {output_filename}")
@@ -562,10 +609,8 @@ if __name__ == "__main__":
         modID = None
         modScale = None
         wollaston = None
-        center_data = False
         line_center=656.28
         line_width= 2
-        poly_deg=4
         PA=137  # for plotting only
 
         file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
@@ -616,10 +661,8 @@ if __name__ == "__main__":
         modScale=modScale,
         wollaston=wollaston,
         Nsingular=Nsingular,
-        center_data=center_data,
         line_center=line_center,
         line_width=line_width,
-        poly_deg=poly_deg,
         PA=PA)
         # save_individual_frames=save_individual_frames,)
 # %%

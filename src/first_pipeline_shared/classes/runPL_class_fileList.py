@@ -376,7 +376,7 @@ class FileList:
         return self.files_with_associated_files
 
 
-    def extract_data_from_list(self, Nsmooth = 1, Nbin = 1, flatMap = None, waveMap = None, center = True):
+    def extract_data_from_list(self, Nsmooth = 1, Nbin = 1, flatMap = None, waveMap = None, center = False):
         """
         Extracts and processes data cubes from the input files.
         Subtracts dark files, applies wavelength smoothing, and calculates variance.

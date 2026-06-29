@@ -39,7 +39,7 @@ window sizes) and by a low-order polynomial fit on the line's side windows.
 Examples:
     %(prog)s preproc/*_HD163296_P.fits
     %(prog)s --wollaston IN --object_name HD142527 preproc/*.fits
-    %(prog)s --line_center 656.28 --line_width 1.5 --poly_deg 4 preproc/*.fits
+    %(prog)s --line_center 656.28 --line_width 1.5 preproc/*.fits
     %(prog)s --wave_files wavemaps/ --dark_files dark*.fits preproc/*.fits
 
 Input Files:
@@ -82,14 +82,10 @@ the degeneracy between the astrometric signal and the per-output flat gains.
                        help="Modulation scale to select (default: any)")
     parser.add_argument("--Nsingular", type=int, default=19*6,
                        help="Number of singular values kept in the SVD filtering (default: %(default)s)")
-    parser.add_argument("--center_data", action="store_true", default=False,
-                       help="Center the data during extraction (default: %(default)s)")
     parser.add_argument("--line_center", type=float, default=656.28,
                        help="Central wavelength of the spectral line in nm (default: %(default)s)")
     parser.add_argument("--line_width", type=float, default=2.0,
                        help="Width of the spectral line in nm (default: %(default)s)")
-    parser.add_argument("--poly_deg", type=int, default=4,
-                       help="Degree of the polynomial continuum fit under the line (default: %(default)s)")
     parser.add_argument("--PA", type=float, default=-45.0,
                        help="Reference position angle in degrees drawn on the scatter plot (for plotting only, does not affect the results; default: %(default)s)")
 
@@ -105,10 +101,8 @@ the degeneracy between the astrometric signal and the per-output flat gains.
     modID = args.modID
     modScale = args.modScale
     Nsingular = args.Nsingular
-    center_data = args.center_data
     line_center = args.line_center
     line_width = args.line_width
-    poly_deg = args.poly_deg
     PA = args.PA
 
     try:
@@ -129,10 +123,8 @@ the degeneracy between the astrometric signal and the per-output flat gains.
             modScale=modScale,
             wollaston=wollaston,
             Nsingular=Nsingular,
-            center_data=center_data,
             line_center=line_center,
             line_width=line_width,
-            poly_deg=poly_deg,
             PA=PA,
         )
         
