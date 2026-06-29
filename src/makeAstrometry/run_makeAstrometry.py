@@ -191,6 +191,48 @@ def compute_smoothed_line(data_normalized, wave, line_aera, poly_deg):
     return data_smoothed_line
 
 
+def solve_astrometry_gain(J_blocks, data_b, sm_b):
+    """Variable-projection solve of  J @ a = data - smoothed / flat.
+
+    The per-output gain `flat` (close to 1) enters the forward model as
+    `data_smoothed / flat`. Substituting g = 1/flat makes the model linear:
+
+        J_b @ a = data_b - sm_b * g
+
+    For a fixed astrometric shift `a`, the optimal per-output g is eliminated
+    analytically by projecting onto the smoothed (`sm_b`) directions:
+
+        g[o] = sum_b sm_b[o] (data_b[o] - J_b[o] @ a) / sum_b sm_b[o]^2
+
+    leaving a single 2x2 normal system per wavelength. Because the projection
+    is onto `sm_b`, the normal matrix `M` depends on the smoothing/continuum
+    and must be rebuilt for every window (unlike the old data-projected form).
+
+    Parameters
+    ----------
+    J_blocks : (Nblocks, Noutput, Nwave, 2) response Jacobian per block.
+    data_b   : (Nblocks, Noutput, Nwave) measured (interior) data per block.
+    sm_b     : (Nblocks, Noutput, Nwave) smoothed continuum per block.
+
+    Returns
+    -------
+    astrometry_shift : (Nwave, 2) RA/DEC photocenter shift.
+    flat             : (Noutput, Nwave) recovered per-output gain (= 1/g).
+    """
+    S2 = np.sum(sm_b ** 2, axis=0)                       # (Noutput, Nwave)
+    Gs = np.sum(sm_b[..., None] * J_blocks, axis=0)      # (Noutput, Nwave, 2)
+    J_proj = J_blocks - sm_b[..., None] * (Gs / S2[..., None])[None]
+    M = np.einsum('bowi,bowj->wij', J_proj, J_proj)      # (Nwave, 2, 2)
+    H = np.sum(sm_b * data_b, axis=0)                    # (Noutput, Nwave)
+    d_proj = data_b - sm_b * (H / S2)[None]
+    rhs = np.einsum('bowi,bow->wi', J_proj, d_proj)      # (Nwave, 2)
+    astrometry_shift = np.linalg.solve(M, rhs[..., None])[..., 0]
+    # Recover the eliminated gains: g = (H - Gs . astrometry) / S2, flat = 1/g
+    g = (H - np.einsum('owi,wi->ow', Gs, astrometry_shift)) / S2
+    flat = 1.0 / g
+    return astrometry_shift, flat
+
+
 def process_astrometric_data(
     file_patterns, object_name=None, dark_patterns=None, flat_patterns=None, wave_patterns=None, modID=None, modScale=None, wollaston=None,
     Nsingular=19*6, line_center=656.28, line_width= 3.0, PA=137.0):
@@ -225,36 +267,41 @@ def process_astrometric_data(
     The signal of interest is a small, wavelength-dependent astrometric shift
     `astrometry_shift`(lambda) = (d_alpha(lambda), d_delta(lambda)) shared by
     all outputs, steps and exposures. In addition, each output o carries an
-    unknown multiplicative gain `flat`[o] (shape Noutput x Nwave) relative to
-    the smooth spectral continuum (`data_smoothed`, Hanning smoothing). The
+    unknown multiplicative gain `flat`[o] (shape Noutput x Nwave, close to 1)
+    on the smooth spectral continuum (`data_smoothed`, Hanning smoothing). The
     forward model relating both unknowns to the data is:
 
-        jacobian @ astrometry_shift = data_normalized * flat - data_smoothed
+        jacobian @ astrometry_shift = data_normalized - data_smoothed / flat
 
     Here `astrometry_shift` (2 values per wavelength) is shared by every output
     and block, while `flat` (one value per output per wavelength) is shared by
-    every block but free across outputs. The system decouples per wavelength;
-    at each wavelength the unknowns are `astrometry_shift` (2) plus `flat`
-    (Noutput). Because `flat`[o] enters linearly and only in the rows of output
-    o, it is eliminated analytically for any given `astrometry_shift`
-    (separable / variable-projection least squares):
+    every block but free across outputs. The gain enters non-linearly through
+    1/`flat`, so we substitute g = 1/`flat` (also close to 1), which makes the
+    model linear in the unknowns:
 
-        flat[o] = sum_b data_b[o] (jacobian[o] @ astrometry_shift + data_smoothed[o])
-                    / sum_b data_b[o]^2
+        jacobian @ astrometry_shift = data_normalized - data_smoothed * g
 
-    Substituting the optimal `flat` back projects the per-block Jacobian and
-    the smoothed data onto the complement of the flat directions (`J_proj`,
-    `s_proj`) and leaves a single 2x2 normal system per wavelength:
+    The system decouples per wavelength; at each wavelength the unknowns are
+    `astrometry_shift` (2) plus g (Noutput). Because g[o] enters linearly and
+    only in the rows of output o, it is eliminated analytically for any given
+    `astrometry_shift` (separable / variable-projection least squares):
 
-        M(lambda) @ astrometry_shift(lambda) = -sum_{b,o} J_proj * s_proj
+        g[o] = sum_b data_smoothed_b[o] (data_b[o] - jacobian[o] @ astrometry_shift)
+                    / sum_b data_smoothed_b[o]^2
+
+    Substituting the optimal g back projects the per-block Jacobian and the
+    measured data onto the complement of the smoothed directions (`J_proj`,
+    `d_proj`) and leaves a single 2x2 normal system per wavelength:
+
+        M(lambda) @ astrometry_shift(lambda) = sum_{b,o} J_proj * d_proj
         M(lambda) = sum_{b,o} J_proj @ J_proj^T
 
-    solved by inverting the 2x2 matrix `M_inv`. The two columns of
-    `astrometry_shift` are the RA and DEC astrometric signals versus
-    wavelength. `M` (like `J_proj`) depends only on the dither geometry and the
-    measured data, not on the smoothing window, so it is built and inverted
-    once; the solve is repeated for a range of Hanning window sizes
-    (`x_hanning`).
+    solved with `np.linalg.solve`. The two columns of `astrometry_shift` are
+    the RA and DEC astrometric signals versus wavelength. Because the gain now
+    multiplies `data_smoothed`, the projection (and hence `M`/`J_proj`) depends
+    on the smoothing window, so the 2x2 system is rebuilt for each Hanning
+    window size (`x_hanning`); the helper `solve_astrometry_gain` performs the
+    full per-window solve.
 
     Identifiability: a single output cannot separate astrometry from its own
     flat gain, but `flat`[o] is constant across the dither blocks whereas the
@@ -382,18 +429,14 @@ def process_astrometric_data(
     data_b = np.stack(data_blocks, axis=0)
 
     # Joint forward model, per block b, output o and wavelength (decouples per wave):
-    #     jacobian @ astrometry = data * flat - data_smoothed
+    #     jacobian @ astrometry = data - data_smoothed / flat
     # astrometry = (d_alpha, d_delta) is shared by all (b, o); flat[o] is an
-    # unknown gain shared by all blocks b but free across outputs. For fixed
-    # astrometry the optimal flat is linear in astrometry, so it is eliminated
-    # analytically (variable projection), leaving a 2x2 system per wavelength.
-    # The projected Jacobian and the 2x2 normal matrix do not depend on the
-    # smoothing window, so they are built (and inverted) once.
-    D2 = np.sum(data_b ** 2, axis=0)                          # (Noutput, Nwave)
-    G = np.sum(data_b[..., None] * J_blocks, axis=0)          # (Noutput, Nwave, 2)
-    J_proj = J_blocks - data_b[..., None] * (G / D2[..., None])[None]
-    M = np.einsum('bowi,bowj->wij', J_proj, J_proj)           # (Nwave, 2, 2)
-    M_inv = np.linalg.inv(M)
+    # unknown gain (close to 1) shared by all blocks b but free across outputs.
+    # Substituting g = 1/flat linearises the model; for fixed astrometry the
+    # optimal g is eliminated analytically (variable projection onto the
+    # smoothed directions), leaving a 2x2 system per wavelength. Because the
+    # projection is onto data_smoothed, the normal matrix now depends on the
+    # smoothing window and is rebuilt for each one (see solve_astrometry_gain).
 
     # Solve for astrometry (and recover flat) for a list of x_hanning windows
     # Largest window is twice the line width (in pixels); 10 values over the range
@@ -407,14 +450,8 @@ def process_astrometric_data(
         sm_b = np.stack([data_smoothed[:, 1:-1][i_cube, j_step]
                             for (i_cube, j_step) in valid_indices], axis=0)
 
-        # Project out the flat directions, then solve the 2x2 normal system
-        H = np.sum(data_b * sm_b, axis=0)                     # (Noutput, Nwave)
-        s_proj = sm_b - data_b * (H / D2)[None]
-        rhs = -np.einsum('bowi,bow->wi', J_proj, s_proj)      # (Nwave, 2)
-        astrometry_shift = (M_inv @ rhs[:, :, None])[:, :, 0]
-
-        # Recover the eliminated flat gains: flat = (G . astrometry + H) / D2
-        flat = (np.einsum('owi,wi->ow', G, astrometry_shift) + H) / D2
+        # Variable-projection solve (the 2x2 system depends on sm_b -> rebuilt here)
+        astrometry_shift, flat = solve_astrometry_gain(J_blocks, data_b, sm_b)
 
         astrometry_shift_list.append(astrometry_shift)
         flat_list.append(flat)
@@ -487,15 +524,14 @@ def process_astrometric_data(
 
     # Astrometry over the line, using a polynomial continuum
     # ------------------------------------------------------
-    # The line-restricted projected Jacobian and 2x2 inverse do not depend on
-    # the polynomial degree, so build them once. The astrometry is estimated and
-    # plotted over the full left->right span (`fit_aera`, the line plus its two
-    # side windows), matching the region evaluated by compute_smoothed_line.
+    # The astrometry is estimated and plotted over the full left->right span
+    # (`fit_aera`, the line plus its two side windows), matching the region
+    # evaluated by compute_smoothed_line. Since the variable-projection now
+    # projects onto the smoothed continuum, the 2x2 system depends on the
+    # polynomial degree and is rebuilt for each one (solve_astrometry_gain).
     cont_idx, fit_aera = line_fit_region(line_aera)
     data_b_line = data_b[..., fit_aera]
-    D2_line = D2[..., fit_aera]
-    J_proj_line = J_proj[..., fit_aera, :]
-    M_inv_line = M_inv[fit_aera]
+    J_blocks_line = J_blocks[..., fit_aera, :]
 
     astrometry_wave = wave[fit_aera]
     # Doppler velocity (km/s)
@@ -510,10 +546,7 @@ def process_astrometric_data(
         data_smoothed_line = compute_smoothed_line(data_normalized, wave, line_aera, poly_deg)
         sm_b_line = np.stack([data_smoothed_line[:, 1:-1][i_cube, j_step]
                                 for (i_cube, j_step) in valid_indices], axis=0)
-        H_line = np.sum(data_b_line * sm_b_line, axis=0)
-        s_proj_line = sm_b_line - data_b_line * (H_line / D2_line)[None]
-        rhs_line = -np.einsum('bowi,bow->wi', J_proj_line, s_proj_line)
-        astrometry_xy = (M_inv_line @ rhs_line[:, :, None])[:, :, 0]     # (n_line, 2)
+        astrometry_xy, _ = solve_astrometry_gain(J_blocks_line, data_b_line, sm_b_line)  # (n_fit, 2)
         astrometry_xy_list.append(astrometry_xy)
 
     # Compare RA and DEC astrometry over the line for the different poly_deg
@@ -630,7 +663,7 @@ if __name__ == "__main__":
 
         # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12*_ALTAIR_P.fits"]
         # # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12h18*_ALTAIR_P.fits"]
-        file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12h2*_ALTAIR_P.fits"]
+        # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12h2*_ALTAIR_P.fits"]
         # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T14h36*_ALTAIR_P.fits"]
 
         # file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T20h56*.fits"]

@@ -632,6 +632,8 @@ if __name__ == "__main__":
         file_patterns = ["/Users/slacour/DATA/LANTERNE/20250510/preproc/firstpl_2025-05-14T09h59*fits"]
         file_patterns = ["/Users/slacour/DATA/FIRST/20260608/preproc/firstpl_2026-06-08T06h5*.fits"]
 
+        # ALFDEL
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T14h18*_ALFDEL_P.fits", "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T14h17m56s_ALFDEL_P.fits"]
 
     print(f"Development override: wavelength_smooth={wavelength_smooth}, wavelength_bin={wavelength_bin}, Nsingular={Nsingular}")
     print(f"Development file patterns: {file_patterns}")

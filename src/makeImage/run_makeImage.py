@@ -14,7 +14,7 @@ import os
 import getpass
 import matplotlib
 if "VSCODE_PID" in os.environ:
-    matplotlib.use('Qt5Agg')
+    matplotlib.use('macosx')
 elif os.environ.get('SPYDER_DEBUG_FILE'):
     print("Running in Spyder")
 else:
@@ -29,14 +29,6 @@ from scipy.interpolate import griddata
 from astropy.io import fits
 from datetime import datetime
 
-import getpass
-import matplotlib
-if ("VSCODE_PID" in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode'):
-    matplotlib.use('Qt5Agg')
-elif os.environ.get('SPYDER_DEBUG_FILE'):
-    print("Running in Spyder")
-else:
-    matplotlib.use('Agg')
      
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -688,6 +680,10 @@ if __name__ == "__main__":
 
         # HIP81126
         file_patterns = ["/Users/slacour/DATA/LANTERNE/20250510/preproc/firstpl_2025-05-14T09h59*fits"]
+        
+        # ALFDEL
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T14h18*_ALFDEL_P.fits", "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T14h17m56s_ALFDEL_P.fits"]
+
         
 
     # Note: Development environment detection and default paths
