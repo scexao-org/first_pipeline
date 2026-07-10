@@ -88,6 +88,8 @@ the degeneracy between the astrometric signal and the per-output flat gains.
                        help="Width of the spectral line in nm (default: %(default)s)")
     parser.add_argument("--PA", type=float, default=-45.0,
                        help="Reference position angle in degrees drawn on the scatter plot (for plotting only, does not affect the results; default: %(default)s)")
+    parser.add_argument("--fast", action=argparse.BooleanOptionalAction, default=True,
+                       help="Fast mode: skip the SVD filtering and use only 3 Hanning window sizes (faster but less accurate; default: %(default)s). Use --no-fast to disable.")
 
     # Parse command line arguments
     # Development environment defaults are handled autonomously in run_makeAstrometry()
@@ -104,6 +106,7 @@ the degeneracy between the astrometric signal and the per-output flat gains.
     line_center = args.line_center
     line_width = args.line_width
     PA = args.PA
+    fast = args.fast
 
     try:
         # Check observatory status
@@ -126,6 +129,7 @@ the degeneracy between the astrometric signal and the per-output flat gains.
             line_center=line_center,
             line_width=line_width,
             PA=PA,
+            fast=fast,
         )
         
         print(f"Astrometric analysis completed successfully!")

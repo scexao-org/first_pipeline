@@ -221,8 +221,8 @@ def fit_gaussian_on_flux(fluxes, xmod, ymod):
     x = xmod[~z_is_nan]
     y = ymod[~z_is_nan]
     amplitude_0=np.nanmax(fluxes)-np.nanmin(fluxes)
-    x_0= x[np.nanargmax(fluxes)]
-    y_0= y[np.nanargmax(fluxes)]
+    x_0= x[np.argmax(z)]
+    y_0= y[np.argmax(z)]
     sigma_0 = (x.max()-x.min())/4
     offset_0=np.nanmin(fluxes)
 

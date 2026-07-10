@@ -235,7 +235,7 @@ def solve_astrometry_gain(J_blocks, data_b, sm_b):
 
 def process_astrometric_data(
     file_patterns, object_name=None, dark_patterns=None, flat_patterns=None, wave_patterns=None, modID=None, modScale=None, wollaston=None,
-    Nsingular=19*6, line_center=656.28, line_width= 3.0, PA=137.0):
+    Nsingular=19*6, line_center=656.28, line_width= 3.0, PA=137.0, fast=False):
     """
     Measure the wavelength-dependent photocenter shift (spectro-astrometry).
 
@@ -312,6 +312,10 @@ def process_astrometric_data(
     `PA` (degrees) is used for plotting only: it draws a reference position
     angle line on the astrometry_scatter figure and does not affect any of the
     computed results.
+
+    `fast` (bool): when True, skip the (expensive) SVD filtering step and only
+    use 3 Hanning window sizes (instead of 10) to speed up the computation at
+    the cost of accuracy.
     """
 
     # Polynomial continuum-fit degrees tested under the line (hard-coded)
@@ -359,10 +363,15 @@ def process_astrometric_data(
     flux_goodData, flux_threshold = runlib_linalg.flux_filtering(flux)
     print(f"* Percentage of good data: {np.sum(flux_goodData)/len(flux_goodData.ravel())*100:.1f} % (flux threshold)")
 
-    # SVD filtering
-    data_svdfiltered, fit_goodData, errors = runlib_linalg.svd_filtering(datacube, flux_goodData, Nsingular)
-    goodData = flux_goodData & fit_goodData
-    print(f"* Percentage of good data: {np.sum(goodData)/len(goodData.ravel())*100:.1f} % (flux and svd threshold)")
+    # SVD filtering (skipped in fast mode)
+    if fast:
+        print("* Fast mode: skipping SVD filtering")
+        data_svdfiltered = datacube
+        goodData = flux_goodData
+    else:
+        data_svdfiltered, fit_goodData, errors = runlib_linalg.svd_filtering(datacube, flux_goodData, Nsingular)
+        goodData = flux_goodData & fit_goodData
+        print(f"* Percentage of good data: {np.sum(goodData)/len(goodData.ravel())*100:.1f} % (flux and svd threshold)")
 
     # Plot flux map
     runlib_plots.plot_flux_map(flux.mean(axis=(2))[0], xmod[0], ymod[0])
@@ -439,9 +448,11 @@ def process_astrometric_data(
     # smoothing window and is rebuilt for each one (see solve_astrometry_gain).
 
     # Solve for astrometry (and recover flat) for a list of x_hanning windows
-    # Largest window is twice the line width (in pixels); 10 values over the range
+    # Largest window is twice the line width (in pixels); 10 values over the
+    # range (only 3 in fast mode)
     x_hanning_max = int(round(line_width_pix * 2))
-    x_hanning_values = [int(round(x)) for x in np.linspace(3, x_hanning_max, 10)]
+    n_hanning = 3 if fast else 10
+    x_hanning_values = [int(round(x)) for x in np.linspace(3, x_hanning_max, n_hanning)]
     astrometry_shift_list = []
     flat_list = []
     hanning_window_list = []
@@ -550,21 +561,25 @@ def process_astrometric_data(
         astrometry_xy_list.append(astrometry_xy)
 
     # Compare RA and DEC astrometry over the line for the different poly_deg
-    fig, axes = plt.subplots(2, 1, figsize=(10, 9), num="astromet_comparison_poly",
+    fig, axes = plt.subplots(3, 1, figsize=(10, 12), num="astromet_comparison_poly",
                                 clear=True, sharex=True)
     axes[1].sharey(axes[0])
     for poly_deg, astrometry_xy in zip(poly_deg_values, astrometry_xy_list):
         axes[0].plot(astrometry_wave, astrometry_xy[:, 0], alpha=0.8, label=f"{poly_deg}")
         axes[1].plot(astrometry_wave, astrometry_xy[:, 1], alpha=0.8, label=f"{poly_deg}")
+    # Flux over the same wavelength span (fit_aera)
+    axes[2].plot(astrometry_wave, flux_scaled[fit_aera].T, 'r', alpha=0.5)
     # Shade the line area
     for ax in axes:
         ax.axvspan(line_center - line_width/2, line_center + line_width/2,
                     color='gray', alpha=0.2)
     axes[0].set_ylabel("RA astrometric signal (mas)")
     axes[1].set_ylabel("DEC astrometric signal (mas)")
-    axes[1].set_xlabel("Wavelength")
+    axes[2].set_ylabel("Flux (scaled)")
+    axes[2].set_xlabel("Wavelength")
     axes[0].set_title(f"{object_name} - RA astrometry (over the line)")
     axes[1].set_title(f"{object_name} - DEC astrometry (over the line)")
+    axes[2].set_title(f"{object_name} - Flux (over the line)")
     axes[0].legend(title="polynomial degree of the continuum fit")
     # fig.savefig("astrometry_3.pdf")
     pdf.savefig(fig)  # page 3: astrometry_3 (poly_deg comparison)
@@ -576,10 +591,10 @@ def process_astrometric_data(
     fig, ax = plt.subplots(1, 1, figsize=(8, 6), num="astrometry_scatter", clear=True)
     # Only show the points falling inside the line (not the side windows)
     line_mask = line_aera[fit_aera]
-    flux_scaled_filtered = flux_scaled[fit_aera][line_mask]
+    flux_scaled_filtered = flux_scaled[fit_aera][line_mask]  - np.min(flux_scaled[fit_aera])
     velocity_line = velocity[line_mask]
     for astrometry_xy in astrometry_xy_list[-2:-1]:
-        astrometry_xy = astrometry_xy[line_mask] *-1 # to remove
+        astrometry_xy = astrometry_xy[line_mask]
         scatter = ax.scatter(astrometry_xy[:, 0], astrometry_xy[:, 1], c=velocity_line, s=flux_scaled_filtered*1000, cmap='RdBu_r', alpha=0.6)
         ax.plot(astrometry_xy[:, 0], astrometry_xy[:, 1], 'k-', alpha=0.3, linewidth=1)
     ax.set_xlabel("RA (mas)")
@@ -645,6 +660,7 @@ if __name__ == "__main__":
         line_center=656.28
         line_width= 2
         PA=137  # for plotting only
+        fast=True
 
         file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
         file_patterns = ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12?2*.fits"]
@@ -657,15 +673,17 @@ if __name__ == "__main__":
         file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h3[2-9]*_HD163296_P.fits"]
         wave_patterns = ["/Users/slacour/DATA/FIRST/20260625/wavemaps/"]
 
-        # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T08h59m59s_HD142527_P.fits",
-        #                  "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h01m49s_HD142527_P.fits",
-        #                     "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h19m55s_HD142527_P.fits",
-                        #  ]
-
-        # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12*_ALTAIR_P.fits"]
-        # # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12h18*_ALTAIR_P.fits"]
+        PA= 162
+        line_width= 1.25
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T08h59m59s_HD142527_P.fits",
+                         "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h01m49s_HD142527_P.fits",
+                            "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h19m55s_HD142527_P.fits",
+                         ]
+        # line_center=656.17
+        # PA=28
+        # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12h18*_ALTAIR_P.fits"]
         # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12h2*_ALTAIR_P.fits"]
-        # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T14h36*_ALTAIR_P.fits"]
+        # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T15h2[7-9]*_ALTAIR_P.fits"]
 
         # file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T20h56*.fits"]
         # file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T21h10*.fits"]
@@ -697,6 +715,7 @@ if __name__ == "__main__":
         Nsingular=Nsingular,
         line_center=line_center,
         line_width=line_width,
-        PA=PA)
+        PA=PA,
+        fast=fast)
         # save_individual_frames=save_individual_frames,)
 # %%
