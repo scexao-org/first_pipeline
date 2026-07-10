@@ -105,10 +105,14 @@ def update_header_date(filelist):
 
 
 def create_basename(header):
-    date = header.get('DATE', 'NODATE')
+    UT_STR = header.get('UT-STR', 'NOUTSTR')
+    DATE_OBS= header.get('DATE-OBS', 'NODATEOBS')
     object = header.get('OBJECT', "NONAME")
     type = header.get('DATA-TYP',None)
     cat = header.get('X_FIRTYP',None)
+
+    # Build the date from DATE-OBS (yyyy-mm-dd) and UT-STR (HH:MM:SS.SS)
+    date = DATE_OBS + 'T' + UT_STR
 
     name_extension = object
     data_type_extension = ["DARK", "WAVE", "WAVELENGTHMAP", "SKY"]
@@ -121,13 +125,12 @@ def create_basename(header):
         name_extension = name_extension + "_" + processing_extension[cat]
 
     # remove the : in the name because that crash Elsa's computer :p
+    # convert the time part HH:MM:SS[.ss] to HHhMMmSS[.ss]s
     try:
-        if date[-3]==":":
-            date = date[:-3] + "m" + date[-2:]
-        if date[-6] ==":":
-            date = date[:-6] + "h" + date[-5:]
-        date=date+"s"
-    except:
+        date_part, time_part = date.split('T')
+        hh, mm, ss = time_part.split(':')
+        date = f"{date_part}T{hh}h{mm}m{ss}s"
+    except Exception:
         pass
 
     output_filename = 'firstpl_' + date + '_' + name_extension + '.fits'

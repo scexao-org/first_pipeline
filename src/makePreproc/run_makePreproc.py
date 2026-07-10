@@ -13,15 +13,18 @@ Created on Wed May 21 22:56:25 2025
 
 import os
 import getpass
+import glob
 import matplotlib
 if "VSCODE_PID" in os.environ:
     matplotlib.use('macosx')
 else:
     matplotlib.use('Agg')
+matplotlib.use('Agg')
 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
+from astropy.io import fits
 from tqdm import tqdm
 from datetime import datetime
 
@@ -57,9 +60,7 @@ def preprocess_files(fileList, overwrite=False, plot_sum=False):
     """
     
     dir_path_0 = fileList.get_most_common_dir()
-    files_out = []
-    centroid_data = []  # Store centroid data for summary plot
-    shift_data = []  # Store modulation-to-frame shift for summary plot
+    files_out = []  # Store preprocessed file paths for summary plot
 
     # Process each file using the Preproc class
     for file_withpixelmap in tqdm(fileList.files_with_associated_files, desc=f"Pre-processing of files in {dir_path_0}"):
@@ -100,11 +101,9 @@ def preprocess_files(fileList, overwrite=False, plot_sum=False):
                 # Generate diagnostic figures
                 preproc.generate_diagnostic_figures(pixelmap)
 
-                # Collect centroid data for summary plot
+                # Collect file path for summary plot
                 if preproc.quality_metrics:
-                    files_out.append(preproc.basename)
-                    centroid_data.append(preproc.quality_metrics.get('Q_P_CENT', 0))
-                    shift_data.append(preproc.header.get('X_FIRGSH', np.nan))
+                    files_out.append(preproc.filename)
                     
                 # Save the preprocessed file
                 preproc.save()
@@ -118,29 +117,45 @@ def preprocess_files(fileList, overwrite=False, plot_sum=False):
         return []
 
     # Create summary centroid shift plot if requested
-    if plot_sum and len(centroid_data) > 0:
-        create_centroid_summary_plot(files_out, centroid_data, shift_data, dir_path_0)
+    if plot_sum and len(files_out) > 0:
+        create_centroid_summary_plot(files_out, dir_path_0)
             
 
 
     return files_out
 
 
-def create_centroid_summary_plot(files_out, centroid_data, shift_data, dir_path_0):
+def create_centroid_summary_plot(files_in, dir_path_0):
     """
     Create a summary plot for centroid shifts across all processed files.
     
     Parameters
     ----------
-    files_out : list
-        List of output filenames
-    centroid_data : list
-        List of centroid shift values
-    shift_data : list
-        List of modulation-to-frame shift values (X_FIRGSH)
+    files_in : list
+        List of preprocessed FITS file paths. The centroid shift (``Q_P_CENT``)
+        and modulation-to-frame shift (``X_FIRGSH``) values are read from each
+        file's header.
     dir_path_0 : str
         Base directory path for saving the plot
     """
+    # Read the values to plot from the FITS headers
+    files_out = []
+    centroid_data = []
+    shift_data = []
+    for f in files_in:
+        try:
+            header = fits.getheader(f)
+        except Exception as e:
+            print(f"Error reading header from {f}: {e}")
+            continue
+        files_out.append(os.path.basename(f))
+        centroid_data.append(header.get('Q_P_CENT', 0))
+        shift_data.append(header.get('X_FIRGSH', np.nan))
+
+    if len(files_out) == 0:
+        print("No headers could be read for centroid shift summary.")
+        return
+
     preproc_dir_path = os.path.join(dir_path_0, "../preproc")
     filename_out = files_out[-1] if files_out else "summary"
     filename_out = "_".join(filename_out.split("_")[:-2]) if "_" in filename_out else filename_out
@@ -150,7 +165,7 @@ def create_centroid_summary_plot(files_out, centroid_data, shift_data, dir_path_
         fig, (ax_centroid, ax_shift) = plt.subplots(
             2, 1, sharex=True, clear=True,
             num="Centroid shift summary",
-            figsize=(max(8, len(files_out) * 0.3), 9),
+            figsize=(max(8, len(files_out) * 0.25)+1, 9),
         )
 
         # Centroid shift (top axis)
@@ -168,17 +183,10 @@ def create_centroid_summary_plot(files_out, centroid_data, shift_data, dir_path_
         ax_shift.set_ylabel("Frame shift")
         ax_shift.grid(True, alpha=0.3)
 
-        # Set x-axis labels if not too many files (shared x-axis -> set on bottom)
-        if len(files_out) <= 20:
-            ax_shift.set_xticks(range(len(files_out)))
-            ax_shift.set_xticklabels(files_out, rotation=90)
-        else:
-            # For many files, show only some labels
-            step = max(1, len(files_out) // 10)
-            indices = list(range(0, len(files_out), step))
-            labels = [files_out[i] for i in indices]
-            ax_shift.set_xticks(indices)
-            ax_shift.set_xticklabels(labels, rotation=90)
+        # Show all file names on the x-axis (shared x-axis -> set on bottom)
+        ax_shift.set_xticks(range(len(files_out)))
+        ax_shift.set_xticklabels(files_out, rotation=90)
+        ax_shift.set_xlim(0, len(files_out) - 1)
 
         fig.tight_layout()
         fig.savefig(filename_out_full + "_PREPROCSHIFT.png", dpi=300)
@@ -254,11 +262,21 @@ if __name__ == "__main__":
         overwrite = True
         file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
         file_patterns = ["/Users/slacour/DATA/FIRST/20260608/firstpl/firstpl_10:10:12.570875507.fits"]
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260625/firstpl/firstpl_10:10:12.570875507.fits"]
         
         print(f"Development override: pixel_map={pixel_map}, object_name={object_name}, only_with_modulation={only_with_modulation}, overwrite={overwrite}")
         print(f"Development file patterns: {file_patterns}")
 
-    run_preprocess(file_patterns=file_patterns, pixel_map=pixel_map, object_name=object_name,
-                           only_with_modulation=only_with_modulation, overwrite=overwrite)
+    # run_preprocess(file_patterns=file_patterns, pixel_map=pixel_map, object_name=object_name,
+    #                        only_with_modulation=only_with_modulation, overwrite=overwrite)
+
+    # Build the centroid shift summary from all preprocessed FITS files in the preproc directory
+    raw_dir = os.path.dirname(file_patterns[0])
+    preproc_dir = os.path.join(raw_dir, "../preproc")
+    preproc_files = sorted(glob.glob(os.path.join(preproc_dir, "*.fits")))
+    if preproc_files:
+        create_centroid_summary_plot(preproc_files, raw_dir)
+    else:
+        print(f"No preprocessed FITS files found in {preproc_dir}")
     
 # %%

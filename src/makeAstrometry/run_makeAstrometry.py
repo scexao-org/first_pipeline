@@ -579,8 +579,8 @@ def process_astrometric_data(
     flux_scaled_filtered = flux_scaled[fit_aera][line_mask]
     velocity_line = velocity[line_mask]
     for astrometry_xy in astrometry_xy_list[-2:-1]:
-        astrometry_xy = astrometry_xy[line_mask]
-        scatter = ax.scatter(astrometry_xy[:, 0], astrometry_xy[:, 1], c=velocity_line, s=flux_scaled_filtered*1000, cmap='viridis', alpha=0.6)
+        astrometry_xy = astrometry_xy[line_mask] *-1 # to remove
+        scatter = ax.scatter(astrometry_xy[:, 0], astrometry_xy[:, 1], c=velocity_line, s=flux_scaled_filtered*1000, cmap='RdBu_r', alpha=0.6)
         ax.plot(astrometry_xy[:, 0], astrometry_xy[:, 1], 'k-', alpha=0.3, linewidth=1)
     ax.set_xlabel("RA (mas)")
     ax.set_ylabel("DEC (mas)")
@@ -653,13 +653,14 @@ if __name__ == "__main__":
         wave_patterns = ["/Users/slacour/DATA/FIRST/20260608/wavemaps/"]
         # flat_patterns = wave_patterns
 
+        PA=137  # for plotting only
         file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h3[2-9]*_HD163296_P.fits"]
         wave_patterns = ["/Users/slacour/DATA/FIRST/20260625/wavemaps/"]
 
-        file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T08h59m59s_HD142527_P.fits",
-                         "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h01m49s_HD142527_P.fits",
-                            "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h19m55s_HD142527_P.fits",
-                         ]
+        # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T08h59m59s_HD142527_P.fits",
+        #                  "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h01m49s_HD142527_P.fits",
+        #                     "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h19m55s_HD142527_P.fits",
+                        #  ]
 
         # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12*_ALTAIR_P.fits"]
         # # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12h18*_ALTAIR_P.fits"]
