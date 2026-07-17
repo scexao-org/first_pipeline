@@ -585,12 +585,44 @@ def process_astrometric_data(
     pdf.savefig(fig)  # page 3: astrometry_3 (poly_deg comparison)
 
 
+    # Compare separation and PA astrometry over the line for the different poly_deg
+    fig, axes = plt.subplots(3, 1, figsize=(10, 12), num="astromet_comparison_poly_sepPA",
+                                clear=True, sharex=True)
+    for poly_deg, astrometry_xy in zip(poly_deg_values, astrometry_xy_list):
+        separation = np.hypot(astrometry_xy[:, 0], astrometry_xy[:, 1])
+        PA_deg = np.degrees(np.arctan2(astrometry_xy[:, 0], astrometry_xy[:, 1]))
+        axes[0].plot(astrometry_wave, separation, alpha=0.8, label=f"{poly_deg}")
+        axes[1].plot(astrometry_wave, PA_deg, alpha=0.8, label=f"{poly_deg}")
+    # Flux over the same wavelength span (fit_aera)
+    axes[2].plot(astrometry_wave, flux_scaled[fit_aera].T, 'r', alpha=0.5)
+    # Shade the line area
+    for ax in axes:
+        ax.axvspan(line_center - line_width/2, line_center + line_width/2,
+                    color='gray', alpha=0.2)
+    # Reference PA and -PA given to the function
+    axes[1].axhline(PA, color='k', linestyle=':', alpha=0.7, label=f"PA={PA:.2f}°")
+    axes[1].axhline(-PA, color='k', linestyle=':', alpha=0.7, label=f"-PA={-PA:.2f}°")
+    axes[0].set_ylabel("Separation (mas)")
+    axes[1].set_ylabel("PA (deg)")
+    axes[2].set_ylabel("Flux (scaled)")
+    axes[2].set_xlabel("Wavelength")
+    axes[0].set_title(f"{object_name} - Separation (over the line)")
+    axes[1].set_title(f"{object_name} - PA (over the line)")
+    axes[2].set_title(f"{object_name} - Flux (over the line)")
+    axes[0].legend(title="polynomial degree of the continuum fit")
+    axes[1].legend(fontsize=8)
+    pdf.savefig(fig)  # page 4: astrometry_3 separation/PA (poly_deg comparison)
 
 
 
     fig, ax = plt.subplots(1, 1, figsize=(8, 6), num="astrometry_scatter", clear=True)
-    # Only show the points falling inside the line (not the side windows)
-    line_mask = line_aera[fit_aera]
+    # Widen the plotted region beyond the line by this factor (adjustable), so a
+    # few extra points slightly outside the line area are shown too.
+    mask_width_scale = 1.
+    line_aera_wide = ((wave > line_center - line_width/2*mask_width_scale) &
+                      (wave < line_center + line_width/2*mask_width_scale))
+    # Only show the points falling inside the (widened) line region
+    line_mask = line_aera_wide[fit_aera]
     flux_scaled_filtered = flux_scaled[fit_aera][line_mask]  - np.min(flux_scaled[fit_aera])
     velocity_line = velocity[line_mask]
     for astrometry_xy in astrometry_xy_list[-2:-1]:
@@ -674,7 +706,8 @@ if __name__ == "__main__":
         wave_patterns = ["/Users/slacour/DATA/FIRST/20260625/wavemaps/"]
 
         PA= 162
-        line_width= 1.25
+        line_width= 1.3
+        line_center = 656.4
         file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T08h59m59s_HD142527_P.fits",
                          "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h01m49s_HD142527_P.fits",
                             "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h19m55s_HD142527_P.fits",
