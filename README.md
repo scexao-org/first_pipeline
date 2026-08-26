@@ -410,6 +410,8 @@ runPL_changeKeyword --DATE=DEFAULT --X_FIRTYP=RAW recent_observations/*.fits
 - `--X_FIRTRG`: Camera trigger mode (INT=internal, EXT=external synchronization)
 - `--X_FIRWOL`: Wollaston prism status (IN=polarimetry mode, OUT=photometry mode)
 - `--GAIN`: Camera gain setting value
+- `--D_IMRRA`: Target right ascension in sexagesimal format
+- `--D_IMRDEC`: Target declination in sexagesimal format
 - `--DATE`: Observation date (use DEFAULT to extract from filename)
 
 **Pipeline Integration:**

@@ -43,6 +43,7 @@ Examples:
     %(prog)s --OBJECT="HD 164461" --X_FIRTYP=PREPROC target_data/*.fits
     %(prog)s --DATA-TYP=COMPARAISON --X_FIRTYP=RAW neon_calib.fits
     %(prog)s --DATE=DEFAULT --X_FIRTYP=RAW recent_observations/*.fits
+    %(prog)s --D_IMRRA="21:15:49.440" --D_IMRDEC="+05:14:52.41" target_data/*.fits
 
 Pipeline Workflow Integration:
     1. Use this script to classify raw FITS files by DATA-TYP
@@ -75,6 +76,12 @@ Critical Keywords:
     X_FIRWOL (Wollaston Status):  
         IN           - Wollaston prism inserted (polarimetry mode)
         OUT          - Wollaston prism removed (photometry mode)
+
+    D_IMRRA (Target Right Ascension):
+        Target right ascension in sexagesimal format
+
+    D_IMRDEC (Target Declination):
+        Target declination in sexagesimal format
 
 Usage in Pipeline:
     - Classify raw files before processing: --DATA-TYP to set observation type
@@ -109,6 +116,10 @@ logic in downstream pipeline scripts (createPixelMap, preprocess, wavelengthMap,
                        help="Wollaston prism status: IN (polarimetry mode) or OUT (photometry mode)")
     parser.add_argument("-g", "--GAIN", 
                        help="Camera gain setting value")
+    parser.add_argument("--D_IMRRA",
+                       help="Target right ascension in sexagesimal format")
+    parser.add_argument("--D_IMRDEC",
+                       help="Target declination in sexagesimal format")
     parser.add_argument("-d", "--DATE", 
                        help="Observation date (use DEFAULT to automatically extract from filename)")
 
@@ -129,6 +140,8 @@ logic in downstream pipeline scripts (createPixelMap, preprocess, wavelengthMap,
         'X_FIRTRG': args.X_FIRTRG,
         'X_FIRWOL': args.X_FIRWOL,
         'GAIN': args.GAIN,
+        'D_IMRRA': args.D_IMRRA,
+        'D_IMRDEC': args.D_IMRDEC,
         'DATE': args.DATE if args.DATE != "DEFAULT" else None,
     }
 
