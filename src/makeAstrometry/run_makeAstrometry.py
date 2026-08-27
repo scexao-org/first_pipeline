@@ -504,6 +504,7 @@ def process_astrometric_data(
     for ax in axes:
         ax.axvspan(line_center - line_width/2, line_center + line_width/2,
                     color='gray', alpha=0.2)
+        ax.axvline(line_center, color='black', linewidth=1)
     # Flux plotted on its own (right) y-axis in red
     ax0_flux = axes[0].twinx()
     ax1_flux = axes[1].twinx()
@@ -573,6 +574,10 @@ def process_astrometric_data(
     for ax in axes:
         ax.axvspan(line_center - line_width/2, line_center + line_width/2,
                     color='gray', alpha=0.2)
+        ax.axvline(line_center, color='black', linewidth=1)
+
+    
+    
     axes[0].set_ylabel("RA astrometric signal (mas)")
     axes[1].set_ylabel("DEC astrometric signal (mas)")
     axes[2].set_ylabel("Flux (scaled)")
@@ -631,6 +636,9 @@ def process_astrometric_data(
         ax.plot(astrometry_xy[:, 0], astrometry_xy[:, 1], 'k-', alpha=0.3, linewidth=1)
     ax.set_xlabel("RA (mas)")
     ax.set_ylabel("DEC (mas)")
+    ax.plot([], [], ' ', label=f"line center = {line_center:.6g}")
+    ax.plot([], [], ' ', label=f"line width = {line_width:.6g}")
+    ax.legend()
     ax.set_aspect('equal')
     lim = np.max(np.abs(ax.get_xlim() + ax.get_ylim()))
     ax.set_xlim(lim, -lim)
@@ -639,8 +647,8 @@ def process_astrometric_data(
     ax.set_title(f"{object_name} - Astrometry vs Velocity, poly deg={list(poly_deg_values)[-2]}")
     # fig.savefig("astrometry_scatter.png", dpi=300)
     ax.grid(True, alpha=0.3)
-    ax.xaxis.set_major_locator(plt.MultipleLocator(0.05))
-    ax.yaxis.set_major_locator(plt.MultipleLocator(0.05))
+    # ax.xaxis.set_major_locator(plt.MultipleLocator(0.05))
+    # ax.yaxis.set_major_locator(plt.MultipleLocator(0.05))
 
     PA_rad = PA*np.pi/180
     y = np.linspace(-lim,lim,100)

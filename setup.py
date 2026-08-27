@@ -61,6 +61,7 @@ setup(
         'console_scripts': [
             'runPL_changeKeyword=changeKeyword.main:main',
             'runPL_create_pixelMap=createPixelMap.main:main',
+            'runPL_check_raw=checkRaw.main:main',
             'runPL_make_preproc=makePreproc.main:main',
             'runPL_create_flatMap=createFlatMap.main:main',
             'runPL_create_waveMap=createWaveMap.main:main',
