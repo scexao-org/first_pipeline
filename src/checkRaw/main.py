@@ -112,7 +112,7 @@ Output Fields (printed per file and written to <basename>_checkraw_results.txt):
                        help='One or more glob patterns for FITS files (default: *.fits)')
 
     # Add optional arguments
-    parser.add_argument("--fraction", type=float, default=0.02,
+    parser.add_argument("--fraction", type=float, default=0.01,
                        help="Fraction of brightest pixels to analyze (default: %(default)s)")
     parser.add_argument("--max_lag", type=int, default=None,
                        help="Maximum lag in frames for the autocorrelation function (default: all frames)")

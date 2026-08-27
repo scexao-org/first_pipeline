@@ -189,7 +189,8 @@ def estimate_coherence_length(acf, frame_dt=1.0, threshold=1 / np.e):
     return coherence_frames, coherence_frames * frame_dt
 
 
-def relative_frame_to_frame_variation(pixel_timeseries, lag=1):
+
+def relative_frame_to_frame_variation(pixel_timeseries, background_level, lag=1):
     """
     Estimate how much the flux varies, on average, between two frames
     separated by `lag` frames, as a percentage of the mean flux.
@@ -206,8 +207,8 @@ def relative_frame_to_frame_variation(pixel_timeseries, lag=1):
         float: Mean relative flux variation at this lag, in percent.
     """
     mean_diff = np.abs(pixel_timeseries[lag:] - pixel_timeseries[:-lag]).mean(axis=0)
-    mean_flux = np.abs(pixel_timeseries).mean(axis=0)
-    mean_flux[mean_flux == 0] = np.nan
+    mean_flux = np.abs(pixel_timeseries).mean(axis=0) - background_level
+    mean_flux[mean_flux <= 0] = np.nan
     return float(np.nanmean(mean_diff / mean_flux) * 100)
 
 
@@ -304,12 +305,14 @@ def process_one_file(filename, fraction=0.05, max_lag=None, output_dir=None):
     Nframes = cube.shape[0]
 
     pixel_timeseries, mask, mean_image = select_brightest_pixels(cube, fraction=fraction)
+    noise_timeseries, noise_mask, _ = select_faintest_pixels(cube, fraction=fraction)
+    background_level = np.median(noise_timeseries)
+
     acf = temporal_autocorrelation(pixel_timeseries, max_lag=max_lag)
     coherence_frames, coherence_seconds = estimate_coherence_length(acf, frame_dt=frame_dt)
-    variation_percent_lag1 = relative_frame_to_frame_variation(pixel_timeseries, lag=1)
-    variation_percent_lag2 = relative_frame_to_frame_variation(pixel_timeseries, lag=2)
+    variation_percent_lag1 = relative_frame_to_frame_variation(pixel_timeseries, background_level, lag=1)
+    variation_percent_lag2 = relative_frame_to_frame_variation(pixel_timeseries, background_level, lag=2)
 
-    noise_timeseries, noise_mask, _ = select_faintest_pixels(cube, fraction=fraction)
     noise_acf = temporal_autocorrelation(noise_timeseries, max_lag=max_lag)
     noise_coherence_frames, noise_coherence_seconds = estimate_coherence_length(noise_acf, frame_dt=frame_dt)
     variation_percent_expected = analytical_noise_variation(pixel_timeseries, noise_timeseries,
@@ -358,7 +361,8 @@ def process_one_file(filename, fraction=0.05, max_lag=None, output_dir=None):
 def format_result(result):
     """Format a single file's result as one text line."""
     return (f"{os.path.basename(result['file'])}\t"
-            f" -> {result['object']:<12}\t"
+            f" -> {result['object']:<12}"
+            f"{result['modID']:2}\t"
             # f"date={result['date_obs']}T{result['ut_str']}\t"
             # f"n_frames={result['n_frames']}\t"
             f"frame_dt={result['frame_dt_s']:.6f}s\t"
