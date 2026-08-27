@@ -344,7 +344,7 @@ def process_one_file(filename, fraction=0.05, max_lag=None, output_dir=None):
 def format_result(result):
     """Format a single file's result as one text line."""
     return (f"{os.path.basename(result['file'])}\t"
-            f"object={result['object']}\t"
+            f" -> {result['object']:<12}\t"
             # f"date={result['date_obs']}T{result['ut_str']}\t"
             # f"n_frames={result['n_frames']}\t"
             f"frame_dt={result['frame_dt_s']:.6f}s\t"
@@ -379,7 +379,7 @@ def run_checkRaw(fraction=0.05, max_lag=None, file_patterns=None, object_name=No
     output_dir = os.path.join(folder, "../checkraw")
 
     results = []
-    for filename in tqdm(filelist, desc="Checking raw files", unit="file"):
+    for filename in filelist:
         try:
             result = process_one_file(filename, fraction=fraction, max_lag=max_lag, output_dir=output_dir)
         except Exception as e:
