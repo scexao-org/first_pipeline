@@ -19,6 +19,12 @@ whether the brightest pixels vary frame-to-frame beyond what pure detector
 noise would produce (i.e. a real upstream instability) or are consistent
 with noise alone.
 
+Once all files are processed, a summary plot (<basename>_checkraw_summary.png)
+shows the coherence and variation metrics as a function of time, colored by
+OBJECT and marked by modulation ID (modID). The <basename> is derived from
+the header of the last processed file, following the same convention as the
+other pipeline scripts (see `create_basename`).
+
 Created on Wed May 21 22:56:25 2025
 @author: slacour
 """
@@ -37,6 +43,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from first_pipeline_shared.classes.runPL_class_fileList import FileList
+from first_pipeline_shared.libraries import runPL_library_io as runlib_io
 plt.ion()
 
 
@@ -313,11 +320,18 @@ def process_one_file(filename, fraction=0.05, max_lag=None, output_dir=None):
     else:
         excess_ratio = np.nan
 
+    try:
+        obs_time = Time(f"{header['DATE-OBS']} {header['UT-STR']}").datetime
+    except (KeyError, ValueError):
+        obs_time = None
+
     result = {
         'file': filename,
         'object': header.get('OBJECT', 'UNKNOWN'),
         'date_obs': header.get('DATE-OBS', 'UNKNOWN'),
         'ut_str': header.get('UT-STR', 'UNKNOWN'),
+        'obs_time': obs_time,
+        'modID': int(header.get('X_FIRMID', -1)),
         'n_frames': Nframes,
         'frame_dt_s': frame_dt,
         'coherence_frames': coherence_frames,
@@ -358,6 +372,67 @@ def format_result(result):
             f"variation_noise_only={result['variation_percent_expected']:.2f}%")
 
 
+def save_summary_png(results, png_filename):
+    """
+    Save a summary figure showing coherence and variation (lag=1 and lag=2)
+    metrics vs time for all processed files, colored by OBJECT and marked by
+    modulation ID (modID, an integer between -1 and 10).
+    """
+    if not results:
+        return
+
+    objects = sorted({r['object'] for r in results})
+    palette = plt.cm.tab10(np.linspace(0, 1, 10))
+    object_color = {obj: palette[i % len(palette)] for i, obj in enumerate(objects)}
+
+    markers = ['o', 's', '^', 'v', 'D', 'P', 'X', '*', 'h', '8', '<', '>']
+
+    def marker_for_modID(mod_id):
+        return markers[(mod_id + 1) % len(markers)]
+
+    if all(r['obs_time'] is not None for r in results):
+        x = [r['obs_time'] for r in results]
+        x_label = "Time (UT)"
+    else:
+        x = np.arange(len(results))
+        x_label = "File index"
+
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True, clear=True, num="Check raw summary")
+
+    for r, xi in zip(results, x):
+        color = object_color[r['object']]
+        marker = marker_for_modID(r['modID'])
+        axes[0].plot(xi, r['coherence_frames'], marker=marker, color=color, linestyle='none')
+        axes[0].plot(xi, r['noise_coherence_frames'], marker=marker, color='gray', markersize=4, alpha=0.5)
+        axes[1].plot(xi, r['variation_percent_lag1'], marker=marker, color=color, linestyle='none')
+        axes[1].plot(xi, r['variation_percent_lag2'], marker=marker, markerfacecolor='none',
+                     markeredgecolor=color, linestyle='none')
+        axes[1].plot(xi, r['variation_percent_expected'], marker=marker, color='gray', markersize=4, alpha=0.5)
+
+    axes[0].set_ylabel("Coherence (frames)")
+    axes[0].set_title("Brightest pixels coherence (color) vs. noise floor (gray)")
+    axes[1].set_ylabel("Flux variation (%)")
+    axes[1].set_title("Frame-to-frame variation, lag=1 filled / lag=2 open (color) vs. noise-only prediction (gray)")
+    axes[1].set_xlabel(x_label)
+    fig.autofmt_xdate()
+
+    object_handles = [plt.Line2D([], [], marker='o', linestyle='none', color=object_color[obj], label=obj)
+                       for obj in objects]
+    modIDs = sorted({r['modID'] for r in results})
+    modID_handles = [plt.Line2D([], [], marker=marker_for_modID(m), linestyle='none', color='black', label=f"modID={m}")
+                      for m in modIDs]
+    lag_handles = [plt.Line2D([], [], marker='o', linestyle='none', color='black', label="lag=1"),
+                   plt.Line2D([], [], marker='o', linestyle='none', markerfacecolor='none',
+                              markeredgecolor='black', label="lag=2")]
+    axes[0].legend(handles=object_handles, title="Object", fontsize=7, loc='upper left', bbox_to_anchor=(1.01, 1))
+    axes[1].legend(handles=modID_handles + lag_handles, title="modID / lag", fontsize=7, loc='upper left', bbox_to_anchor=(1.01, 1))
+
+    fig.tight_layout()
+    fig.savefig(png_filename, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Summary plot saved: {png_filename}")
+
+
 def run_checkRaw(fraction=0.05, max_lag=None, file_patterns=None, object_name=None, modID=None):
     """
     High-level function to check the frame-to-frame coherence of the
@@ -389,11 +464,21 @@ def run_checkRaw(fraction=0.05, max_lag=None, file_patterns=None, object_name=No
         print(format_result(result))
 
     os.makedirs(output_dir, exist_ok=True)
-    txt_filename = os.path.join(output_dir, "checkraw_results.txt")
+
+    if results:
+        last_header = fits.getheader(results[-1]['file'])
+        basename = runlib_io.create_basename(last_header)
+    else:
+        basename = "firstpl_checkraw.fits"
+
+    txt_filename = os.path.join(output_dir, basename.replace('.fits', '_checkraw_results.txt'))
     with open(txt_filename, "w") as f:
         for result in results:
             f.write(format_result(result) + "\n")
     print(f"Text results saved: {txt_filename}")
+
+    png_filename = os.path.join(output_dir, basename.replace('.fits', '_checkraw_summary.png'))
+    save_summary_png(results, png_filename)
 
     return results
 

@@ -76,10 +76,15 @@ Input Files:
 
 Output:
     - One text result line per file printed to the console
-    - A summary text file (checkraw_results.txt) in the ../checkraw directory
+    - A summary text file (<basename>_checkraw_results.txt) in the
+      ../checkraw directory
     - A diagnostic PNG per file (mean image, flux time series, ACF)
+    - A summary PNG (<basename>_checkraw_summary.png) with coherence and
+      variation metrics vs. time, colored by OBJECT and marked by modID
+      (<basename> is derived from the last file's header, same convention
+      as the other pipeline scripts)
 
-Output Fields (printed per file and written to checkraw_results.txt):
+Output Fields (printed per file and written to <basename>_checkraw_results.txt):
     - coherence: lag (in frames, and in seconds) at which the brightest
       pixels' ACF first drops to 1/e of its zero-lag value.
     - excess_ratio: coherence(brightest pixels) / coherence(faintest pixels).
