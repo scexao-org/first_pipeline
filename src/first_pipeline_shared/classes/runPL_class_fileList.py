@@ -76,6 +76,10 @@ def get_filelist(file_patterns, fits_keywords, name_search=None):
 
     # Filter out non-fits files
     filelist = [file for file in filelist if file.endswith('.fits')]
+
+    # Exclude preprocessed files whose metrology frame-shift detection failed.
+    filelist = [file for file in filelist
+                if fits.getheader(file).get('X_FIRGSH') != 'ERROR']
     
     if len(filelist) == 0:
         raise FileNotFoundError("No fits files found "+str_search+" with the specified patterns")

@@ -68,6 +68,7 @@ setup(
             'runPL_create_couplingMap=createCouplingMap.main:main',
             'runPL_make_image=makeImage.main:main',
             'runPL_make_astrometry=makeAstrometry.main:main',
+            'runPL_make_halpha_imaging=makeHalphaImaging.main:main',
             'runPL_auto_process=autoProcess.main:main',
         ],
     },

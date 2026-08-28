@@ -118,9 +118,10 @@ class Preproc:
 
         Returns:
             dict or None: ``{'frame_shifts': list, 'median_frame_shift': float}``
-                if the glitch is enabled and detected; ``None`` if telemetry or
-                modulation data is missing, the glitch is off, or no glitch is
-                found within the tolerance.
+                if the glitch is enabled and detected;
+                ``{'detection_failed': True}`` if all prerequisites are present
+                but no glitch is found within the tolerance; ``None`` if
+                telemetry or modulation data is missing or the glitch is off.
         """
         self._check_loaded()
 
@@ -156,7 +157,7 @@ class Preproc:
         if len(glitch_indices) == 0:
             print(f"No glitch detected within +/-{tolerance} s of "
                   f"{glitch_delay} s in {self.basename}")
-            return None
+            return {'detection_failed': True}
 
         frame_shifts = []
         for glitch_idx in glitch_indices:
@@ -174,11 +175,16 @@ class Preproc:
         Compute the modulation-to-frame shift from the metrology glitch and store
         its median value in the header under the ``X_FIRGSH`` keyword.
 
-        Does nothing if no shift can be measured (missing telemetry/modulation,
-        glitch off, or no glitch detected).
+        Writes ``ERROR`` when all prerequisites are present but the expected
+        timing glitch cannot be detected. Does nothing when prerequisites are
+        missing or the glitch is disabled.
         """
         result = self.detect_frame_shifts()
-        if result is not None:
+        if result is not None and result.get('detection_failed'):
+            self.header['X_FIRGSH'] = (
+                'ERROR', 'expected metrology glitch was not detected'
+            )
+        elif result is not None:
             self.header['X_FIRGSH'] = (
                 float(result['median_frame_shift']),
                 'median modulation frame shift (frames)'
