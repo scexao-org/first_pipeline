@@ -63,10 +63,14 @@ first_pipeline/
     │   ├── __init__.py
     │   ├── main.py              # CLI interface with argparse
     │   └── run_makeImage.py     # Core algorithms & development defaults
-    └── makeAstrometry/           # Astrometric processing module
+    ├── makeAstrometry/           # Astrometric processing module
         ├── __init__.py
         ├── main.py              # CLI interface with argparse
         └── run_makeAstrometry.py # Core algorithms & development defaults
+    └── makeHalphaImaging/        # H-alpha continuum-subtracted imaging module
+        ├── __init__.py
+        ├── main.py              # CLI interface with argparse
+        └── run_makeHalphaImaging.py # Core algorithms & development defaults
 ```
 
 ### Core/CLI Separation Benefits
@@ -638,6 +642,22 @@ runPL_make_astrometry --save_individual_frames --save_individual_wavelength *.fi
 
 **Input**: Preprocessed FITS files with coupling maps  
 **Output**: Astrometric measurements with sub-milliarcsecond precision, quality metrics, and uncertainty estimates
+
+---
+
+### runPL_make_halpha_imaging
+Fits a polynomial continuum on the side bands around H-alpha, subtracts it at
+each observed position and output, then measures the local Pearson correlation
+between integrated H-alpha residual flux and continuum flux across neighbouring
+sky positions.
+
+```bash
+runPL_make_halpha_imaging --line_center 656.28 --line_width 2.0 preproc/*_P.fits
+```
+
+**Input**: OBJECT preprocessed FITS files and a wavelength map; optional flat and dark calibrations.  
+**Output**: FITS products in `../halpha_imaging` containing positions, continuum,
+residual spectra, integrated H-alpha flux, and correlation values, plus a diagnostic PDF.
 
 ---
 
