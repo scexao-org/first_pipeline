@@ -77,23 +77,31 @@ import re
 #     return files_with_pixelmap
 
 
-def make_figure_of_trace(raw_image,traces_loc,pixel_wide,pixel_min,pixel_max):
-    output_channels=traces_loc.shape[1]
-    fig=plt.figure("Extract fitted traces",clear=True,figsize=(18,10))
-    v1,v2=np.percentile(raw_image.ravel(),[1,99])
-    plt.imshow(raw_image,aspect="auto",interpolation='none',vmin=v1,vmax=v2)
-    plt.colorbar()
-    for i in range(output_channels): 
-            plt.plot(traces_loc[:,i],'r',linewidth=1)
-            plt.plot(traces_loc[:,i]+pixel_wide,'g',linewidth=0.3)
-            plt.plot(traces_loc[:,i]-pixel_wide,'g',linewidth=0.3)
-    plt.plot(np.ones(2)*pixel_min,[0,raw_image.shape[0]],'w')
-    plt.plot(np.ones(2)*pixel_max,[0,raw_image.shape[0]],'w')
-    plt.xlim(0, raw_image.shape[1])
-    plt.ylim(0, raw_image.shape[0])
-    plt.tight_layout()
-    plt.xlabel("Wavelength")
-    ax = plt.gca()
+def make_figure_of_trace(raw_image, traces_loc, pixel_wide, pixel_min, pixel_max):
+    """Plot detector rows and the pixel-map extraction-window boundaries."""
+    fig, ax = plt.subplots(num="Extract fitted traces", clear=True, figsize=(18, 10))
+    vmin, vmax = np.percentile(raw_image, [1, 99])
+    if vmin == vmax:
+        vmax = vmin + 1
+
+    image = ax.imshow(
+        raw_image, aspect="auto", interpolation="none", origin="lower",
+        vmin=vmin, vmax=vmax,
+    )
+    fig.colorbar(image, ax=ax, label="Detector counts")
+
+    for trace in traces_loc.T:
+        ax.plot(trace, color="red", linewidth=1)
+        ax.plot(trace + pixel_wide, color="lime", linewidth=0.4)
+        ax.plot(trace - pixel_wide, color="lime", linewidth=0.4)
+
+    ax.axvline(pixel_min, color="white", linewidth=0.8)
+    ax.axvline(pixel_max, color="white", linewidth=0.8)
+    ax.set_xlim(0, raw_image.shape[1])
+    ax.set_ylim(0, raw_image.shape[0])
+    ax.set_xlabel("Detector column (wavelength)")
+    ax.set_ylabel("Detector row (spatial)")
+    fig.tight_layout()
     return fig, ax
 
 

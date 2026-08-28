@@ -120,6 +120,8 @@ attention before proceeding with scientific analysis.
                        help="Also preprocess files that do not have a MODULATION extension in the FITS file.")
     parser.add_argument("--overwrite", action="store_true",
                        help="Overwrite existing preprocessed files if they exist.")
+    parser.add_argument("--keep_window_pixels", action="store_true",
+                        help="Retain individual pixels in each extraction window instead of summing them.")
     
     # Parse arguments
     args = parser.parse_args()
@@ -132,6 +134,7 @@ attention before proceeding with scientific analysis.
     object_name = args.object
     only_with_modulation = args.only_with_modulation
     overwrite = args.overwrite
+    collapse_windows = not args.keep_window_pixels
 
     from .run_makePreproc import run_preprocess
 
@@ -141,7 +144,8 @@ attention before proceeding with scientific analysis.
         pixel_map=pixel_map,
         object_name=object_name,
         only_with_modulation=only_with_modulation,
-        overwrite=overwrite
+        overwrite=overwrite,
+        collapse_windows=collapse_windows,
     )
     
 

@@ -34,7 +34,7 @@ from first_pipeline_shared.classes.runPL_class_preproc import Preproc
 from first_pipeline_shared.libraries import runPL_library_io as runlib_io
 
 
-def preprocess_files(fileList, overwrite=False, plot_sum=False):
+def preprocess_files(fileList, overwrite=False, plot_sum=False, collapse_windows=True):
     """
     Preprocesses raw FITS files using provided pixel map(s), extracts and aggregates spectral
     traces, computes basic quality-control metrics, and writes preprocessed FITS files and
@@ -51,6 +51,9 @@ def preprocess_files(fileList, overwrite=False, plot_sum=False):
     plot_sum : bool, optional
         If True, a summary PNG showing the vertical offset of extracted windows across all
         processed files will be produced and saved. Default is False.
+    collapse_windows : bool, optional
+        If True, sum the pixels in each extraction window. If False, retain the
+        window pixels as the final output axis. Default is True.
         
     Returns
     -------
@@ -95,6 +98,7 @@ def preprocess_files(fileList, overwrite=False, plot_sum=False):
                 output_dir,
                 check_if_exist=not overwrite,
                 telemetry_txt_file=txt_file,
+                collapse_windows=collapse_windows,
             )
             
             if preproc_created:
@@ -198,7 +202,7 @@ def create_centroid_summary_plot(files_in, dir_path_0):
 
 
 def run_preprocess(file_patterns=None, pixel_map=None, object_name=None,
-                           only_with_modulation=None, overwrite=None):
+                   only_with_modulation=None, overwrite=None, collapse_windows=True):
     """
     Process files with full parameter control (used by CLI interface).
     
@@ -214,6 +218,8 @@ def run_preprocess(file_patterns=None, pixel_map=None, object_name=None,
         Only process files with modulation data
     overwrite : bool
         Whether to overwrite existing files
+    collapse_windows : bool, optional
+        Whether to sum pixels within each extraction window. Default is True.
         
     Returns
     -------
@@ -237,7 +243,9 @@ def run_preprocess(file_patterns=None, pixel_map=None, object_name=None,
     print(f"Found {len(fileList.filelist)} files to process in {file_patterns}")
     print(f"Overwrite existing already preprocessed files: {overwrite}")
     
-    processed_files = preprocess_files(fileList, overwrite=overwrite, plot_sum=True)
+    processed_files = preprocess_files(
+        fileList, overwrite=overwrite, plot_sum=True,
+        collapse_windows=collapse_windows)
 
     print(f"Successfully processed {len(processed_files)} files")
     if processed_files:

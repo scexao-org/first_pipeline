@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 from astropy.io import fits
 import os
 from datetime import datetime
@@ -208,7 +209,8 @@ class Preproc:
             if key.startswith('P_PM'):
                 self.pixel_map_info[key] = self.header[key]
 
-    def create_from_raw(self, raw_file, pixelMap, output_dir=None, check_if_exist= True, telemetry_txt_file=None):
+    def create_from_raw(self, raw_file, pixelMap, output_dir=None, check_if_exist=True,
+                        telemetry_txt_file=None, collapse_windows=True):
         """
         Create preprocessed data from a raw FITS file using a pixel map.
         
@@ -217,6 +219,9 @@ class Preproc:
             pixelMap (PixelMap): PixelMap object
             output_dir (str, optional): Output directory for preprocessed file
             check_if_exist (bool, optional): Whether to check if the preprocessed file already exists and skip processing if so. Default is True.
+            telemetry_txt_file (str, optional): Path to the matching telemetry text file.
+            collapse_windows (bool, optional): Sum the pixels in each extraction
+                window. When False, retain them as the final data axis. Default is True.
 
             
         Returns:
@@ -262,11 +267,19 @@ class Preproc:
             
             # Generate output filename
             self.basename = runlib_io.create_basename(self.header)
+            self.header['X_FIRCOL'] = ('SUM' if collapse_windows else 'PIXELS',
+                                       'extraction-window pixel handling')
+            if not collapse_windows:
+                self.header['X_FIRLAY'] = ('WAVECHAN',
+                                           'data axes: frame, wavelength, channel-pixel')
+                filename_root, filename_extension = os.path.splitext(self.basename)
+                self.basename = filename_root + '_WINDOWS' + filename_extension
             self.filename = os.path.join(output_dir, self.basename)
             
             if check_if_exist:              
                 # Check if file already exists with same PM_CHECK
-                if self._should_skip_processing(self.filename, pixelMap.pm_check, self.modulation_hdu):
+                if self._should_skip_processing(self.filename, pixelMap.pm_check,
+                                                self.modulation_hdu, collapse_windows):
                     print(f"Skipping {raw_file} - already processed with same pixel map")
                     return False
             
@@ -280,7 +293,8 @@ class Preproc:
                 raw_data = raw_data[None]
 
             # Process data using pixel map
-            self.data, self.quality_metrics = self._process_raw_data(raw_data, pixelMap)
+            self.data, self.quality_metrics = self._process_raw_data(
+                raw_data, pixelMap, collapse_windows=collapse_windows)
 
             # Store raw image for diagnostics (sum over all dimensions except last two)
             self.raw_image = np.sum(raw_data, axis=tuple(range(len(raw_data.shape)-2)))
@@ -377,7 +391,7 @@ class Preproc:
         
         return header
 
-    def _should_skip_processing(self, output_file, pm_check, modulation_hdu):
+    def _should_skip_processing(self, output_file, pm_check, modulation_hdu, collapse_windows):
         """Check if file should be skipped based on existing output."""
         if not os.path.exists(output_file):
             return False
@@ -387,6 +401,12 @@ class Preproc:
             
             # Check if PM_CHECK matches
             if existing_header.get('PM_CHECK') != pm_check:
+                return False
+
+            expected_mode = 'SUM' if collapse_windows else 'PIXELS'
+            if existing_header.get('X_FIRCOL', 'SUM') != expected_mode:
+                return False
+            if not collapse_windows and existing_header.get('X_FIRLAY') != 'WAVECHAN':
                 return False
                 
             # Check modulation consistency
@@ -398,8 +418,8 @@ class Preproc:
                 
         return True
 
-    def _process_raw_data(self, raw_data, pixelMap: PixelMap):
-        """Process raw data using the pixel map."""
+    def _process_raw_data(self, raw_data, pixelMap: PixelMap, collapse_windows=True):
+        """Extract pixel-map windows, optionally summing their pixel axis."""
         # Extract data using pixel map
         data_cut_pixels, data_dark_pixels, data_edge_pixels = pixelMap.preprocess_cutData(raw_data, True)
         
@@ -425,7 +445,13 @@ class Preproc:
             'Q_P_NAME': self.basename
         }
         
-        return data_cut, quality_metrics
+        if collapse_windows:
+            extracted_data = data_cut
+        else:
+            nframes, nchannels, nwave, window_size = data_cut_pixels.shape
+            extracted_data = data_cut_pixels.transpose(0, 2, 1, 3).reshape(
+                nframes, nwave, nchannels * window_size)
+        return extracted_data, quality_metrics
 
     def _add_quality_metrics_to_header(self):
         """Add quality control metrics to the header."""
@@ -458,15 +484,22 @@ class Preproc:
                                                  pixelMap.pixel_wide, pixelMap.pixel_min, 
                                                  pixelMap.pixel_max)
         fig.savefig(self.filename[:-5] + "_1.png", dpi=250)
+        plt.close(fig)
         
         # Create coupling map figure if modulation data is available
         if (self.modulation_data is not None and 
             self.header.get('X_FIRMID', 0) > 1 and 
             len(self.modulation_data['XMOD']) > 9):
             
-            # print("toto",self.data.shape)
-            # Recompute cut pixels for coupling map
-            fluxes = self.data.mean(axis=(1,2))
+            diagnostic_data = self.data
+            if self.header.get('X_FIRCOL', 'SUM') == 'PIXELS':
+                window_size = 2 * self.header['PIX_WIDE'] + 1
+                diagnostic_data = diagnostic_data.reshape(
+                    self.data.shape[0], self.data.shape[1],
+                    self.header['OUT_CHAN'], window_size)
+                diagnostic_data = np.sum(diagnostic_data, axis=-1, dtype='uint32')
+                diagnostic_data = diagnostic_data.transpose(0, 2, 1)
+            fluxes = diagnostic_data.mean(axis=(1,2))
             
             xmod = self.modulation_data['XMOD']
             ymod = self.modulation_data['YMOD']
@@ -479,6 +512,7 @@ class Preproc:
                           f"number of DIT to be shifted = {self.header.get('X_FIRGSH', 'N/A')}")
             fig.suptitle(string_title)
             fig.savefig(self.filename[:-5] + "_2.png", dpi=250)
+            plt.close(fig)
 
     def save(self, header=None):
         self._check_loaded()
