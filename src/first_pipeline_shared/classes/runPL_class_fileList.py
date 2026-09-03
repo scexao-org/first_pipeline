@@ -371,6 +371,11 @@ class FileList:
         print(f"Total files: {total_files}")
         if dark_patterns is not None:
             print(f"Files with dark: {files_with_dark} ({files_with_dark/total_files*100:.1f}%)")
+            if files_with_dark != total_files:
+                print("!" * 60)
+                print("WARNING: NOT ALL FILES HAVE AN ASSOCIATED DARK FILE!")
+                print(f"Missing dark files: {total_files - files_with_dark}")
+                print("!" * 60)
         if pixelMap is not None:
             print(f"Files with pixelMap: {files_with_pixelmap} ({files_with_pixelmap/total_files*100:.1f}%)")
         if dark_patterns is not None and pixelMap is not None:
@@ -380,7 +385,7 @@ class FileList:
         return self.files_with_associated_files
 
 
-    def extract_data_from_list(self, Nsmooth = 1, Nbin = 1, flatMap = None, waveMap = None, center = False):
+    def extract_data_from_list(self, Nsmooth = 1, Nbin = 1, flatMap = None, waveMap = None):
         """
         Extracts and processes data cubes from the input files.
         Subtracts dark files, applies wavelength smoothing, and calculates variance.
@@ -400,7 +405,6 @@ class FileList:
         print(f"Wavelength binning factor (Nbin): {Nbin}")
         print(f"Flat field correction: {flatMap.basename if flatMap is not None else 'Not applied'}")
         print(f"Wavelength mapping: {waveMap.basename if waveMap is not None else 'Not applied'}")
-        print(f"Flux centering: {'Enabled' if center else 'Disabled'}")
         print("="*60)
         print()
 
@@ -430,10 +434,7 @@ class FileList:
             if Nbin > 1:
                 dataCube.bin(Nbin)
 
-            # If centering flux is required, do it after smoothing and binning
             dataCube.compute_flux()
-            if center == True:
-                dataCube.center_flux_outputs()
 
             datalist += [dataCube]
 

@@ -306,16 +306,6 @@ class DataCube:
         """
         self.flux = self.data.mean(axis=(2))
 
-
-    def center_flux_outputs(self):
-        """
-        """
-        if not hasattr(self, 'flux'):
-            self.compute_flux()
-
-        self.data -= self.flux[:, :, None]
-
-        
     def smooth(self, Nsmooth):
         """
         Smooth the data cube.

@@ -565,7 +565,7 @@ def process_image_reconstruction_data(file_patterns=None, object_name=None, dark
     # Extract data with coupling map wavelength binning
     datalist: List[DataCube] = fileList.extract_data_from_list(
         Nsmooth=wavelength_smooth, Nbin=couplingMap.wavelength_bin,
-        flatMap=flatMap, waveMap=waveMap, center=False
+        flatMap=flatMap, waveMap=waveMap
     )
 
 

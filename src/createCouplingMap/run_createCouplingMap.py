@@ -353,7 +353,7 @@ def create_diagnostic_plots(flux, data_svdfiltered, flux_2_data, flux_goodData,
 
 def save_coupling_map(couplingMap, header, output_dir, flatMap=None, waveMap=None, 
                      wavelength_smooth=1, wavelength_bin=1, Nsingular=114,
-                     center_data=True, use_pyramids=False, flux_threshold=None,
+                     use_pyramids=False, flux_threshold=None,
                      filenames=None, modulation_hdu=None):
     """
     Save coupling map with metadata to FITS file.
@@ -376,8 +376,6 @@ def save_coupling_map(couplingMap, header, output_dir, flatMap=None, waveMap=Non
         Wavelength binning factor
     Nsingular : int, optional
         Number of singular values used
-    center_data : bool, optional
-        Whether data was centered
     use_pyramids : bool, optional
         Whether pyramids were used instead of triangles
     flux_threshold : float, optional
@@ -398,7 +396,6 @@ def save_coupling_map(couplingMap, header, output_dir, flatMap=None, waveMap=Non
     new_header['Q_CMWSMO'] = (wavelength_smooth, 'wavelength smoothing factor')
     new_header['Q_CMWBIN'] = (wavelength_bin, 'wavelength binning factor') 
     new_header['Q_CMSING'] = (Nsingular, 'number of singular values')
-    new_header['Q_CMCENT'] = (center_data, 'whether the data was centered before analysis')
     new_header['Q_CMPYR'] = (use_pyramids, 'whether pyramids (True) or triangles (False) were used')
     
     if flux_threshold is not None:
@@ -427,7 +424,7 @@ def run_createCouplingMap(file_patterns=None, object_name=None, dark_patterns=No
                              flat_patterns=None, wave_patterns=None, 
                              wavelength_smooth=None, wavelength_bin=None, 
                              Nsingular=None, modID=None, modScale=None,
-                             wollaston=None, use_pyramids=None, center_data=None):
+                             wollaston=None, use_pyramids=None):
     """
     Complete workflow for coupling map generation from preprocessed data.
     
@@ -461,9 +458,6 @@ def run_createCouplingMap(file_patterns=None, object_name=None, dark_patterns=No
         Wollaston polarizer status
     use_pyramids : bool, optional
         Use pyramids instead of triangles. If None, uses development defaults.
-    center_data : bool, optional
-        Center data before analysis. If None, uses development defaults.
-        
     Returns
     -------
     dict
@@ -493,7 +487,7 @@ def run_createCouplingMap(file_patterns=None, object_name=None, dark_patterns=No
     # Extract data
     datalist: List[DataCube] = fileList.extract_data_from_list(
         Nsmooth=wavelength_smooth, Nbin=wavelength_bin, flatMap=flatMap,
-        waveMap=waveMap, center=center_data
+        waveMap=waveMap
     )
 
     # Concatenate data arrays
@@ -570,7 +564,7 @@ def run_createCouplingMap(file_patterns=None, object_name=None, dark_patterns=No
     couplingMap = save_coupling_map(
         couplingMap, header, output_dir, flatMap, waveMap,
         wavelength_smooth, wavelength_bin, Nsingular,
-        center_data, use_pyramids, flux_threshold,
+        use_pyramids, flux_threshold,
         filenames, modulation_hdu
     )
 
@@ -611,7 +605,6 @@ if __name__ == "__main__":
         modScale = None
         wollaston = None
         use_pyramids = False
-        center_data = False
 
         # file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
         # file_patterns = ["/Users/slacour/DATA/LANTERNE/20251230/preproc/*T12?2*.fits"]
@@ -652,8 +645,7 @@ if __name__ == "__main__":
         modID=modID,
         modScale=modScale,
         wollaston=wollaston,
-        use_pyramids=use_pyramids,
-        center_data=center_data
+        use_pyramids=use_pyramids
     )
 
     print(f"Coupling map created successfully: {couplingMap.filename}")

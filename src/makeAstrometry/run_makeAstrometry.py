@@ -135,31 +135,32 @@ def check_observatory_status():
         return "It's day at Subaru Observatory."
     
 
-def compute_smoothed_data(data_normalized, x_hanning):
-    """Compute the Hanning-smoothed (continuum) data cube for a given window size."""
-    Nwave = data_normalized.shape[-1]
-    x_zeros = x_hanning // 2
-    Nhanning = x_hanning * 2 + 1
-    hanning_window = np.hanning(Nhanning)
-    hanning_window[x_hanning - x_zeros:x_hanning + 1 + x_zeros] = 0
-    hanning_window /= hanning_window.sum()  # Normalize the window
-    # Edge normalization: weights overlapping the valid (zero-padded) region
-    edge_norm = np.convolve(np.ones(Nwave), hanning_window, mode='same')
-    # Vectorized convolution along the wavelength axis (zero-padded boundary,
-    # equivalent to np.convolve mode='same'); the symmetric odd window keeps
-    # the kernel centered.
-    data_smoothed = convolve1d(data_normalized, hanning_window, axis=-1,
-                                mode='constant', cval=0.0)
-    data_smoothed = data_smoothed / edge_norm
-    return data_smoothed, hanning_window
+# def compute_smoothed_data(data_normalized, x_hanning):
+#     """Compute the Hanning-smoothed (continuum) data cube for a given window size."""
+#     Nwave = data_normalized.shape[-1]
+#     x_zeros = x_hanning // 2
+#     Nhanning = x_hanning * 2 + 1
+#     hanning_window = np.hanning(Nhanning)
+#     hanning_window[x_hanning - x_zeros:x_hanning + 1 + x_zeros] = 0
+#     hanning_window /= hanning_window.sum()  # Normalize the window
+#     # Edge normalization: weights overlapping the valid (zero-padded) region
+#     edge_norm = np.convolve(np.ones(Nwave), hanning_window, mode='same')
+#     # Vectorized convolution along the wavelength axis (zero-padded boundary,
+#     # equivalent to np.convolve mode='same'); the symmetric odd window keeps
+#     # the kernel centered.
+#     data_smoothed = convolve1d(data_normalized, hanning_window, axis=-1,
+#                                 mode='constant', cval=0.0)
+#     data_smoothed = data_smoothed / edge_norm
+#     return data_smoothed, hanning_window
 
 
 def line_fit_region(line_aera):
     """Indices used to fit and evaluate the polynomial continuum under a line.
 
     The continuum is fitted on two side windows (`cont_idx`, each as wide as the
-    line) and evaluated over the full span `fit_aera` going from the left window
-    start to the right window stop (i.e. the line plus both side windows).
+    line) and evaluated over the full boolean mask `fit_aera`, spanning from
+    the left window start to the right window stop (i.e. the line plus both
+    side windows).
     """
     line_idx = np.where(line_aera)[0]
     i0, i1 = line_idx[0], line_idx[-1]
@@ -168,30 +169,31 @@ def line_fit_region(line_aera):
     right = slice(i1 + 1, i1 + 1 + n_line)
     cont_idx = np.r_[np.arange(left.start, left.stop),
                      np.arange(right.start, right.stop)]
-    fit_aera = slice(left.start, right.stop)
+    fit_aera = np.zeros_like(line_aera, dtype=bool)
+    fit_aera[left.start:right.stop] = True
     return cont_idx, fit_aera
 
 
-def compute_smoothed_line(data_normalized, wave, line_aera, poly_deg):
+def compute_smoothed_line(data_b, wave, fit_aera, work_aera, poly_deg):
     """Estimate the continuum under a line with a low-order polynomial fit.
 
     The continuum is fitted on two side windows (each as wide as the line) on
     either side of the line and evaluated over the full span from the left to
     the right window (`fit_aera`).
     """
-    cont_idx, fit_aera = line_fit_region(line_aera)
     # Fit all (cube, step, output) continua at once on the side windows
-    y_cont = data_normalized[..., cont_idx]                          # (Ncube, Nstep, Noutput, Ncont)
+    y_cont = data_b[..., fit_aera]     
+    x_cont = wave[fit_aera]                     # (Ncube, Nstep, Noutput, Ncont)
     cont_shape = y_cont.shape[:-1]
-    coeffs = np.polyfit(wave[cont_idx],
-                        y_cont.reshape(-1, len(cont_idx)).T, poly_deg)  # (poly_deg+1, Nseries)
+    coeffs = np.polyfit(x_cont,
+                        y_cont.reshape(-1, sum(fit_aera)).T, poly_deg)  # (poly_deg+1, Nseries)
     # Evaluate the polynomial continuum across the full left->right span
-    V_line = np.vander(wave[fit_aera], poly_deg + 1)                 # (n_fit, poly_deg+1)
+    V_line = np.vander(wave[work_aera], poly_deg + 1)                 # (n_fit, poly_deg+1)
     data_smoothed_line = (V_line @ coeffs).T.reshape(*cont_shape, -1)  # (..., n_fit)
     return data_smoothed_line
 
 
-def solve_astrometry_gain(J_blocks, data_b, sm_b):
+def solve_astrometry_gain(J_blocks_aera, data_b_aera, sm_b, outlier_nsigma=3.0):
     """Variable-projection solve of  J @ a = data - smoothed / flat.
 
     The per-output gain `flat` (close to 1) enters the forward model as
@@ -213,12 +215,40 @@ def solve_astrometry_gain(J_blocks, data_b, sm_b):
     J_blocks : (Nblocks, Noutput, Nwave, 2) response Jacobian per block.
     data_b   : (Nblocks, Noutput, Nwave) measured (interior) data per block.
     sm_b     : (Nblocks, Noutput, Nwave) smoothed continuum per block.
+    outlier_nsigma : float, optional
+        Whole blocks (i_cube, j_step) are rejected if their response Jacobian
+        `J_blocks` is unusually large there. `J_blocks` is built from the
+        difference of just two exposures (`data_diff_basis @ sky_step_basis_inv`),
+        so a noisy or ill-conditioned block can blow up its magnitude and bias
+        the least-squares fit; since this affects every wavelength at once, the
+        Jacobian magnitude is aggregated over (output, wavelength) into one
+        robust score per block before thresholding (one-sided: too-large only).
 
     Returns
     -------
     astrometry_shift : (Nwave, 2) RA/DEC photocenter shift.
     flat             : (Noutput, Nwave) recovered per-output gain (= 1/g).
+    d_proj, J_proj   : projected data/Jacobian, see `compute_astrometry_significance`.
+    M                : (Nwave, 2, 2) normal matrix of the 2x2 system.
     """
+
+    J_blocks  = J_blocks_aera
+    data_b = data_b_aera
+
+    # A noisy/ill-conditioned block blows up the Jacobian at every wavelength
+    # at once, so aggregate its magnitude over (output, wavelength) into one
+    # robust score per block before thresholding (one-sided: too-large only).
+    J_magnitude = np.linalg.norm(J_blocks, axis=-1)
+    block_score = np.median(J_magnitude, axis=(1, 2))
+    median_score = np.median(block_score)
+    robust_std = 1.4826 * np.median(np.abs(block_score - median_score))
+    good_block = (block_score - median_score) <= outlier_nsigma * robust_std
+    if not good_block.all():
+        print(f"* Rejecting {np.sum(~good_block)} noisy-Jacobian block(s) out of {len(good_block)}")
+        J_blocks = J_blocks[good_block]
+        data_b = data_b[good_block]
+        sm_b = sm_b[good_block]
+
     S2 = np.sum(sm_b ** 2, axis=0)                       # (Noutput, Nwave)
     Gs = np.sum(sm_b[..., None] * J_blocks, axis=0)      # (Noutput, Nwave, 2)
     J_proj = J_blocks - sm_b[..., None] * (Gs / S2[..., None])[None]
@@ -230,7 +260,45 @@ def solve_astrometry_gain(J_blocks, data_b, sm_b):
     # Recover the eliminated gains: g = (H - Gs . astrometry) / S2, flat = 1/g
     g = (H - np.einsum('owi,wi->ow', Gs, astrometry_shift)) / S2
     flat = 1.0 / g
-    return astrometry_shift, flat
+    return astrometry_shift, flat, d_proj, J_proj, M
+
+
+def compute_astrometry_significance(J_proj, d_proj, astrometry_xy, M):
+    """Per-wavelength goodness-of-fit and detection significance of the RA/DEC fit.
+
+    `d_proj.std(axis=(0,1))` alone only shows that some scatter is present; it does
+    not say whether that scatter lines up with the geometric RA/DEC response
+    directions in `J_proj` rather than being unrelated noise. This computes, for
+    every wavelength:
+
+    - `correlation` (Nwave, 2): Pearson correlation of `d_proj` with each response
+      direction (RA, DEC) of `J_proj`, across (block, output).
+    - `r_squared` (Nwave,): fraction of the `d_proj` variance jointly explained by
+      the 2D fit (`J_proj @ astrometry_shift`).
+    - `significance` (Nwave,): amplitude of `astrometry_shift` in units of its
+      formal 1-sigma uncertainty, i.e. sqrt(shift^T @ M @ shift / noise_variance) -
+      a chi2-with-2-dof statistic under the null hypothesis of no offset.
+    """
+    predicted = np.einsum('bowi,wi->bow', J_proj, astrometry_xy)
+    residual = d_proj - predicted
+
+    d_mean = d_proj.mean(axis=(0, 1))
+    J_mean = J_proj.mean(axis=(0, 1))
+    covariance = np.mean((d_proj - d_mean)[..., None] * (J_proj - J_mean), axis=(0, 1))
+    correlation = covariance / (d_proj.std(axis=(0, 1))[:, None] * J_proj.std(axis=(0, 1)))
+
+    ss_res = np.sum(residual ** 2, axis=(0, 1))
+    ss_tot = np.sum((d_proj - d_mean) ** 2, axis=(0, 1))
+    r_squared = 1 - ss_res / ss_tot
+
+    # Projecting out sm_b removes 1 dof per output from the Nblocks measurements.
+    Nblocks, Noutput = d_proj.shape[0], d_proj.shape[1]
+    dof = Noutput * (Nblocks - 1) - 2
+    noise_variance = ss_res / dof
+    chi2 = np.einsum('wi,wij,wj->w', astrometry_xy, M, astrometry_xy) / noise_variance
+    significance = np.sqrt(chi2)
+
+    return correlation, r_squared, significance
 
 
 def process_astrometric_data(
@@ -351,6 +419,10 @@ def process_astrometric_data(
     xmod = np.concatenate([d.xmod for d in datalist])
     ymod = np.concatenate([d.ymod for d in datalist])
     ra_dec = np.concatenate([d.compute_xy_sky() for d in datalist])
+    Ncube = datacube.shape[0]
+    Nmod = datacube.shape[1]
+    Nwave = datacube.shape[3]
+
 
     # Create filename associations
     basenames = []
@@ -360,24 +432,16 @@ def process_astrometric_data(
     filenames = [d.filename for d in datalist]
 
     # Data quality filtering
-    flux_goodData, flux_threshold = runlib_linalg.flux_filtering(flux)
-    print(f"* Percentage of good data: {np.sum(flux_goodData)/len(flux_goodData.ravel())*100:.1f} % (flux threshold)")
-
-    # SVD filtering (skipped in fast mode)
-    if fast:
-        print("* Fast mode: skipping SVD filtering")
-        data_svdfiltered = datacube
-        goodData = flux_goodData
-    else:
-        data_svdfiltered, fit_goodData, errors = runlib_linalg.svd_filtering(datacube, flux_goodData, Nsingular)
-        goodData = flux_goodData & fit_goodData
-        print(f"* Percentage of good data: {np.sum(goodData)/len(goodData.ravel())*100:.1f} % (flux and svd threshold)")
+    goodData_flux, _ = runlib_linalg.flux_filtering(flux)
+    print(f"* Percentage of good data: {np.sum(goodData_flux)/len(goodData_flux.ravel())*100:.1f} % (flux threshold)")
 
     # Plot flux map
-    runlib_plots.plot_flux_map(flux.mean(axis=(2))[0], xmod[0], ymod[0])
+    fig = runlib_plots.plot_flux_map(flux.mean(axis=(2))[0], xmod[0], ymod[0])
+    figures_to_save = [fig]
 
     mean_flux = np.nanmean(flux, axis=(0,1))
-    data_normalized = data_svdfiltered / mean_flux
+    datacube /= mean_flux
+    flux_scaled = mean_flux/ np.nanmax(mean_flux)
 
     # ra_dec = np.stack([xmod,ymod],axis=-1)
     # Known sky steps from each interior modulation point to its two neighbours
@@ -391,23 +455,50 @@ def process_astrometric_data(
     # Keep only well-conditioned (non-collinear) bases and good-quality data
     sky_step_basis_det = np.linalg.det(sky_step_basis)
     valid_basis = np.abs(sky_step_basis_det) > np.max(np.abs(sky_step_basis_det)) * 1e-2
-    valid_basis &= goodData[:,2:] & goodData[:,:-2] & goodData[:,1:-1]
+    valid_basis &= goodData_flux[:,2:] & goodData_flux[:,:-2] & goodData_flux[:,1:-1]
 
     # Measured output changes for the same forward/backward steps
-    data_diff_fwd = data_normalized[:,2:] - data_normalized[:,1:-1]    # D_{k+1} - D_k
-    data_diff_bwd = data_normalized[:,:-2] - data_normalized[:,1:-1]   # D_{k-1} - D_k
+    data_diff_fwd = datacube[:,2:] - datacube[:,1:-1]    # D_{k+1} - D_k
+    data_diff_bwd = datacube[:,:-2] - datacube[:,1:-1]   # D_{k-1} - D_k
 
+    # Measure lag-1 correlation between adjacent modulation steps (across outputs/wavelength)
+    data_centered = datacube - datacube.mean(axis=(2,3), keepdims=True)
+    data_std = np.nanstd(datacube, axis=(2,3))
+    data_covariance_lag = np.nanmean(data_centered[:,1:] * data_centered[:,:-1],axis=(2,3))
+    # mesure correlation
+    data_corr_lag = data_covariance_lag / (data_std[:,1:] * data_std[:,:-1])
 
-    # now do the calculations for a list of x_hanning values
+    # flag the correlation values that are too low (i.e. the corresponding data pairs are not correlated)
+    threshold_corr = 0.5
+    low_correlation_pair_mask = data_corr_lag < threshold_corr
+    valid_basis &= ~low_correlation_pair_mask[:,1:] & ~low_correlation_pair_mask[:,:-1] 
+    print(f"* Percentage of valid triangles: {np.sum(valid_basis)/len(valid_basis.ravel())*100:.1f} % (correlation + determinant threshold)")
 
-    Ncube = data_normalized.shape[0]
-    Nwave = data_normalized.shape[3]
-
-    # Pixel-to-wavelength scale and central-notch half-width (in pixels) so that
-    # the zeroed middle of the Hanning window spans the spectral line width.
-    # Use abs() since `wave` may be stored in decreasing order.
-    dwave = np.abs(np.median(np.diff(wave)))
-    line_width_pix = line_width / dwave
+    correlation_values = data_corr_lag[np.isfinite(data_corr_lag)]
+    rejected_flux_mask = ~(goodData_flux[:, 1:] & goodData_flux[:, :-1])
+    rejected_correlation_values = data_corr_lag[
+        rejected_flux_mask & np.isfinite(data_corr_lag)]
+    
+    below_threshold_percent = 100 * np.mean(correlation_values < threshold_corr)
+    percentile_levels = np.array([5, 16, 50, 84, 95])
+    correlation_percentiles = np.percentile(correlation_values, percentile_levels)
+    fig_2, ax = plt.subplots(1, 1, figsize=(8, 6), num="correlation_lag_histogram", clear=True)
+    bin_edges = np.linspace(0, 1, 21)
+    ax.hist(correlation_values, bins=bin_edges, color="steelblue", edgecolor="white",
+        alpha=0.7, label="All data")
+    if rejected_correlation_values.size:
+        ax.hist(rejected_correlation_values, bins=bin_edges, color="tomato", edgecolor="white",
+                alpha=0.7, label="Rejected by flux filter")
+    ax.axvline(threshold_corr, color="goldenrod", linestyle="-", linewidth=2,
+            label=f"Threshold: {threshold_corr:.2f} ({below_threshold_percent:.1f}% below)")
+    for percentile, value in zip(percentile_levels, correlation_percentiles):
+        ax.axvline(value, color="black", linestyle="--", linewidth=1,
+                    label=f"P{percentile:g}: {value:.3f}")
+    ax.set_xlabel("Correlation between adjacent modulation steps")
+    ax.set_ylabel("Count")
+    ax.set_title("Adjacent-step correlation across all cubes")
+    ax.set_xlim(0, 1)
+    ax.legend()
 
     # Build the per-block response Jacobian once: it does not depend on x_hanning.
     # Each block is a valid interior modulation point (i_cube, j_step); for that
@@ -415,9 +506,9 @@ def process_astrometric_data(
     jacobian_blocks = []
     data_blocks = []
     valid_indices = []
-    data_interior = data_normalized[:, 1:-1]
+    data_interior = datacube[:, 1:-1]
     for i_cube in range(Ncube):
-        for j_step in range(data_diff_fwd.shape[1]):
+        for j_step in range(0, Nmod-2):
 
             if valid_basis[i_cube, j_step] == False:
                 continue
@@ -437,139 +528,56 @@ def process_astrometric_data(
     J_blocks = np.stack(jacobian_blocks, axis=0)
     data_b = np.stack(data_blocks, axis=0)
 
-    # Joint forward model, per block b, output o and wavelength (decouples per wave):
-    #     jacobian @ astrometry = data - data_smoothed / flat
-    # astrometry = (d_alpha, d_delta) is shared by all (b, o); flat[o] is an
-    # unknown gain (close to 1) shared by all blocks b but free across outputs.
-    # Substituting g = 1/flat linearises the model; for fixed astrometry the
-    # optimal g is eliminated analytically (variable projection onto the
-    # smoothed directions), leaving a 2x2 system per wavelength. Because the
-    # projection is onto data_smoothed, the normal matrix now depends on the
-    # smoothing window and is rebuilt for each one (see solve_astrometry_gain).
-
-    # Solve for astrometry (and recover flat) for a list of x_hanning windows
-    # Largest window is twice the line width (in pixels); 10 values over the
-    # range (only 3 in fast mode)
-    x_hanning_max = int(round(line_width_pix * 2))
-    n_hanning = 3 if fast else 10
-    x_hanning_values = [int(round(x)) for x in np.linspace(3, x_hanning_max, n_hanning)]
-    astrometry_shift_list = []
-    flat_list = []
-    hanning_window_list = []
-    for x_hanning in tqdm(x_hanning_values, desc="x_hanning"):
-        data_smoothed, hanning_window = compute_smoothed_data(data_normalized, x_hanning)
-        sm_b = np.stack([data_smoothed[:, 1:-1][i_cube, j_step]
-                            for (i_cube, j_step) in valid_indices], axis=0)
-
-        # Variable-projection solve (the 2x2 system depends on sm_b -> rebuilt here)
-        astrometry_shift, flat = solve_astrometry_gain(J_blocks, data_b, sm_b)
-
-        astrometry_shift_list.append(astrometry_shift)
-        flat_list.append(flat)
-        hanning_window_list.append(hanning_window)
-
-    flux_scaled = np.nanmean(flux, axis=(0,1)) / np.nanmax(np.nanmean(flux, axis=(0,1)))
-
     # Speed of light in km/s (precise CODATA value)
-    c = speed_of_light / 1e3
-    line_aera = (wave > line_center - line_width/2) & (wave < line_center + line_width/2)
-
-    # Prepare output paths (mirrors run_createCouplingMap save logic)
-    new_header = datalist[-1].header.copy()
-    new_header['X_FIRTYP'] = 'ASTROMETRY'
-    new_header['Q_ASLINE'] = (line_center, 'line center wavelength (nm)')
-    new_header['Q_ASLWID'] = (line_width, 'line width (nm)')
-    new_header['Q_ASPDEG'] = (str(list(poly_deg_values)), 'polynomial degrees of the continuum fit')
-    new_header['Q_ASSING'] = (Nsingular, 'number of singular values')
-    new_header['Q_ASNAME'] = (runlib_io.create_basename(new_header), 'name of the astrometry file')
-
-    output_dir = os.path.join(datalist[-1].dirname, "../astrometry")
-    os.makedirs(output_dir, exist_ok=True)
-    output_filename = os.path.join(output_dir, new_header['Q_ASNAME'])
-    pdf_filename = os.path.splitext(output_filename)[0] + ".pdf"
-
-    # Collect the requested figures (astrometry_1, astrometry_2,
-    # astrometry_scatter_PA) into a single multi-page PDF next to the FITS file.
-    from matplotlib.backends.backend_pdf import PdfPages
-    pdf = PdfPages(pdf_filename)
-
-    # Compare RA and DEC astrometry for the different x_hanning values
-    fig, axes = plt.subplots(2, 1, figsize=(10, 9), num="astromet_comparison_2",
-                                clear=True, sharex=True)
-    axes[1].sharey(axes[0])
-    for x_hanning, astrometry_shift in zip(x_hanning_values, astrometry_shift_list):
-        axes[0].plot(wave, astrometry_shift[:, 0], alpha=0.7, label=f"{x_hanning}")
-        axes[1].plot(wave, astrometry_shift[:, 1], alpha=0.7, label=f"{x_hanning}")
-    # Shade the line area
-    for ax in axes:
-        ax.axvspan(line_center - line_width/2, line_center + line_width/2,
-                    color='gray', alpha=0.2)
-        ax.axvline(line_center, color='black', linewidth=1)
-    # Flux plotted on its own (right) y-axis in red
-    ax0_flux = axes[0].twinx()
-    ax1_flux = axes[1].twinx()
-    for ax_flux in (ax0_flux, ax1_flux):
-        ax_flux.plot(wave, flux_scaled.T, 'r', alpha=0.5)
-        ax_flux.set_ylabel("Flux (scaled)", color='r')
-        ax_flux.tick_params(axis='y', colors='r')
-    axes[0].set_ylabel("RA astrometric signal (mas)")
-    axes[1].set_ylabel("DEC astrometric signal (mas)")
-    axes[1].set_xlabel("Wavelength")
-    axes[0].set_title(f"{object_name} - RA astrometry")
-    axes[1].set_title(f"{object_name} - DEC astrometry")
-    axes[0].legend(title="size of Hanning smoothing window (in pixels)", fontsize=8, ncol=2)
-
-    # fig.savefig("astrometry_1.pdf")
-    pdf.savefig(fig)  # page 1: astrometry_1 (full-band view)
-
-
-    axes[0].set_xlim(line_center - line_width*2, line_center + line_width*2)
-    # Scale the y-axis to the peak |astrometry_shift| inside the plotted x-range
-    wave_mask = (wave > line_center - line_width*2) & (wave < line_center + line_width*2)
-    y_max = np.nanmax([np.nanmax(np.abs(a[wave_mask])) for a in astrometry_shift_list])
-    axes[0].set_ylim(-y_max, y_max)
-    # fig.savefig("astrometry_2.pdf")
-    pdf.savefig(fig)  # page 2: astrometry_2 (zoom on the line)
-
-
-    # here, do the work to plot the astrometry vs velocity, using the line_center and line_width to select the relevant wavelengths
-
-    # Astrometry over the line, using a polynomial continuum
-    # ------------------------------------------------------
-    # The astrometry is estimated and plotted over the full left->right span
-    # (`fit_aera`, the line plus its two side windows), matching the region
-    # evaluated by compute_smoothed_line. Since the variable-projection now
-    # projects onto the smoothed continuum, the 2x2 system depends on the
-    # polynomial degree and is rebuilt for each one (solve_astrometry_gain).
-    cont_idx, fit_aera = line_fit_region(line_aera)
-    data_b_line = data_b[..., fit_aera]
-    J_blocks_line = J_blocks[..., fit_aera, :]
-
-    astrometry_wave = wave[fit_aera]
     # Doppler velocity (km/s)
-    velocity = c * (astrometry_wave - line_center) / line_center
+    c = speed_of_light / 1e3
+    velocity = c * (wave - line_center) / line_center
+
+    line_aera = (wave > line_center - line_width/2) & (wave < line_center + line_width/2)
+    work_aera = (wave > line_center - line_width*1.5) & (wave < line_center + line_width*1.5)
+    fit_aera = work_aera & ~line_aera
+
+    data_b_aera = data_b[..., work_aera]
+    J_blocks_aera = J_blocks[..., work_aera, :]
 
     # Solve the variable-projection 2x2 system over the line for a list of
     # polynomial continuum degrees; each degree yields one astrometry_xy track.
     astrometry_xy_list = []
+    correlation_list = []
+    r_squared_list = []
+    significance_list = []
     for poly_deg in poly_deg_values:
         # Estimate the continuum under the line (polynomial fit on the side
         # windows) instead of the notch-Hanning smoothing.
-        data_smoothed_line = compute_smoothed_line(data_normalized, wave, line_aera, poly_deg)
-        sm_b_line = np.stack([data_smoothed_line[:, 1:-1][i_cube, j_step]
-                                for (i_cube, j_step) in valid_indices], axis=0)
-        astrometry_xy, _ = solve_astrometry_gain(J_blocks_line, data_b_line, sm_b_line)  # (n_fit, 2)
+        sm_b = compute_smoothed_line(data_b, wave, fit_aera, work_aera, poly_deg)
+        astrometry_xy, flat, d_proj, J_proj, M = solve_astrometry_gain(J_blocks_aera, data_b_aera, sm_b)  # (n_fit, 2)
+        correlation, r_squared, significance = compute_astrometry_significance(J_proj, d_proj, astrometry_xy, M)
+
         astrometry_xy_list.append(astrometry_xy)
+        correlation_list.append(correlation)
+        r_squared_list.append(r_squared)
+        significance_list.append(significance)
+
+    peak_idx = np.nanargmax(significance_list[-2])
+    print(f"* Peak astrometric detection significance: {significance_list[-2][peak_idx]:.1f} sigma "
+          f"at {wave[work_aera][peak_idx]:.3f} nm (R\u00b2={r_squared_list[-2][peak_idx]:.2f}, "
+          f"poly_deg={poly_deg_values[-2]})")
+
+    figures_to_save.append(fig_2) 
 
     # Compare RA and DEC astrometry over the line for the different poly_deg
     fig, axes = plt.subplots(3, 1, figsize=(10, 12), num="astromet_comparison_poly",
                                 clear=True, sharex=True)
     axes[1].sharey(axes[0])
     for poly_deg, astrometry_xy in zip(poly_deg_values, astrometry_xy_list):
-        axes[0].plot(astrometry_wave, astrometry_xy[:, 0], alpha=0.8, label=f"{poly_deg}")
-        axes[1].plot(astrometry_wave, astrometry_xy[:, 1], alpha=0.8, label=f"{poly_deg}")
-    # Flux over the same wavelength span (fit_aera)
-    axes[2].plot(astrometry_wave, flux_scaled[fit_aera].T, 'r', alpha=0.5)
+        axes[0].plot(wave[work_aera], astrometry_xy[:, 0], alpha=0.8, label=f"{poly_deg}")
+        axes[1].plot(wave[work_aera], astrometry_xy[:, 1], alpha=0.8, label=f"{poly_deg}")
+    # Flux over the same wavelength span (fit_aera), shaded down to the
+    # continuum trend interpolated from the fit_aera (line-excluded) points
+    cont_order = np.argsort(wave[fit_aera])
+    continuum_flux = np.interp(wave[work_aera], wave[fit_aera][cont_order], mean_flux[fit_aera][cont_order])
+    axes[2].fill_between(wave[work_aera], mean_flux[work_aera], continuum_flux, color='r', alpha=0.3)
+    axes[2].plot(wave[work_aera], mean_flux[work_aera].T, 'r', alpha=0.5)
     # Shade the line area
     for ax in axes:
         ax.axvspan(line_center - line_width/2, line_center + line_width/2,
@@ -587,7 +595,7 @@ def process_astrometric_data(
     axes[2].set_title(f"{object_name} - Flux (over the line)")
     axes[0].legend(title="polynomial degree of the continuum fit")
     # fig.savefig("astrometry_3.pdf")
-    pdf.savefig(fig)  # page 3: astrometry_3 (poly_deg comparison)
+    figures_to_save.append(fig)  # page 3: astrometry_3 (poly_deg comparison)
 
 
     # Compare separation and PA astrometry over the line for the different poly_deg
@@ -596,10 +604,10 @@ def process_astrometric_data(
     for poly_deg, astrometry_xy in zip(poly_deg_values, astrometry_xy_list):
         separation = np.hypot(astrometry_xy[:, 0], astrometry_xy[:, 1])
         PA_deg = np.degrees(np.arctan2(astrometry_xy[:, 0], astrometry_xy[:, 1]))
-        axes[0].plot(astrometry_wave, separation, alpha=0.8, label=f"{poly_deg}")
-        axes[1].plot(astrometry_wave, PA_deg, alpha=0.8, label=f"{poly_deg}")
+        axes[0].plot(wave[work_aera], separation, alpha=0.8, label=f"{poly_deg}")
+        axes[1].plot(wave[work_aera], PA_deg, alpha=0.8, label=f"{poly_deg}")
     # Flux over the same wavelength span (fit_aera)
-    axes[2].plot(astrometry_wave, flux_scaled[fit_aera].T, 'r', alpha=0.5)
+    axes[2].plot(wave[work_aera], mean_flux[work_aera].T, 'r', alpha=0.5)
     # Shade the line area
     for ax in axes:
         ax.axvspan(line_center - line_width/2, line_center + line_width/2,
@@ -616,23 +624,44 @@ def process_astrometric_data(
     axes[2].set_title(f"{object_name} - Flux (over the line)")
     axes[0].legend(title="polynomial degree of the continuum fit")
     axes[1].legend(fontsize=8)
-    pdf.savefig(fig)  # page 4: astrometry_3 separation/PA (poly_deg comparison)
+    figures_to_save.append(fig)  # page 4: astrometry_3 separation/PA (poly_deg comparison)
 
+
+    # Compare detection significance, goodness of fit, and per-axis correlation
+    # between J_proj (RA/DEC response) and d_proj (residual data) over the line
+    fig, axes = plt.subplots(3, 1, figsize=(10, 12), num="astromet_comparison_poly_significance",
+                                clear=True, sharex=True)
+    for poly_deg, significance, r_squared in zip(poly_deg_values, significance_list, r_squared_list):
+        axes[0].plot(wave[work_aera], significance, alpha=0.8, label=f"{poly_deg}")
+        axes[1].plot(wave[work_aera], r_squared, alpha=0.8, label=f"{poly_deg}")
+    axes[0].axhline(3, color='k', linestyle=':', alpha=0.7, label="3 sigma")
+    reference_correlation = correlation_list[-2]
+    axes[2].plot(wave[work_aera], reference_correlation[:, 0], label="RA")
+    axes[2].plot(wave[work_aera], reference_correlation[:, 1], label="DEC")
+    axes[2].axhline(0, color='k', linewidth=1, alpha=0.5)
+    # Shade the line area
+    for ax in axes:
+        ax.axvspan(line_center - line_width/2, line_center + line_width/2,
+                    color='gray', alpha=0.2)
+        ax.axvline(line_center, color='black', linewidth=1)
+    axes[0].set_ylabel("Detection significance (sigma)")
+    axes[1].set_ylabel("R\u00b2 (variance explained)")
+    axes[2].set_ylabel(f"Correlation (poly_deg={poly_deg_values[-2]})")
+    axes[2].set_xlabel("Wavelength")
+    axes[0].set_title(f"{object_name} - Astrometric detection significance (over the line)")
+    axes[1].set_title(f"{object_name} - Goodness of fit R\u00b2 (over the line)")
+    axes[2].set_title(f"{object_name} - Correlation between J_proj and d_proj (over the line)")
+    axes[0].legend(title="polynomial degree of the continuum fit")
+    axes[2].legend()
+    figures_to_save.append(fig)  # page: astromet_comparison_poly_significance
 
 
     fig, ax = plt.subplots(1, 1, figsize=(8, 6), num="astrometry_scatter", clear=True)
-    # Widen the plotted region beyond the line by this factor (adjustable), so a
-    # few extra points slightly outside the line area are shown too.
-    mask_width_scale = 1.
-    line_aera_wide = ((wave > line_center - line_width/2*mask_width_scale) &
-                      (wave < line_center + line_width/2*mask_width_scale))
-    # Only show the points falling inside the (widened) line region
-    line_mask = line_aera_wide[fit_aera]
-    flux_scaled_filtered = flux_scaled[fit_aera][line_mask]  - np.min(flux_scaled[fit_aera])
-    velocity_line = velocity[line_mask]
+
+    flux_scaled_filtered = flux_scaled[line_aera]  - np.min(flux_scaled[line_aera])
+    velocity_line = velocity[line_aera]
     for astrometry_xy in astrometry_xy_list[-2:-1]:
-        astrometry_xy = astrometry_xy[line_mask]
-        scatter = ax.scatter(astrometry_xy[:, 0], astrometry_xy[:, 1], c=velocity_line, s=flux_scaled_filtered*1000, cmap='RdBu_r', alpha=0.6)
+        scatter = ax.scatter(astrometry_xy[line_aera[work_aera], 0], astrometry_xy[line_aera[work_aera], 1], c=velocity_line, s=flux_scaled_filtered*1000, cmap='RdBu_r', alpha=0.6)
         ax.plot(astrometry_xy[:, 0], astrometry_xy[:, 1], 'k-', alpha=0.3, linewidth=1)
     ax.set_xlabel("RA (mas)")
     ax.set_ylabel("DEC (mas)")
@@ -656,25 +685,45 @@ def process_astrometric_data(
     ax.plot(x,y,'k--',label=f"PA={PA:.2f}°") 
     ax.legend() 
 
-    # fig.savefig("astrometry_scatter_PA.png", dpi=300)
-    pdf.savefig(fig)  # page 4: astrometry_scatter_PA
-    pdf.close()
-    print(f"All figures saved to {pdf_filename}")
+    figures_to_save.append(fig)  # page: astrometry_scatter_PA
 
+
+
+    ##################################################
     # Save the astrometric results to a FITS file (mirrors run_createCouplingMap)
-    astrometry_shift_all = np.stack(astrometry_shift_list, axis=0)  # (n_hanning, Nwave, 2)
-    astrometry_xy_all = np.stack(astrometry_xy_list, axis=0)        # (n_poly, n_line, 2)
+    ##################################################
+    new_header = datalist[-1].header.copy()
+    new_header['X_FIRTYP'] = 'ASTROMETRY'
+    new_header['Q_ASLINE'] = (line_center, 'line center wavelength (nm)')
+    new_header['Q_ASLWID'] = (line_width, 'line width (nm)')
+    new_header['Q_ASPDEG'] = (str(list(poly_deg_values)), 'polynomial degrees of the continuum fit')
+    new_header['Q_ASSING'] = (Nsingular, 'number of singular values')
+    new_header['Q_ASNAME'] = (runlib_io.create_basename(new_header), 'name of the astrometry file')
+
+    output_dir = os.path.join(datalist[-1].dirname, "../astrometry")
+    os.makedirs(output_dir, exist_ok=True)
+    output_filename = os.path.join(output_dir, new_header['Q_ASNAME'])
+    astrometry_xy_all = np.stack(astrometry_xy_list, axis=0)  # (n_poly, n_line, 2)
     hdul = fits.HDUList([
         fits.PrimaryHDU(header=new_header),
         fits.ImageHDU(data=np.asarray(wave, dtype=float), name='WAVE'),
         fits.ImageHDU(data=np.asarray(flux_scaled, dtype=float), name='FLUX_SCALED'),
-        fits.ImageHDU(data=np.asarray(astrometry_shift_all, dtype=float), name='ASTROMETRY_SHIFT'),
         fits.ImageHDU(data=np.asarray(astrometry_xy_all, dtype=float), name='ASTROMETRY_XY'),
-        fits.ImageHDU(data=np.asarray(x_hanning_values, dtype=float), name='X_HANNING'),
         fits.ImageHDU(data=np.asarray(poly_deg_values, dtype=float), name='POLY_DEG'),
     ])
     hdul.writeto(output_filename, overwrite=True)
     print(f"Astrometry results saved to {output_filename}")
+
+    ##################################################
+    # Save all collected figures to a single multi-page PDF next to the FITS file
+    ##################################################
+    pdf_filename = os.path.splitext(output_filename)[0] + ".pdf"
+    from matplotlib.backends.backend_pdf import PdfPages
+    pdf = PdfPages(pdf_filename)
+    for fig in figures_to_save:
+        pdf.savefig(fig)
+    pdf.close()
+    print(f"All figures saved to {pdf_filename}")
 
 
 
@@ -720,26 +769,16 @@ if __name__ == "__main__":
                          "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h01m49s_HD142527_P.fits",
                             "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h19m55s_HD142527_P.fits",
                          ]
-        # line_center=656.17
-        # PA=28
-        # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12h18*_ALTAIR_P.fits"]
-        # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T12h2*_ALTAIR_P.fits"]
-        # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T15h2[7-9]*_ALTAIR_P.fits"]
 
-        # file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T20h56*.fits"]
-        # file_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/preproc/*14T21h10*.fits"]
-        # wave_patterns = ["/Users/slacour/DATA/LANTERNE/20251231/wavemaps/"]
+        #ALTAIR
+        PA= 162 
+        line_width= 1.7
+        line_center = 656.3
+        modID = 9
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260827/preproc/firstpl_2026-08-27T09h59*fits",
+                         "/Users/slacour/DATA/FIRST/20260827/preproc/firstpl_2026-08-27T09h59*fits",
+                         ]
         
-        # #PDS70
-        # file_patterns = ["/Users/slacour/DATA/LANTERNE/20260306/preproc/firstpl*_PDS70_P.fits"]
-        # wave_patterns = ["/Users/slacour/DATA/LANTERNE/20260307/wavemaps/"]
-        # flat_patterns = ["/Users/slacour/DATA/LANTERNE/20260114/flatmaps/"]
-
-        # object_name = "HD163296"
-        # modID = 2
-        # file_patterns = ["/Users/slacour/DATA/LANTERNE/20260306/preproc/firstpl**.fits"]
-        # wave_patterns = ["/Users/slacour/DATA/LANTERNE/20260307/wavemaps/"]
-
         
     print(f"Development file patterns: {file_patterns}")
 

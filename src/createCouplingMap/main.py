@@ -110,8 +110,6 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
                        help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
     parser.add_argument("--use_pyramids", action="store_true",
                        help="Use pyramids instead of triangles for coupling map analysis (default: use triangles)")
-    parser.add_argument("--center_data", action="store_true", default=True,
-                       help="Center the data -- remove mean flux over the output -- before analysis (default: center the data)")
 
     # Parse the arguments
     args = parser.parse_args()
@@ -129,7 +127,6 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
     flat_patterns = args.flatMap
     wave_patterns = args.waveMap
     use_pyramids = args.use_pyramids
-    center_data = args.center_data
     
     # Note: Development environment detection and default paths
     # are handled autonomously in run_createCouplingMap()
@@ -157,8 +154,7 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
         modID=modID,
         modScale=modScale,
         wollaston=wollaston,
-        use_pyramids=use_pyramids,
-        center_data=center_data
+        use_pyramids=use_pyramids
     )
 
     print(f"Coupling map created successfully:\n{couplingMap.filename}")

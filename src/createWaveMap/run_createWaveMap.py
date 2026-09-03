@@ -546,7 +546,7 @@ def run_createWaveMap(file_patterns=None, dark_patterns=None, flat_patterns=None
     fileList, flatMap = get_filelist_wave(file_patterns, dark_patterns, flat_patterns, wollaston)
     
     # Extract data
-    datalist: List[DataCube] = fileList.extract_data_from_list(flatMap=flatMap, center=False)
+    datalist: List[DataCube] = fileList.extract_data_from_list(flatMap=flatMap)
 
     # Calculate optical aberration mapping
     neon = np.array([np.nanmean(d.data, axis=(0,1)) for d in datalist]).sum(axis=0)

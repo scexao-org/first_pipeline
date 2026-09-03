@@ -196,8 +196,8 @@ def create_flat_comparison_plots(datalist, flatMap_loaded, output_filename):
     fileList = FileList([d.filename for d in datalist[:3]])  # Limit to first 3 for clarity
     
     # Extract data without and with flat correction
-    datalist_1 = fileList.extract_data_from_list(flatMap=None, center=False)
-    datalist_2 = fileList.extract_data_from_list(flatMap=flatMap_loaded, center=False)
+    datalist_1 = fileList.extract_data_from_list(flatMap=None)
+    datalist_2 = fileList.extract_data_from_list(flatMap=flatMap_loaded)
 
     data_noflat = np.array([np.nanmean(d.data, axis=(0,1)) for d in datalist_1])
     data_withflat = np.array([np.nanmean(d.data, axis=(0,1)) for d in datalist_2])
@@ -270,7 +270,7 @@ def run_createFlatMap(file_patterns=None, dark_patterns=None, wollaston=None,
     # fileList = FileList(file_patterns, data_type=data_type, first_type='PREPROC', wollaston=wollaston, modID=[0])
     fileList.make_association(dark_patterns=dark_patterns)
 
-    datalist = fileList.extract_data_from_list(center=False)
+    datalist = fileList.extract_data_from_list()
 
     # Compute flat field
     flat_full, flat_individual = compute_flat(datalist, Nflat_smooth)
@@ -351,8 +351,8 @@ if __name__ == "__main__":
     fileList = FileList(file_patterns, first_type='PREPROC', wollaston=wollaston)
     fileList.make_association(dark_patterns=dark_patterns)
 
-    datalist_1 = fileList.extract_data_from_list(flatMap=None, center=False)
-    datalist_2 = fileList.extract_data_from_list(flatMap=flatMap_2, center=False)
+    datalist_1 = fileList.extract_data_from_list(flatMap=None)
+    datalist_2 = fileList.extract_data_from_list(flatMap=flatMap_2)
 
 
     flux = np.array([np.nanmean(d.data, axis=(0,1)) for d in datalist_1])

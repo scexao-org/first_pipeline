@@ -9,10 +9,21 @@ src_dir = os.path.join(os.path.dirname(__file__), '..')
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
+
+import getpass
+import matplotlib
+# if "VSCODE_PID" in os.environ:
+#     matplotlib.use('macosx')
+# elif os.environ.get('SPYDER_DEBUG_FILE'):
+#     print("Running in Spyder")
+# else:
+#     matplotlib.use('Agg')
+
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.colors import TwoSlopeNorm
 from scipy.spatial import cKDTree
 
 from first_pipeline_shared.classes.runPL_class_fileList import FileList
@@ -26,9 +37,10 @@ def line_fit_region(line_mask):
     if len(line_indices) < 2:
         raise ValueError("The selected line region must contain at least two wavelength samples.")
     line_start, line_stop = line_indices[0], line_indices[-1] + 1
-    width = line_stop - line_start
-    left = np.arange(max(0, line_start - width), line_start)
-    right = np.arange(line_stop, min(len(line_mask), line_stop + width))
+    line_width = line_stop - line_start
+    continuum_width = 2 * line_width
+    left = np.arange(max(0, line_start - continuum_width), line_start)
+    right = np.arange(line_stop, min(len(line_mask), line_stop + continuum_width))
     continuum_indices = np.concatenate((left, right))
     if len(continuum_indices) < 3:
         raise ValueError("Not enough wavelength samples around the line to fit a continuum.")
@@ -52,6 +64,52 @@ def fit_continuum(data, wave, line_mask, polynomial_degree):
     return continuum
 
 
+def decompose_data_svd(data):
+    """Return a compact SVD of position-dependent spectra.
+
+    ``data`` has shape ``(position, output, wavelength)``. Each position is
+    represented by one row, with output and wavelength concatenated into the
+    feature axis. Columns are mean-centered before decomposition.
+    """
+    if data.ndim != 3:
+        raise ValueError("data must have shape (position, output, wavelength).")
+
+    matrix = data.reshape(data.shape[0], -1)
+    column_mean = np.nanmean(matrix, axis=0)
+    matrix = np.where(np.isfinite(matrix), matrix, column_mean)
+    matrix_centered = matrix - column_mean
+    left_vectors, singular_values, right_vectors = np.linalg.svd(
+        matrix_centered, full_matrices=False)
+    return left_vectors, singular_values, right_vectors, column_mean
+
+
+def plot_object_spectrum(data, continuum, wave, line_center, line_width):
+    """Plot the mean object spectrum and fitted continuum."""
+    object_spectrum = np.nanmean(data, axis=(0, 1))
+    object_continuum = np.nanmean(continuum, axis=(0, 1))
+
+    fig, spectrum_axis = plt.subplots(
+        num="Object spectrum", clear=True, figsize=(11, 5))
+    line_start = line_center - line_width / 2
+    line_stop = line_center + line_width / 2
+    line_mask = (wave >= line_start) & (wave <= line_stop)
+    continuum_indices = line_fit_region(line_mask)
+    fit_indices = np.union1d(np.flatnonzero(line_mask), continuum_indices)
+    fit_half_width = max(np.abs(wave[fit_indices] - line_center))
+    display_indices = np.flatnonzero(
+        np.abs(wave - line_center) <= 1.22 * fit_half_width)
+    spectrum_axis.plot(wave, object_spectrum, color='black', label='Object spectrum')
+    spectrum_axis.plot(wave[display_indices], object_continuum[display_indices],
+                       color='tab:orange', label='Continuum fit')
+    spectrum_axis.axvspan(line_start, line_stop, color='tab:red', alpha=0.15)
+    spectrum_axis.axvline(line_center, color='tab:red', linewidth=0.8)
+    spectrum_axis.set(xlabel='Wavelength (nm)', ylabel='Mean flux')
+    spectrum_axis.grid(True, alpha=0.3)
+    spectrum_axis.legend()
+    fig.tight_layout()
+    return fig
+
+
 def local_spatial_correlation(line_flux, continuum_flux, positions, neighbours):
     """Correlate line residual and continuum flux over nearby sampled positions."""
     if len(positions) < 3:
@@ -67,6 +125,35 @@ def local_spatial_correlation(line_flux, continuum_flux, positions, neighbours):
         if np.count_nonzero(valid) >= 3 and np.ptp(x_values[valid]) > 0 and np.ptp(y_values[valid]) > 0:
             correlation[position_index] = np.corrcoef(x_values[valid], y_values[valid])[0, 1]
     return correlation
+
+
+def plot_offset_covariance(variance_by_offset, unique_offsets, sample_counts):
+    """Plot the wavelength-averaged, count-normalized lagged covariance."""
+    covariance = variance_by_offset / sample_counts
+    nonzero_offsets = np.any(unique_offsets != 0, axis=1)
+    background = covariance[nonzero_offsets]
+    background_median = np.nanmedian(background)
+    robust_scale = 1.4826 * np.nanmedian(np.abs(background - background_median))
+    covariance_score = (covariance - background_median) / robust_scale
+    candidate_indices = np.flatnonzero(nonzero_offsets & np.isfinite(covariance_score))
+    candidate_index = candidate_indices[np.argmax(np.abs(covariance_score[candidate_indices]))]
+
+    color_limit = np.nanmax(np.abs(covariance)+1)
+    color_norm = TwoSlopeNorm(vcenter=0, vmin=-color_limit, vmax=color_limit)
+    fig, covariance_axis = plt.subplots(
+        num="Lagged covariance", clear=True, figsize=(7, 6))
+    points = covariance_axis.scatter(
+        unique_offsets[:, 0], unique_offsets[:, 1], c=covariance, s=70,
+        cmap="RdBu_r", norm=color_norm)
+    covariance_axis.scatter(
+        unique_offsets[candidate_index, 0], unique_offsets[candidate_index, 1],
+        facecolors="none", edgecolors="black", linewidths=1.5, s=150)
+    fig.colorbar(points, ax=covariance_axis, label="Mean lagged covariance")
+    covariance_axis.set(xlabel="x offset", ylabel="y offset", aspect="equal")
+    covariance_axis.grid(True, alpha=0.3)
+    fig.tight_layout()
+    return (fig, covariance, candidate_index, unique_offsets[candidate_index],
+            covariance_score[candidate_index])
 
 
 def process_halpha_imaging(file_patterns, object_name=None, dark_patterns=None,
@@ -109,83 +196,26 @@ def process_halpha_imaging(file_patterns, object_name=None, dark_patterns=None,
     continuum = fit_continuum(data, wave, line_mask, polynomial_degree)
     residual = data - continuum
 
-    wavelength_step = np.abs(np.median(np.diff(wave)))
-    line_flux = np.nansum(residual[..., line_mask], axis=(1, 2)) * wavelength_step
-    continuum_flux = np.nanmean(continuum[..., line_mask], axis=(1, 2))
-    correlation = local_spatial_correlation(line_flux, continuum_flux, positions, neighbours)
-
-    header = datalist[-1].header.copy()
-    header['X_FIRTYP'] = 'HALPHAIM'
-    header['Q_HALINE'] = (line_center, 'H-alpha line center (nm)')
-    header['Q_HALWID'] = (line_width, 'H-alpha integration width (nm)')
-    header['Q_HAPDEG'] = (polynomial_degree, 'continuum polynomial degree')
-    header['Q_HANEIG'] = (neighbours, 'local correlation neighbour count')
-    header['Q_HAMETH'] = ('LOCALPEAR', 'local Pearson line/continuum correlation')
-
-    output_dir = os.path.join(datalist[-1].dirname, '../halpha_imaging')
-    os.makedirs(output_dir, exist_ok=True)
-    filename_root = os.path.splitext(os.path.basename(datalist[-1].filename))[0]
-    output_filename = os.path.join(output_dir, filename_root + '_HALPHA.fits')
-    pdf_filename = os.path.splitext(output_filename)[0] + '.pdf'
-
-    fits.HDUList([
-        fits.PrimaryHDU(header=header),
-        fits.ImageHDU(data=wave, name='WAVE'),
-        fits.ImageHDU(data=positions, name='XY'),
-        fits.ImageHDU(data=continuum, name='CONTINUUM'),
-        fits.ImageHDU(data=residual, name='RESIDUAL'),
-        fits.ImageHDU(data=line_flux, name='HALPHA_FLUX'),
-        fits.ImageHDU(data=continuum_flux, name='CONTINUUM_FLUX'),
-        fits.ImageHDU(data=correlation, name='CORRELATION'),
-    ]).writeto(output_filename, overwrite=True)
-
-    with PdfPages(pdf_filename) as pdf:
-        mean_spectrum = np.nanmean(data, axis=(0, 1))
-        mean_continuum = np.nanmean(continuum, axis=(0, 1))
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(wave, mean_spectrum, label='Observed spectrum')
-        ax.plot(wave, mean_continuum, label='Polynomial continuum')
-        ax.axvspan(line_center - line_width / 2, line_center + line_width / 2,
-                   color='tab:red', alpha=0.15)
-        ax.set(xlabel='Wavelength (nm)', ylabel='Flux', title='H-alpha continuum fit')
-        ax.legend()
-        pdf.savefig(fig)
-        plt.close(fig)
-
-        fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
-        for ax, values, title, cmap, limits in (
-            (axes[0], line_flux, 'H-alpha residual flux', 'RdBu_r', None),
-            (axes[1], correlation, 'Local line-continuum correlation', 'coolwarm', (-1, 1)),
-        ):
-            scatter = ax.scatter(positions[:, 0], positions[:, 1], c=values, cmap=cmap,
-                                 vmin=None if limits is None else limits[0],
-                                 vmax=None if limits is None else limits[1])
-            fig.colorbar(scatter, ax=ax)
-            ax.set(xlabel='RA offset (mas)', ylabel='DEC offset (mas)', title=title, aspect='equal')
-        pdf.savefig(fig)
-        plt.close(fig)
-
-    print(f'H-alpha imaging results saved to {output_filename}')
-    print(f'H-alpha diagnostic figures saved to {pdf_filename}')
     return datalist
 
 
 if __name__ == '__main__':
+    from matplotlib.pyplot import *
+    ion()
     """Run H-alpha imaging with development defaults for interactive debugging."""
     if getpass.getuser() == 'slacour':
         file_patterns = [
-            '/Users/slacour/DATA/FIRST/20260625/preproc/'
-            'firstpl_2026-06-25T09h3[2-9]*_HD163296_P.fits',
+            '/Users/slacour/DATA/FIRST/20260828/preproc/firstpl_2026-08-28T*'
         ]
-        wave_patterns = ['/Users/slacour/DATA/FIRST/20260625/wavemaps/']
+        wave_patterns = ['/Users/slacour/DATA/FIRST/20260828/wavemaps/']
         flat_patterns = None
         dark_patterns = None
-        object_name = None
+        object_name = "2MASSJ193918721455542"
         modID = None
-        modScale = None
+        modScale = 30
         wollaston = None
-        line_center = 656.28
-        line_width = 2.0
+        line_center = 655.58 
+        line_width = 0.7
         polynomial_degree = 2
         neighbours = 12
     else:
@@ -210,10 +240,83 @@ if __name__ == '__main__':
     )
 
     data = np.concatenate([cube.data.reshape(-1, cube.Noutput, cube.Nwave) for cube in datalist])
+    xmod = np.concatenate([cube.xmod.reshape(-1) for cube in datalist])
+    ymod = np.concatenate([cube.ymod.reshape(-1) for cube in datalist])
+
     positions = np.concatenate([cube.compute_xy_sky().reshape(-1, 2) for cube in datalist])
     wave = datalist[0].wave
     line_mask = np.abs(wave - line_center) <= line_width / 2
     continuum = fit_continuum(data, wave, line_mask, polynomial_degree)
-    residual = data - continuum
+    plot_object_spectrum(data, continuum, wave, line_center, line_width)
+
+    line_mask = (wave >= line_center - line_width) & (wave <= line_center + line_width)
+    data = data[:,:,line_mask]
+    continuum = continuum[:,:,line_mask]
+    flat = (data*continuum).sum(axis=0)/(continuum**2).sum(axis=0)
+    flat_mean = flat.mean(axis=0)
+    residual = data - continuum*flat
+
+    variance=[]
+    xdiff=[]
+    ydiff=[]
+    for i in range(-3,3):
+        v = (residual[i+18:i+-19]*residual[18:-19]).sum(axis=(1))
+        x = xmod[i+18:i+-19] - xmod[18:-19]
+        y = ymod[i+18:i+-19] - ymod[18:-19]
+        if i !=0:
+            variance.append(v)
+            xdiff.append(x)
+            ydiff.append(y)
+
+    variance = np.array(variance)
+    xdiff = np.array(xdiff)
+    ydiff = np.array(ydiff)
+    offsets = np.column_stack((xdiff.ravel(), ydiff.ravel()))
+    offset_tolerance = 0.01
+    offset_bins = np.rint(offsets / offset_tolerance).astype(np.int64)
+    unique_bins = np.unique(offset_bins, axis=0)
+    unique_offsets = unique_bins * offset_tolerance
+    xdiff_bins = offset_bins[:, 0].reshape(xdiff.shape)
+    ydiff_bins = offset_bins[:, 1].reshape(ydiff.shape)
+    offset_masks = np.array([
+        (xdiff_bins == x_bin) & (ydiff_bins == y_bin)
+        for x_bin, y_bin in unique_bins
+    ])
+    sample_counts = offset_masks.sum(axis=(1, 2))
+    variance_by_offset = np.array([
+        variance[offset_mask].sum(axis=0)
+        for offset_mask in offset_masks
+    ])
+    variance_by_offset = variance_by_offset[:, 5]
+    _, covariance, candidate_index, candidate_offset, candidate_score = plot_offset_covariance(
+        variance_by_offset, unique_offsets, sample_counts)
+    print(
+        "Strongest non-zero covariance candidate: "
+        f"{candidate_offset} (robust score {candidate_score:.2f})"
+    )
+
+    
+
+    
+
+
+
+#%%
+    # left_vectors, singular_values, right_vectors, column_mean = decompose_data_svd(data)
+
+    # figure("Singular values", clear=True)
+    # semilogy(singular_values, 'o-')
+    # xlabel('SVD component')
+    # ylabel('Singular value')
+
+    # figure("First SVD spatial component", clear=True)
+    # scatter(positions[:, 0], positions[:, 1], c=left_vectors[:, 0], cmap='RdBu_r')
+    # colorbar(label='First left singular vector')
+    # xlabel('RA offset (mas)')
+    # ylabel('DEC offset (mas)')
+    # axis('equal')
+
+
+
 
 # %%
