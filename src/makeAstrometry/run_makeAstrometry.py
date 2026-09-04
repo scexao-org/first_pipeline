@@ -193,7 +193,7 @@ def compute_smoothed_line(data_b, wave, fit_aera, work_aera, poly_deg):
     return data_smoothed_line
 
 
-def solve_astrometry_gain(J_blocks_aera, data_b_aera, sm_b, outlier_nsigma=3.0):
+def solve_astrometry_gain(J_blocks_aera, data_b_aera, sm_b, outlier_nsigma=5.0):
     """Variable-projection solve of  J @ a = data - smoothed / flat.
 
     The per-output gain `flat` (close to 1) enters the forward model as
@@ -440,7 +440,7 @@ def process_astrometric_data(
     figures_to_save = [fig]
 
     mean_flux = np.nanmean(flux, axis=(0,1))
-    datacube /= mean_flux
+    datacube_normalized = datacube / mean_flux
     flux_scaled = mean_flux/ np.nanmax(mean_flux)
 
     # ra_dec = np.stack([xmod,ymod],axis=-1)
@@ -458,8 +458,8 @@ def process_astrometric_data(
     valid_basis &= goodData_flux[:,2:] & goodData_flux[:,:-2] & goodData_flux[:,1:-1]
 
     # Measured output changes for the same forward/backward steps
-    data_diff_fwd = datacube[:,2:] - datacube[:,1:-1]    # D_{k+1} - D_k
-    data_diff_bwd = datacube[:,:-2] - datacube[:,1:-1]   # D_{k-1} - D_k
+    data_diff_fwd = datacube_normalized[:,2:] - datacube_normalized[:,1:-1]    # D_{k+1} - D_k
+    data_diff_bwd = datacube_normalized[:,:-2] - datacube_normalized[:,1:-1]   # D_{k-1} - D_k
 
     # Measure lag-1 correlation between adjacent modulation steps (across outputs/wavelength)
     data_centered = datacube - datacube.mean(axis=(2,3), keepdims=True)
@@ -506,7 +506,7 @@ def process_astrometric_data(
     jacobian_blocks = []
     data_blocks = []
     valid_indices = []
-    data_interior = datacube[:, 1:-1]
+    data_interior = datacube_normalized[:, 1:-1]
     for i_cube in range(Ncube):
         for j_step in range(0, Nmod-2):
 
@@ -551,6 +551,7 @@ def process_astrometric_data(
         # windows) instead of the notch-Hanning smoothing.
         sm_b = compute_smoothed_line(data_b, wave, fit_aera, work_aera, poly_deg)
         astrometry_xy, flat, d_proj, J_proj, M = solve_astrometry_gain(J_blocks_aera, data_b_aera, sm_b)  # (n_fit, 2)
+        J_norm = np.linalg.norm(J_proj, axis=-1)
         correlation, r_squared, significance = compute_astrometry_significance(J_proj, d_proj, astrometry_xy, M)
 
         astrometry_xy_list.append(astrometry_xy)
@@ -759,25 +760,28 @@ if __name__ == "__main__":
         # flat_patterns = wave_patterns
 
         PA=137  # for plotting only
+        modID = 9
         file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h3[2-9]*_HD163296_P.fits"]
         wave_patterns = ["/Users/slacour/DATA/FIRST/20260625/wavemaps/"]
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260827/preproc/firstpl_2026-*_HD163296_P.fits"]
+        wave_patterns = ["/Users/slacour/DATA/FIRST/20260827/wavemaps/"]
 
-        PA= 162
-        line_width= 1.3
-        line_center = 656.4
-        file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T08h59m59s_HD142527_P.fits",
-                         "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h01m49s_HD142527_P.fits",
-                            "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h19m55s_HD142527_P.fits",
-                         ]
+        # PA= 162
+        # line_width= 1.3
+        # line_center = 656.4
+        # file_patterns = ["/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T08h59m59s_HD142527_P.fits",
+        #                  "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h01m49s_HD142527_P.fits",
+        #                     "/Users/slacour/DATA/FIRST/20260625/preproc/firstpl_2026-06-25T09h19m55s_HD142527_P.fits",
+        #                  ]
 
-        #ALTAIR
-        PA= 162 
-        line_width= 1.7
-        line_center = 656.3
-        modID = 9
-        file_patterns = ["/Users/slacour/DATA/FIRST/20260827/preproc/firstpl_2026-08-27T09h59*fits",
-                         "/Users/slacour/DATA/FIRST/20260827/preproc/firstpl_2026-08-27T09h59*fits",
-                         ]
+        # #ALTAIR
+        # PA= 162 
+        # line_width= 1.7
+        # line_center = 656.3
+        # modID = 9
+        # file_patterns = ["/Users/slacour/DATA/FIRST/20260827/preproc/firstpl_2026-08-27T09h58*fits",
+        #                  "/Users/slacour/DATA/FIRST/20260827/preproc/firstpl_2026-08-27T09h58*fits",
+        #                  ]
         
         
     print(f"Development file patterns: {file_patterns}")
