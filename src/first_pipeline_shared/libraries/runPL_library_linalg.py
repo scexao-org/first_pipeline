@@ -312,17 +312,55 @@ def solve_QR_2(QTdata, R):
     return x_hat, y_hat, cost, resid
 
 
+def correlation_filtering(datacube, threshold_corr=0.5):
+    """Flag adjacent modulation pairs with low spectral correlation.
+
+    Parameters
+    ----------
+    datacube : ndarray, shape (Ncube, Nmod, ...)
+        Data cube. All axes after the modulation axis are used to compute the
+        correlation between adjacent modulation steps.
+    threshold_corr : float, optional
+        Minimum accepted lag-1 correlation.
+
+    Returns
+    -------
+    low_correlation_pair_mask : ndarray, shape (Ncube, Nmod - 1)
+        True where the adjacent-step correlation is below ``threshold_corr``.
+    correlation_lag : ndarray, shape (Ncube, Nmod - 1)
+        Pearson lag-1 correlation for every adjacent modulation pair.
+    """
+    if datacube.ndim < 3:
+        raise ValueError("datacube must have shape (Ncube, Nmod, ...)")
+    data_centered = datacube - datacube.mean(axis=tuple(range(2, datacube.ndim)),
+                                             keepdims=True)
+    data_std = np.nanstd(datacube, axis=tuple(range(2, datacube.ndim)))
+    data_covariance_lag = np.nanmean(
+        data_centered[:, 1:] * data_centered[:, :-1],
+        axis=tuple(range(2, datacube.ndim)))
+    correlation_lag = data_covariance_lag / (data_std[:, 1:] * data_std[:, :-1])
+    low_correlation_pair_mask = correlation_lag < threshold_corr
+    return low_correlation_pair_mask, correlation_lag
+
+
 def flux_filtering(flux):
-    
     # select data only above a threshold based on flux
-    flux_threshold=np.nanpercentile(flux.mean(axis=(2)),80)/5
-    flux_goodData=np.nanmean(flux,axis=(2)) > flux_threshold
+    flux_mean = np.full(flux.shape[:2], np.nan, dtype=float)
+    finite_count = np.sum(np.isfinite(flux), axis=2)
+    np.divide(
+        np.nansum(flux, axis=2), finite_count,
+        out=flux_mean, where=finite_count > 0)
+    finite_flux_mean = flux_mean[np.isfinite(flux_mean)]
+    if finite_flux_mean.size == 0:
+        raise ValueError("flux contains no finite samples along axis 2")
+    flux_threshold = np.percentile(finite_flux_mean, 80) / 5
+    flux_goodData = flux_mean > flux_threshold
     # plt.imshow(flux_goodData)
     if np.sum(flux_goodData)<57:
         #too little good data, we need to lower the bar
         flux_threshold /= 2
         print("Not enough good data, lowering the threshold to ",flux_threshold)
-        flux_goodData=np.nanmean(flux,axis=(2)) > flux_threshold
+        flux_goodData = flux_mean > flux_threshold
 
     return flux_goodData,flux_threshold
 

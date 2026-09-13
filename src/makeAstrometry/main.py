@@ -17,6 +17,19 @@ import os
 from .run_makeAstrometry import process_astrometric_data, check_observatory_status
 
 
+def parse_positive_odd_int(value):
+    """Parse a positive odd integer for an argparse option."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as error:
+        raise argparse.ArgumentTypeError(
+            "Ncube_average must be a positive odd integer") from error
+    if parsed < 1 or parsed % 2 == 0 or str(parsed) != str(value).strip():
+        raise argparse.ArgumentTypeError(
+            "Ncube_average must be a positive odd integer")
+    return parsed
+
+
 def main():
     """
     Main entry point for the astrometric analysis script.
@@ -80,17 +93,14 @@ the degeneracy between the astrometric signal and the per-output flat gains.
                        help="Modulation pattern ID to select (default: all)")
     parser.add_argument("--modScale", type=int,
                        help="Modulation scale to select (default: any)")
-    parser.add_argument("--Nsingular", type=int, default=19*6,
-                       help="Number of singular values kept in the SVD filtering (default: %(default)s)")
     parser.add_argument("--line_center", type=float, default=656.28,
                        help="Central wavelength of the spectral line in nm (default: %(default)s)")
     parser.add_argument("--line_width", type=float, default=2.0,
                        help="Width of the spectral line in nm (default: %(default)s)")
     parser.add_argument("--PA", type=float, default=-45.0,
                        help="Reference position angle in degrees drawn on the scatter plot (for plotting only, does not affect the results; default: %(default)s)")
-    parser.add_argument("--fast", action=argparse.BooleanOptionalAction, default=True,
-                       help="Fast mode: skip the SVD filtering and use only 3 Hanning window sizes (faster but less accurate; default: %(default)s). Use --no-fast to disable.")
-
+    parser.add_argument("--Ncube_average", type=parse_positive_odd_int, default=3,
+                       help="Number of nearest cubes to average for the Jacobian; must be a positive odd integer (default: %(default)s)")
     # Parse command line arguments
     # Development environment defaults are handled autonomously in run_makeAstrometry()
     args = parser.parse_args()
@@ -102,11 +112,10 @@ the degeneracy between the astrometric signal and the per-output flat gains.
     wollaston = args.wollaston
     modID = args.modID
     modScale = args.modScale
-    Nsingular = args.Nsingular
     line_center = args.line_center
     line_width = args.line_width
     PA = args.PA
-    fast = args.fast
+    Ncube_average = args.Ncube_average
 
     try:
         # Check observatory status
@@ -125,11 +134,10 @@ the degeneracy between the astrometric signal and the per-output flat gains.
             modID=modID,
             modScale=modScale,
             wollaston=wollaston,
-            Nsingular=Nsingular,
             line_center=line_center,
             line_width=line_width,
             PA=PA,
-            fast=fast,
+            Ncube_average=Ncube_average,
         )
         
         print(f"Astrometric analysis completed successfully!")
