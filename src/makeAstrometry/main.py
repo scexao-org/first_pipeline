@@ -50,7 +50,7 @@ continuum is estimated by low-order polynomial fits on the line's side windows.
 
 Caveat: PSF jitter and deformation between the poses of a Jacobian block
 attenuate the amplitude of the recovered shift by an achromatic factor
-(kappa < 1) that must be calibrated by simulation (see calibrate_scale.py);
+(kappa < 1) that must be calibrated by simulation (see astrometry_scale.py);
 the wavelength structure and position angle are unbiased.
 
 Examples:
@@ -112,9 +112,12 @@ the degeneracy between the astrometric signal and the per-output flat gains.
                        help="Half window of the local Jacobian: 2*h+1 poses per block (default: %(default)s, i.e. 3 poses)")
     parser.add_argument("--jac_fit_order", type=int, choices=(1, 2), default=1,
                        help="Order of the local Jacobian fit: 1 = gradient, 2 = gradient + curvature (needs jac_half_window >= 3) (default: %(default)s)")
-    parser.add_argument("--calibrate_scale", action="store_true",
+    parser.add_argument("--calibrate_scale", dest="calibrate_scale", action="store_true",
+                       default=True,
                        help="Measure the PSF jitter/deformation on the data and calibrate by simulation the "
-                            "attenuation factor kappa of the fitted amplitude (adds a few minutes)")
+                            "attenuation factor kappa of the fitted amplitude (default: on, adds a few seconds)")
+    parser.add_argument("--no_calibrate_scale", dest="calibrate_scale", action="store_false",
+                       help="Skip the kappa calibration (step 2)")
     parser.add_argument("--save_npz",
                        help="Save the working arrays (datacube, variance, dither, wavelength) to this .npz file for offline tests")
     # Parse command line arguments

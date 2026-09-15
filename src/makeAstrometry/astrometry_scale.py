@@ -21,7 +21,8 @@ This module
    ``astrometry_core.fit_astrometry`` and adds ``kappa``, ``kappa_err``,
    ``jitter``, ``deformation`` to it.
 
-usage (offline): python astrometry_scale.py data.npz [jitter_mas deformation]
+usage (offline): python astrometry_scale.py data.npz [jitter_mas deformation] [--plot]
+    --plot  save kappa_diagnostics.png (no extra simulation)
 """
 import sys, os
 import numpy as np
@@ -81,15 +82,16 @@ def estimate_psf_variability(data_n, var_n, ra_dec, fit_aera, good=None, deg=6,
         rms of the per-pose common shift, in mas.
     deformation : float
         rms of the remaining relative flux residual (fraction of the flux).
-    detail : dict with per-cube values and the fraction of residual variance
-        explained by the shift.
+    detail : dict with per-cube values, the fraction of residual variance
+        explained by the shift, the per-pose shifts ``pose_shift`` and the
+        per-pose, per-output relative residuals ``relative_residual``.
     """
     Ncube, Npose = ra_dec.shape[:2]
     Dc = data_n[..., fit_aera].mean(-1)                       # (Ncube, Npose, Nout)
     Vc = var_n[..., fit_aera].mean(-1) / fit_aera.sum()
     ok = np.ones(Dc.shape[:2], bool) if good is None else good.all(axis=(-1, -2))
     powers = [(i, j) for i in range(deg + 1) for j in range(deg + 1 - i)]
-    jitter, deform, explained = [], [], []
+    jitter, deform, explained, shifts, residuals = [], [], [], [], []
     for c in range(Ncube):
         m = ok[c]
         px, py = ra_dec[c, m, 0] / scale, ra_dec[c, m, 1] / scale
@@ -109,8 +111,12 @@ def estimate_psf_variability(data_n, var_n, ra_dec, fit_aera, good=None, deg=6,
         jitter.append(np.sqrt(np.mean(delta ** 2)))
         deform.append(np.median(res.std(0) / np.abs(Dc[c, m]).mean(0)))
         explained.append(1 - np.sum(res ** 2 * w[:, None]) / np.sum(R ** 2 * w[:, None]))
+        shifts.append(delta)
+        residuals.append(res / np.abs(Dc[c, m]).mean(0))
     detail = dict(jitter_per_cube=np.array(jitter), deformation_per_cube=np.array(deform),
-                  shift_explained_fraction=np.array(explained))
+                  shift_explained_fraction=np.array(explained),
+                  pose_shift=np.concatenate(shifts),                  # (Npose_good, 2) mas
+                  relative_residual=np.concatenate(residuals).ravel())  # per pose and output
     return float(np.mean(jitter)), float(np.mean(deform)), detail
 
 
@@ -138,10 +144,54 @@ def report_jacobian_variability(result, verbose=True):
 # 2. Calibration of kappa by simulation
 # ---------------------------------------------------------------------------
 
+def _recovery_setup(wave, line_center, line_width, profile, fit_kwargs):
+    fit_kwargs = dict(fit_kwargs or {})
+    fit_kwargs.setdefault('poly_deg_values', (3,))
+    x = wave - line_center
+    core_mask = np.abs(x) < 0.5 * line_width / 1.8 * 1.0
+    dilution = 1 - 1 / profile
+    return fit_kwargs, core_mask, dilution
+
+
+def simulate_recovery(ra_dec, wave, line_center, line_width, profile, jitter,
+                      deformation, seed, fit_kwargs=None, a_true=(0.2, -0.12)):
+    """Recovery factor ``a_fit / a_true`` (RA, DEC) on the line core of one
+    simulation with the given jitter (mas) and deformation (fraction), fitted
+    with ``fit_kwargs``.  Not normalised by the variability-free case."""
+    fit_kwargs, core_mask, dil = _recovery_setup(wave, line_center, line_width,
+                                                 profile, fit_kwargs)
+    a_true = np.asarray(a_true, float)
+    cube, var, _, _ = sl.simulate(ra_dec, wave, line_center, line_width, a_true,
+                                  jitter=jitter, deform=deformation, seed=seed,
+                                  profile=profile)
+    dn, vn, _, _ = core.normalize_by_spectrum(cube, var)
+    r = core.fit_astrometry(dn, vn, ra_dec, wave, line_center, line_width,
+                            verbose=False, **fit_kwargs)
+    pd = fit_kwargs['poly_deg_values'][0]
+    a = r[pd]['astrometry_xy']
+    w = 1 / np.diagonal(r[pd]['covariance'], axis1=-2, axis2=-1)
+    return np.array([(a[core_mask, i] * w[core_mask, i] * dil[core_mask]).sum()
+                     / (w[core_mask, i] * dil[core_mask] ** 2).sum() / a_true[i]
+                     for i in (0, 1)])
+
+
+def _run_recoveries(tasks, ra_dec, wave, line_center, line_width, profile,
+                    fit_kwargs, a_true):
+    """``simulate_recovery`` for every (jitter, deformation, seed) of ``tasks``
+    (serially: running them on threads gave corrupted results).  Returns (Ntask, 2)."""
+    return np.array([simulate_recovery(ra_dec, wave, line_center, line_width, profile,
+                                       jit, defo, seed, fit_kwargs, a_true)
+                     for jit, defo, seed in tasks])
+
+
 def calibrate_kappa(ra_dec, wave, line_center, line_width, profile, jitter,
                     deformation, fit_kwargs=None, seeds=(11, 12, 13),
                     variation=0.3, a_true=(0.2, -0.12), verbose=True):
     """Return ``(kappa, kappa_err_seed, kappa_err_model, table)``.
+
+    ``table`` holds every simulated value: ``reference``, ``seeds`` (kappa per
+    seed at the measured point), ``corners`` ({(f_jitter, f_deformation):
+    kappa}) and ``power_law`` (local fit kappa0 (j/j0)^alpha (d/d0)^beta).
 
     ``kappa`` is the mean recovery factor over ``seeds`` at the measured
     (jitter, deformation), relative to the recovery of the same chain without
@@ -150,37 +200,33 @@ def calibrate_kappa(ra_dec, wave, line_center, line_width, profile, jitter,
     uncertainty).  ``fit_kwargs`` are passed to ``fit_astrometry`` so that
     the simulation uses exactly the options of the real reduction.
     """
-    fit_kwargs = dict(fit_kwargs or {})
-    fit_kwargs.setdefault('poly_deg_values', (3,))
-    x = wave - line_center
-    core_mask = np.abs(x) < 0.5 * line_width / 1.8 * 1.0
-    dil = 1 - 1 / profile
-    a_true = np.asarray(a_true, float)
-
-    def one(jit, defo, seed):
-        cube, var, _, _ = sl.simulate(ra_dec, wave, line_center, line_width, a_true,
-                                      jitter=jit, deform=defo, seed=seed, profile=profile)
-        dn, vn, _, _ = core.normalize_by_spectrum(cube, var)
-        r = core.fit_astrometry(dn, vn, ra_dec, wave, line_center, line_width,
-                                verbose=False, **fit_kwargs)
-        pd = fit_kwargs['poly_deg_values'][0]
-        a = r[pd]['astrometry_xy']; w = 1 / np.diagonal(r[pd]['covariance'], axis1=-2, axis2=-1)
-        k = [(a[core_mask, i] * w[core_mask, i] * dil[core_mask]).sum()
-             / (w[core_mask, i] * dil[core_mask] ** 2).sum() / a_true[i] for i in (0, 1)]
-        return float(np.mean(k))
-
+    tasks = [(0.0, 0.0, seeds[0])] + [(jitter, deformation, sd) for sd in seeds]
+    corners = [(fj, fd) for fj in (1 - variation, 1 + variation)
+               for fd in (1 - variation, 1 + variation)]
+    tasks += [(jitter * fj, deformation * fd, seeds[0]) for fj, fd in corners]
+    rec = _run_recoveries(tasks, ra_dec, wave, line_center, line_width, profile,
+                          fit_kwargs, a_true).mean(1)
     # Reference: same simulation and fit without jitter nor deformation.  It
     # is close to 1 but not exactly (line wings in the continuum windows,
     # channel weighting); dividing by it makes kappa a pure attenuation.
-    reference = one(0.0, 0.0, seeds[0])
-    centre = [one(jitter, deformation, s) / reference for s in seeds]
-    table = {}
-    for fj in (1 - variation, 1 + variation):
-        for fd in (1 - variation, 1 + variation):
-            table[(fj, fd)] = one(jitter * fj, deformation * fd, seeds[0]) / reference
+    reference = float(rec[0])
+    centre = list(rec[1:1 + len(seeds)] / reference)
+    corner_kappa = dict(zip(corners, rec[1 + len(seeds):] / reference))
     kappa = float(np.mean(centre))
     err_seed = float(np.std(centre, ddof=1)) if len(centre) > 1 else 0.0
-    err_model = 0.5 * (max(table.values()) - min(table.values()))
+    err_model = 0.5 * (max(corner_kappa.values()) - min(corner_kappa.values()))
+    # local power law kappa = kappa0 (jitter/j0)^alpha (deformation/d0)^beta,
+    # fitted on the centre and the 4 corners (no extra simulation)
+    fj = np.array([1.0] * len(centre) + [c[0] for c in corners])
+    fd = np.array([1.0] * len(centre) + [c[1] for c in corners])
+    kk = np.array(centre + [corner_kappa[c] for c in corners])
+    ok = kk > 0
+    A = np.stack([np.ones(ok.sum()), np.log(fj[ok]), np.log(fd[ok])], 1)
+    coef = np.linalg.lstsq(A, np.log(kk[ok]), rcond=None)[0] if ok.sum() >= 3 else [np.log(kappa), 0, 0]
+    table = dict(reference=reference, seeds=np.array(centre), corners=corner_kappa,
+                 jitter=float(jitter), deformation=float(deformation),
+                 power_law=dict(kappa0=float(np.exp(coef[0])), alpha=float(coef[1]),
+                                beta=float(coef[2])))
     if verbose:
         print(f"* kappa calibration: ideal-case recovery {reference:.3f} (used as reference)")
         print(f"* kappa calibration: jitter {jitter:.2f} mas, deformation {deformation:.0%} -> "
@@ -188,15 +234,16 @@ def calibrate_kappa(ra_dec, wave, line_center, line_width, profile, jitter,
     return kappa, err_seed, err_model, table
 
 
-
-
 def calibrate_attenuation(result, line_center, line_width, verbose=True, seeds=(11, 12, 13)):
     """Second step of the reduction: measure the PSF variability on the data,
     then calibrate by simulation the attenuation factor kappa with the same
     dither pattern, line profile and fit options as ``result`` (output of
     ``astrometry_core.fit_astrometry``).  Adds ``kappa``, ``kappa_err``
-    (seed and model errors in quadrature), ``jitter``, ``deformation``."""
-    jitter, deformation, _ = estimate_psf_variability(
+    (seed and model errors in quadrature), ``jitter``, ``deformation``,
+    ``psf_variability`` (per-cube and per-pose detail) and ``kappa_table``
+    (all simulated values, see ``calibrate_kappa``).  ``plot_kappa_diagnostics``
+    draws them without any extra simulation."""
+    jitter, deformation, detail = estimate_psf_variability(
         result['data_normalized'], result['var_normalized'], result['ra_dec'],
         result['fit_aera'], result['good'])
     if verbose:
@@ -210,16 +257,24 @@ def calibrate_attenuation(result, line_center, line_width, verbose=True, seeds=(
                       jacobian_method=result['jacobian_method'], model_deg=result['model_deg'],
                       n_cubes_average=result['n_cubes_average'],
                       poly_deg_values=(result['poly_deg_values'][0],))
-    kappa, err_seed, err_model, _ = calibrate_kappa(
+    kappa, err_seed, err_model, table = calibrate_kappa(
         result['ra_dec'], result['wave'], line_center, line_width, profile,
         jitter, deformation, fit_kwargs=fit_kwargs, seeds=seeds, verbose=verbose)
     result.update(kappa=kappa, kappa_err=float(np.hypot(err_seed, err_model)),
-                  jitter=jitter, deformation=deformation)
+                  kappa_err_seed=err_seed, kappa_err_model=err_model,
+                  jitter=jitter, deformation=deformation, psf_variability=detail,
+                  kappa_table=table)
+    if verbose:
+        pl = table['power_law']
+        print(f"* kappa locally ~ (jitter/{jitter:.2f} mas)^{pl['alpha']:+.2f} "
+              f"(deformation/{deformation:.0%})^{pl['beta']:+.2f}")
     return result
 
 
 if __name__ == "__main__":
-    f = np.load(sys.argv[1] if len(sys.argv) > 1 else 'toto.npz')
+    plot = '--plot' in sys.argv
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    f = np.load(args[0] if args else 'toto.npz')
     d, v, rd, wave = f['datacube'], f['datacube_var'], f['ra_dec'][:f['datacube'].shape[0]], f['wave']
     line_center, line_width = 656.5, 1.8
     dn, vn, spectrum, good = core.normalize_by_spectrum(d, v)
@@ -228,10 +283,17 @@ if __name__ == "__main__":
     result['spectrum'] = spectrum
     report_jacobian_variability(result)
     # step 2: scale
-    if len(sys.argv) > 3:
-        jitter, deformation = float(sys.argv[2]), float(sys.argv[3])
+    if len(args) > 2:
+        jitter, deformation = float(args[1]), float(args[2])
         x = wave - line_center; spec_tot = np.nansum(spectrum, 0)
         profile = spec_tot / spec_tot[np.abs(x) > 1.1 * line_width].mean()
         calibrate_kappa(rd, wave, line_center, line_width, profile, jitter, deformation)
     else:
         calibrate_attenuation(result, line_center, line_width)
+        if plot:
+            import matplotlib
+            matplotlib.use('Agg')
+            from makeAstrometry.astrometry_plots import plot_kappa_diagnostics
+            fig, _ = plot_kappa_diagnostics(result)
+            fig.savefig('kappa_diagnostics.png', dpi=150)
+            print("* saved kappa_diagnostics.png")

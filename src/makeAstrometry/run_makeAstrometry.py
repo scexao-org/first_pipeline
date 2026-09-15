@@ -79,7 +79,7 @@ from makeAstrometry import astrometry_scale as scale
 from makeAstrometry.astrometry_plots import (
     plot_correlation_lag_histogram, plot_jacobian_diagnostics,
     plot_astrometry_comparison, plot_separation_pa, plot_astrometry_scatter,
-    plot_astrometry_with_errors)
+    plot_astrometry_with_errors, plot_kappa_diagnostics)
 
 
 # Subaru Observatory instance for timing
@@ -330,8 +330,15 @@ def make_astrometry_figures(result, datalist, object_name, PA):
     fig, _ = plot_astrometry_scatter(
         result[ref]['astrometry_xy'], result[ref]['covariance'], line_aera,
         result['velocity'][result['work_aera']][line_aera],
-        flux_line - flux_line.min(), object_name, lc, lw, ref, PA, subtitle)
+        flux_line - flux_line.min(), object_name, lc, lw, ref, PA, subtitle,
+        kappa=result.get('kappa'), kappa_err=result.get('kappa_err'))
     figures.append(fig)
+    # amplitude attenuation kappa (only when step 2 ran with calibrate_scale=True)
+    if 'kappa_table' in result:
+        fig, _ = plot_kappa_diagnostics(
+            result, title=f"{object_name}: amplitude attenuation kappa of the "
+                          f"local-Jacobian astrometry\n{subtitle}")
+        figures.append(fig)
     return figures
 
 
@@ -488,6 +495,7 @@ if __name__ == "__main__":
         Ncube_average = 1
         line_center = 656.5
         line_width = 1.8
+        calibrate_scale = True
         file_patterns = ["/Users/slacour/DATA/FIRST/20260827/preproc/firstpl_2026-*_HD163296_P.fits"]
         wave_patterns = ["/Users/slacour/DATA/FIRST/20260827/wavemaps/"]
 
@@ -500,5 +508,5 @@ if __name__ == "__main__":
         dark_patterns=dark_patterns, flat_patterns=flat_patterns,
         wave_patterns=wave_patterns, modID=modID, modScale=modScale,
         wollaston=wollaston, line_center=line_center, line_width=line_width,
-        PA=PA, Ncube_average=Ncube_average)
+        calibrate_scale=calibrate_scale, PA=PA, Ncube_average=Ncube_average)
 # %%

@@ -103,7 +103,7 @@ def compute_smoothed_jacobian_uncertainty(C_J, wave_aera, fit_aera,
     V_work = np.vander(wave_aera, poly_deg + 1)
     smoothing_matrix = V_work @ np.linalg.pinv(V_cont)
     return np.einsum('wc,...cij->...wij', smoothing_matrix ** 2,
-                     C_J[..., fit_in_work, :, :])
+                     C_J[..., fit_in_work, :, :], optimize=True)
 
 
 def compute_smoothed_cross_covariances(cov_data_J, wave_aera, fit_aera,
@@ -127,7 +127,7 @@ def compute_smoothed_cross_covariances(cov_data_J, wave_aera, fit_aera,
         cov_data_J[..., cont_positions, :]
         * smoothing_J[cont_positions, np.arange(cont_positions.size), None])
     cov_sm_Jm = np.einsum('wc,wc,...ci->...wi', smoothing_sm, smoothing_J,
-                          cov_data_J[..., fit_in_work, :])
+                          cov_data_J[..., fit_in_work, :], optimize=True)
     return cov_data_Jm, cov_sm_Jm
 
 
@@ -176,26 +176,26 @@ def solve_eiv_J(J, data, sm, C_J, cov_Jsm, var_data=None):
 
     J_proj = J - data[..., None] * (Gd / D2[..., None])[None]
     d_proj = data * (H / D2)[None] - sm
-    M = np.einsum('bowi,bowj->wij', J_proj, J_proj)
-    rhs = np.einsum('bowi,bow->wi', J_proj, d_proj)
+    M = np.einsum('bowi,bowj->wij', J_proj, J_proj, optimize=True)
+    rhs = np.einsum('bowi,bow->wi', J_proj, d_proj, optimize=True)
 
     # For P = I - data data.T / D2, use diag(P) for block-diagonal
     # covariance. A is the projected Jacobian-error contribution and c is
     # the projected J-sm covariance contribution to the right-hand side.
     projected_data_diagonal = 1.0 - data ** 2 / D2[None]
-    A = np.einsum('bowij,bow->wij', C_J, projected_data_diagonal)
-    c = -np.einsum('bowi,bow->wi', cov_Jsm, projected_data_diagonal) 
+    A = np.einsum('bowij,bow->wij', C_J, projected_data_diagonal, optimize=True)
+    c = -np.einsum('bowi,bow->wi', cov_Jsm, projected_data_diagonal, optimize=True) 
 
     M_corrected = M - A
     astrometry_shift = np.linalg.solve(
         M_corrected, (rhs - c)[..., None])[..., 0]
-    flat = (H + np.einsum('owi,wi->ow', Gd, astrometry_shift)) / D2
+    flat = (H + np.einsum('owi,wi->ow', Gd, astrometry_shift, optimize=True)) / D2
 
     #diagnostics:
     # r2 faible (≪ 1) et attenuation grand → dégénérescence géométrique. Votre J est bon, mais a et flat sont quasi indistinguables dans cette configuration de blocs. Aucun traitement statistique n'y remédiera ; il faut plus de diversité de blocs, ou contraindre flat par ailleurs.
     # r2 normal et attenuation grand → J réellement mal connu. Il faut améliorer la calibration.
 
-    r2 = np.einsum('bowi,bowi->w', J_proj, J_proj) / np.einsum('bowi,bowi->w', J, J)
+    r2 = np.einsum('bowi,bowi->w', J_proj, J_proj, optimize=True) / np.einsum('bowi,bowi->w', J, J, optimize=True)
     attenuation = np.linalg.eigvals(np.linalg.solve(M, A)).real
     M_inverse = np.linalg.inv(M_corrected)
     if var_data is None:
@@ -205,9 +205,9 @@ def solve_eiv_J(J, data, sm, C_J, cov_Jsm, var_data=None):
             1.0 - data ** 2 / D2[None])**2
         rhs_covariance = np.einsum(
             'bowi,bow,bowj->wij', J_proj,
-            projected_data_variance, J_proj)
+            projected_data_variance, J_proj, optimize=True)
         astrometry_covariance = np.einsum(
-            'wij,wjk,wlk->wil', M_inverse, rhs_covariance, M_inverse)
+            'wij,wjk,wlk->wil', M_inverse, rhs_covariance, M_inverse, optimize=True)
     return astrometry_shift, flat, M_corrected, attenuation, astrometry_covariance
 
 
@@ -254,12 +254,12 @@ def estimate_local_jacobian(datacube_n, datacube_var_n, ra_dec, half_window=1,
     condition = np.linalg.cond(A)
     d = np.stack([datacube_n[:, centre + j] - datacube_n[:, centre]
                   for j in offsets], axis=-1)                # (Ncube, Nblock, Nout, Nwave, Nj)
-    jacobian = np.einsum('cbkj,cbowj->cbowk', G, d)
+    jacobian = np.einsum('cbkj,cbowj->cbowk', G, d, optimize=True)
     v_off = np.stack([datacube_var_n[:, centre + j] for j in offsets], axis=-1)
     v_c = datacube_var_n[:, centre]                          # (Ncube, Nblock, Nout, Nwave)
     G1 = G.sum(axis=-1)                                      # (Ncube, Nblock, 2)
     jacobian_covariance = (
-        np.einsum('cbkj,cbowj,cblj->cbowkl', G, v_off, G)
+        np.einsum('cbkj,cbowj,cblj->cbowkl', G, v_off, G, optimize=True)
         + v_c[..., None, None] * (G1[:, :, None, None, :, None]
                                   * G1[:, :, None, None, None, :]))
     data_jacobian_covariance = -v_c[..., None] * G1[:, :, None, None, :]
@@ -287,7 +287,7 @@ def solve_eiv_J_weighted(J, data, sm, C_J, cov_Jsm, var_data, mask=None,
         if not clip_nsigma:
             break
         a, g = out[0], out[1]
-        resid = np.einsum('bowi,wi->bow', J, a) + sm - g[None] * data
+        resid = np.einsum('bowi,wi->bow', J, a, optimize=True) + sm - g[None] * data
         chi2 = np.mean(resid ** 2 * w, axis=-1)
         chi2_ref = np.median(chi2[keep])
         chi2_mad = 1.4826 * np.median(np.abs(chi2[keep] - chi2_ref))
