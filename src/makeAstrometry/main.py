@@ -46,8 +46,12 @@ used to build, around each interior dither point, a local response Jacobian
 relating output-flux changes to sky-position changes. A separable (variable-
 projection) least-squares solve then eliminates the per-output flat gains
 analytically and returns the RA/DEC photocenter shift versus wavelength. The
-continuum is estimated both by notched-Hanning smoothing (over a range of
-window sizes) and by a low-order polynomial fit on the line's side windows.
+continuum is estimated by low-order polynomial fits on the line's side windows.
+
+Caveat: PSF jitter and deformation between the poses of a Jacobian block
+attenuate the amplitude of the recovered shift by an achromatic factor
+(kappa < 1) that must be calibrated by simulation (see calibrate_scale.py);
+the wavelength structure and position angle are unbiased.
 
 Examples:
     %(prog)s preproc/*_HD163296_P.fits
@@ -64,8 +68,8 @@ Input Files:
 
 Output Files (written to a sibling ../astrometry folder):
     - ASTROMETRY FITS file (X_FIRTYP=ASTROMETRY) with HDUs:
-      WAVE, FLUX_SCALED, ASTROMETRY_SHIFT (per Hanning window), ASTROMETRY_XY
-      (over the line), and X_HANNING
+      WAVE (working window), FLUX_SCALED, ASTROMETRY_XY and ASTROMETRY_COV
+      (one track per continuum polynomial degree), POLY_DEG, LINE_MASK
     - Multi-page PDF with the RA/DEC astrometry vs wavelength (full band and
       zoomed on the line) and the RA/DEC scatter colored by Doppler velocity
 
@@ -101,6 +105,18 @@ the degeneracy between the astrometric signal and the per-output flat gains.
                        help="Reference position angle in degrees drawn on the scatter plot (for plotting only, does not affect the results; default: %(default)s)")
     parser.add_argument("--Ncube_average", type=parse_positive_odd_int, default=3,
                        help="Number of nearest cubes to average for the Jacobian; must be a positive odd integer (default: %(default)s)")
+    parser.add_argument("--jacobian_method", choices=("local", "spatial"), default="local",
+                       help="Jacobian estimator: 'local' finite differences on neighbouring poses, "
+                            "or 'spatial' gradient of a polynomial model of the flux versus dither position (default: %(default)s)")
+    parser.add_argument("--jac_half_window", type=int, default=1,
+                       help="Half window of the local Jacobian: 2*h+1 poses per block (default: %(default)s, i.e. 3 poses)")
+    parser.add_argument("--jac_fit_order", type=int, choices=(1, 2), default=1,
+                       help="Order of the local Jacobian fit: 1 = gradient, 2 = gradient + curvature (needs jac_half_window >= 3) (default: %(default)s)")
+    parser.add_argument("--calibrate_scale", action="store_true",
+                       help="Measure the PSF jitter/deformation on the data and calibrate by simulation the "
+                            "attenuation factor kappa of the fitted amplitude (adds a few minutes)")
+    parser.add_argument("--save_npz",
+                       help="Save the working arrays (datacube, variance, dither, wavelength) to this .npz file for offline tests")
     # Parse command line arguments
     # Development environment defaults are handled autonomously in run_makeAstrometry()
     args = parser.parse_args()
@@ -138,6 +154,11 @@ the degeneracy between the astrometric signal and the per-output flat gains.
             line_width=line_width,
             PA=PA,
             Ncube_average=Ncube_average,
+            jacobian_method=args.jacobian_method,
+            jac_half_window=args.jac_half_window,
+            jac_fit_order=args.jac_fit_order,
+            save_npz=args.save_npz,
+            calibrate_scale=args.calibrate_scale,
         )
         
         print(f"Astrometric analysis completed successfully!")

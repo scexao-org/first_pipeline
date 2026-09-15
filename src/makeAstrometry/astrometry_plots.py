@@ -1,7 +1,24 @@
-"""Plotting helpers for the FIRST astrometry pipeline."""
+"""Plotting helpers for the FIRST astrometry pipeline (makeAstrometry)."""
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
+
+
+def _shade_line(axes, line_center, line_width):
+    for ax in np.atleast_1d(axes):
+        ax.axvspan(line_center - line_width / 2, line_center + line_width / 2,
+                   color='gray', alpha=0.2)
+        ax.axvline(line_center, color='black', linewidth=1)
+
+
+def _covariance_ellipse(point, covariance, **kw):
+    eigenvalues, eigenvectors = np.linalg.eigh(covariance)
+    eigenvalues = np.maximum(eigenvalues, 0.0)
+    major = np.argmax(eigenvalues)
+    angle = np.degrees(np.arctan2(eigenvectors[1, major], eigenvectors[0, major]))
+    return Ellipse(point, 2 * np.sqrt(eigenvalues[major]),
+                   2 * np.sqrt(eigenvalues[1 - major]), angle=angle, **kw)
 
 
 def plot_correlation_lag_histogram(data_corr_lag, good_data_flux,
@@ -188,30 +205,62 @@ def plot_separation_pa(wave_aera, astrometry_xy_list, poly_deg_values,
     return fig, axes
 
 
-def plot_astrometry_scatter(astrometry_xy_list, line_aera, velocity_line,
-                            flux_scaled_filtered, object_name,
-                            line_center, line_width, poly_deg, PA):
-    fig, ax = plt.subplots(1, 1, figsize=(8, 6),
-                           num="astrometry_scatter_2", clear=True)
-    for astrometry_xy in astrometry_xy_list[-2:-1]:
-        scatter = ax.scatter(astrometry_xy[line_aera, 0], astrometry_xy[line_aera, 1],
-                             c=velocity_line, s=flux_scaled_filtered*1000,
-                             cmap='RdBu_r', alpha=0.6)
-        ax.plot(astrometry_xy[:, 0], astrometry_xy[:, 1], 'k-', alpha=0.3, linewidth=1)
+def plot_astrometry_scatter(astrometry_xy, covariance, line_aera, velocity_line,
+                            flux_scaled_filtered, object_name, line_center,
+                            line_width, poly_deg, PA, subtitle=""):
+    """RA/DEC track over the line, coloured by velocity, with 1-sigma
+    covariance ellipses; the continuum channels are shown in grey."""
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6), num="astrometry_scatter", clear=True)
+    on = astrometry_xy[line_aera]
+    scatter = ax.scatter(on[:, 0], on[:, 1], c=velocity_line,
+                         s=flux_scaled_filtered * 1000 + 10, cmap='RdBu_r',
+                         alpha=0.6, zorder=3)
+    ax.plot(on[:, 0], on[:, 1], 'k-', alpha=0.3, linewidth=1)
+    for point, point_covariance in zip(on, covariance[line_aera]):
+        ax.add_patch(_covariance_ellipse(point, point_covariance, edgecolor='black',
+                                         facecolor='none', linewidth=0.6, alpha=0.45))
+    ax.plot(astrometry_xy[~line_aera, 0], astrometry_xy[~line_aera, 1], '.',
+            color='gray', ms=4, label="continuum channels")
     ax.set_xlabel("RA (mas)")
     ax.set_ylabel("DEC (mas)")
-    ax.set_title(f"{object_name} - Astrometry vs Velocity, poly deg={poly_deg}")
     ax.plot([], [], ' ', label=f"line center = {line_center:.6g}")
     ax.plot([], [], ' ', label=f"line width = {line_width:.6g}")
-    ax.legend()
     ax.set_aspect('equal')
-    lim = np.max(np.abs(ax.get_xlim() + ax.get_ylim()))
+    lim = 1.1 * np.nanmax(np.abs(astrometry_xy))
     ax.set_xlim(lim, -lim)
     ax.set_ylim(-lim, lim)
     fig.colorbar(scatter, ax=ax, label="Velocity (km/s)")
     ax.grid(True, alpha=0.3)
-    PA_rad = PA * np.pi / 180
     y = np.linspace(-lim, lim, 100)
-    ax.plot(np.tan(PA_rad) * y, y, 'k--', label=f"PA={PA_rad * 180 / np.pi:.2f}\u00b0")
-    ax.legend()
+    ax.plot(np.tan(np.radians(PA)) * y, y, 'k--', label=f"PA={PA:.2f}\u00b0")
+    ax.legend(fontsize=8)
+    ax.set_title(f"{object_name} - Astrometry vs velocity, poly deg={poly_deg}\n{subtitle}",
+                 fontsize=9)
     return fig, ax
+
+
+def plot_astrometry_with_errors(wave_aera, astrometry_xy, covariance,
+                                flux_scaled, fit_aera, object_name,
+                                line_center, line_width, poly_deg):
+    """RA and DEC versus wavelength with error bars, and the line profile.
+
+    The error bars are rescaled so that the continuum channels (where the
+    signal must be zero) have a reduced chi2 of one.
+    """
+    sigma = np.sqrt(np.diagonal(covariance, axis1=-2, axis2=-1))
+    scale = np.sqrt(np.mean((astrometry_xy[fit_aera] / sigma[fit_aera]) ** 2))
+    sigma = sigma * max(scale, 1.0)
+    fig, axes = plt.subplots(3, 1, figsize=(10, 12), num="astrometry_errors",
+                             clear=True, sharex=True)
+    for k, label in enumerate(("RA", "DEC")):
+        axes[k].errorbar(wave_aera, astrometry_xy[:, k], sigma[:, k], fmt='o-',
+                         ms=3, capsize=2, color='C0', alpha=0.8)
+        axes[k].axhline(0, color='k', linewidth=0.8)
+        axes[k].set_ylabel(f"{label} astrometric signal (mas)")
+    axes[2].plot(wave_aera, flux_scaled.T, 'r', alpha=0.5)
+    axes[2].set_ylabel("Flux (scaled)")
+    axes[2].set_xlabel("Wavelength")
+    _shade_line(axes, line_center, line_width)
+    axes[0].set_title(f"{object_name} - astrometry with 1-sigma errors, poly deg={poly_deg} "
+                      f"(errors x{max(scale, 1.0):.1f} from the continuum scatter)")
+    return fig, axes
