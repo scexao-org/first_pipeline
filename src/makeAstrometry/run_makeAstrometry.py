@@ -77,7 +77,7 @@ from first_pipeline_shared.libraries import runPL_library_linalg as runlib_linal
 from makeAstrometry import astrometry_core as core
 from makeAstrometry import astrometry_scale as scale
 from makeAstrometry.astrometry_plots import (
-    plot_correlation_lag_histogram, plot_jacobian_diagnostics,
+    plot_correlation_lag_histogram,
     plot_astrometry_comparison, plot_separation_pa, plot_astrometry_scatter,
     plot_astrometry_with_errors, plot_kappa_diagnostics)
 
@@ -294,16 +294,6 @@ def make_astrometry_figures(result, datalist, object_name, PA):
     lc, lw = result['line_center'], result['line_width']
 
     figures = []
-    # masked (block, output) pairs carry placeholder variances: drop them
-    mask = result['block_mask'][..., None]
-    fig, _ = plot_jacobian_diagnostics(
-        wave_aera,
-        np.where(mask[..., None], result['jacobian_blocks'], 0.0),
-        np.where(mask, result['data_blocks'], 0.0),
-        np.where(mask[..., None, None], result['jacobian_blocks_covariance'], 0.0),
-        result['n_cubes_average'], line_center=lc, line_width=lw)
-    figures.append(fig)
-
     fig, _ = plot_astrometry_comparison(
         wave_aera, astrometry_xy_list, poly_deg_values, result['mean_flux'],
         result['work_aera'], fit_aera, object_name, lc, lw)
@@ -497,10 +487,18 @@ if __name__ == "__main__":
         line_width = 1.8
         calibrate_scale = True
         file_patterns = ["/Users/slacour/DATA/FIRST/20260827/preproc/firstpl_2026-*_HD163296_P.fits"]
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260827/preproc/firstpl_2026-08-27T08*P.fits"]
         wave_patterns = ["/Users/slacour/DATA/FIRST/20260827/wavemaps/"]
 
         # HD142527 (20260625): PA=162, line_width=1.3, line_center=656.4
-        # ALTAIR (20260827):   PA=25, line_width=1.7, line_center=656.2, modID=9, modScale=25
+        # ALTAIR (20260827):   
+        object_name = "ALTAIR"
+        PA=25
+        line_width=1.7
+        line_center=656.2
+        modID=9 
+        modScale=25
+
 
     print(f"Development file patterns: {file_patterns}")
     process_astrometric_data(
