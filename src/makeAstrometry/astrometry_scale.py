@@ -222,7 +222,10 @@ def calibrate_kappa(ra_dec, wave, line_center, line_width, profile, jitter,
     kk = np.array(centre + [corner_kappa[c] for c in corners])
     ok = kk > 0
     A = np.stack([np.ones(ok.sum()), np.log(fj[ok]), np.log(fd[ok])], 1)
-    coef = np.linalg.lstsq(A, np.log(kk[ok]), rcond=None)[0] if ok.sum() >= 3 else [np.log(kappa), 0, 0]
+    if ok.sum() >= 3 and np.linalg.matrix_rank(A) == 3:
+        coef = np.linalg.lstsq(A, np.log(kk[ok]), rcond=None)[0]
+    else:   # too many kappa <= 0 for a power law: constant
+        coef = [np.log(kappa) if kappa > 0 else -np.inf, 0.0, 0.0]
     table = dict(reference=reference, seeds=np.array(centre), corners=corner_kappa,
                  jitter=float(jitter), deformation=float(deformation),
                  power_law=dict(kappa0=float(np.exp(coef[0])), alpha=float(coef[1]),

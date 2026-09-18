@@ -204,7 +204,7 @@ def plot_kappa_diagnostics(result, title=None):
     with the local power law and the per-cube measurements; (d) kappa per
     cube predicted by that power law, with the calibrated value.
     """
-    from matplotlib.colors import LogNorm
+    from matplotlib.colors import LogNorm, Normalize
     detail, table = result['psf_variability'], result['kappa_table']
     kappa, kappa_err = result['kappa'], result['kappa_err']
     jit, defo = table['jitter'], 100 * table['deformation']
@@ -254,27 +254,44 @@ def plot_kappa_diagnostics(result, title=None):
     pad = 0.1
     J = np.linspace((fjs[0] - pad) * jit, (fjs[-1] + pad) * jit, 60)
     D = np.linspace((fds[0] - pad) * defo, (fds[-1] + pad) * defo, 60)
-    K = law(J[:, None], D[None, :])
-    values = np.concatenate([list(corners.values()), table['seeds'], kc])
-    vmin, vmax = 0.8 * min(K.min(), values.min()), 1.25 * max(K.max(), values.max())
-    norm = LogNorm(vmin, vmax)
-    cf = ax_m.contourf(J, D, K.T, levels=np.geomspace(vmin, vmax, 25), cmap='viridis', norm=norm)
-    cs = ax_m.contour(J, D, K.T, levels=np.geomspace(vmin, vmax, 7)[1:-1], colors='white',
-                      linewidths=0.7)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        K = law(J[:, None], D[None, :])
+    values = np.concatenate([list(corners.values()), table['seeds'], kc, K.ravel()])
+    pos = values[np.isfinite(values) & (values > 0)]
+    n_bad = int(np.sum(~(np.asarray(list(corners.values()) + list(table['seeds'])) > 0)))
+    if pos.size:
+        # kappa can be <= 0 (or nan) when the simulated signal is lost in the
+        # noise: a log colour scale is then built on the positive values only
+        vmin, vmax = 0.8 * pos.min(), 1.25 * pos.max()
+        norm, levels = LogNorm(vmin, vmax), np.geomspace(vmin, vmax, 25)
+        line_levels = np.geomspace(vmin, vmax, 7)[1:-1]
+    else:
+        finite = values[np.isfinite(values)]
+        vmin, vmax = (finite.min(), finite.max()) if finite.size else (0.0, 1.0)
+        if vmax <= vmin:
+            vmin, vmax = vmin - 0.5, vmax + 0.5
+        norm, levels = Normalize(vmin, vmax), np.linspace(vmin, vmax, 25)
+        line_levels = levels[4:-4:4]
+    clip = lambda v: np.clip(np.nan_to_num(np.asarray(v, float), nan=vmin), vmin, vmax)
+    cf = ax_m.contourf(J, D, clip(K).T, levels=levels, cmap='viridis', norm=norm)
+    cs = ax_m.contour(J, D, clip(K).T, levels=line_levels, colors='white', linewidths=0.7)
     ax_m.clabel(cs, fmt='%.3f', fontsize=7)
     for (fj, fd), k in corners.items():
-        ax_m.scatter(fj * jit, fd * defo, c=[k], cmap='viridis', norm=norm, marker='s', s=120,
+        ax_m.scatter(fj * jit, fd * defo, c=clip([k]), cmap='viridis', norm=norm, marker='s', s=120,
                      edgecolors='w', linewidths=1.5, zorder=3)
         ax_m.annotate(f"{k:.3f}", (fj * jit, fd * defo), xytext=(0, 11), textcoords='offset points',
                       ha='center', fontsize=8, color='w', weight='bold')
-    ax_m.scatter([jit], [defo], c=[kappa], cmap='viridis', norm=norm, marker='*', s=300,
+    ax_m.scatter([jit], [defo], c=clip([kappa]), cmap='viridis', norm=norm, marker='*', s=300,
                  edgecolors='w', linewidths=1.5, zorder=4, label=f"measured: {kappa:.3f} (simulated seeds)")
-    ax_m.scatter(jc, dc, c=kc, cmap='viridis', norm=norm, marker='o', s=30, edgecolors='w',
+    ax_m.scatter(jc, dc, c=clip(kc), cmap='viridis', norm=norm, marker='o', s=30, edgecolors='w',
                  zorder=3, label="per cube (data)")
     ax_m.scatter([], [], marker='s', c='gray', edgecolors='k', label="simulated +-30% corners")
     cbar = fig.colorbar(cf, ax=ax_m, label=r"$\kappa$")
     ticks = [v for v in (0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1) if vmin <= v <= vmax]
-    if ticks:
+    if n_bad:
+        ax_m.text(0.02, 0.02, f"warning: {n_bad} simulated kappa <= 0\n(calibration unreliable)",
+                  transform=ax_m.transAxes, color='tomato', fontsize=8, weight='bold')
+    if ticks and isinstance(norm, LogNorm):
         cbar.set_ticks(ticks); cbar.set_ticklabels([f"{v:g}" for v in ticks])
     ax_m.set_xlabel("pointing jitter rms (mas)"); ax_m.set_ylabel("flux deformation rms (%)")
     ax_m.legend(fontsize=7, loc='upper center', framealpha=0.8)
@@ -300,7 +317,7 @@ def plot_kappa_diagnostics(result, title=None):
                      label=f"regression dilution 1 - f = {1 - f:.2f} (data)")
     ax_k.set_xticks([-1] + list(cubes)); ax_k.set_xticklabels(['sim.'] + [str(c) for c in cubes])
     ax_k.set_xlabel("cube"); ax_k.set_ylabel(r"$\kappa$")
-    ax_k.set_ylim(0, None); ax_k.grid(alpha=0.3); ax_k.legend(fontsize=8)
+    ax_k.axhline(0, color='k', lw=0.6); ax_k.grid(alpha=0.3); ax_k.legend(fontsize=8)
     ax_k.set_title("(d) amplitude attenuation $\\kappa$", fontsize=10)
 
     fig.suptitle(title or "Amplitude attenuation of the local-Jacobian astrometry", fontsize=12)

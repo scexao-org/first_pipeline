@@ -487,7 +487,7 @@ if __name__ == "__main__":
         line_width = 1.8
         calibrate_scale = True
         file_patterns = ["/Users/slacour/DATA/FIRST/20260827/preproc/firstpl_2026-*_HD163296_P.fits"]
-        file_patterns = ["/Users/slacour/DATA/FIRST/20260827/preproc/firstpl_2026-08-27T08*P.fits"]
+        file_patterns = ["/Users/slacour/DATA/FIRST/20260827/preproc/firstpl_2026-08-27T08h[3-4]*P.fits"]
         wave_patterns = ["/Users/slacour/DATA/FIRST/20260827/wavemaps/"]
 
         # HD142527 (20260625): PA=162, line_width=1.3, line_center=656.4
@@ -495,9 +495,9 @@ if __name__ == "__main__":
         object_name = "ALTAIR"
         PA=25
         line_width=1.7
-        line_center=656.2
-        modID=9 
-        modScale=25
+        line_center=656.15
+        modID=7 
+        modScale=40
 
 
     print(f"Development file patterns: {file_patterns}")
@@ -506,5 +506,5 @@ if __name__ == "__main__":
         dark_patterns=dark_patterns, flat_patterns=flat_patterns,
         wave_patterns=wave_patterns, modID=modID, modScale=modScale,
         wollaston=wollaston, line_center=line_center, line_width=line_width,
-        calibrate_scale=calibrate_scale, PA=PA, Ncube_average=Ncube_average)
+        calibrate_scale=calibrate_scale, PA=PA, Ncube_average=Ncube_average, save_npz="astrometry_working_arrays.npz")
 # %%
