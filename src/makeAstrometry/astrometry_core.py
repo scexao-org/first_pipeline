@@ -457,8 +457,8 @@ def fit_astrometry(datacube, datacube_var, ra_dec, wave, line_center,
     else:
         J, C_J, cov_dJ, cond = estimate_local_jacobian(
             datacube, datacube_var, ra_dec, half_window=h, fit_order=fit_order)
-    J_sm = compute_smoothed_line(J, x, fit_aera, jac_poly_deg)
-    C_J_sm = compute_smoothed_jacobian_uncertainty(C_J, x, fit_aera, jac_poly_deg)
+    J_sm = compute_smoothed_line(J, x, fit_aera|line_aera, jac_poly_deg)
+    C_J_sm = compute_smoothed_jacobian_uncertainty(C_J, x, fit_aera|line_aera, jac_poly_deg)
     if n_cubes_average > 1:
         J_sm, C_J_sm = average_jacobian_over_cubes(
             J_sm, C_J_sm, n_cubes_average, valid=good_window_early(good, h, J.shape[:3]))

@@ -30,6 +30,19 @@ def parse_positive_odd_int(value):
     return parsed
 
 
+def parse_nonnegative_int(value):
+    """Parse a non-negative integer for an argparse option."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as error:
+        raise argparse.ArgumentTypeError(
+            "jac_poly_deg must be a non-negative integer") from error
+    if parsed < 0 or str(parsed) != str(value).strip():
+        raise argparse.ArgumentTypeError(
+            "jac_poly_deg must be a non-negative integer")
+    return parsed
+
+
 def main():
     """
     Main entry point for the astrometric analysis script.
@@ -97,6 +110,10 @@ the degeneracy between the astrometric signal and the per-output flat gains.
                        help="Modulation pattern ID to select (default: all)")
     parser.add_argument("--modScale", type=int,
                        help="Modulation scale to select (default: any)")
+    parser.add_argument("--X_FIROBX", type=float,
+                       help="Object X offset (X_FIROBX keyword) to select (default: any)")
+    parser.add_argument("--X_FIROBY", type=float,
+                       help="Object Y offset (X_FIROBY keyword) to select (default: any)")
     parser.add_argument("--line_center", type=float, default=656.28,
                        help="Central wavelength of the spectral line in nm (default: %(default)s)")
     parser.add_argument("--line_width", type=float, default=2.0,
@@ -112,6 +129,8 @@ the degeneracy between the astrometric signal and the per-output flat gains.
                        help="Half window of the local Jacobian: 2*h+1 poses per block (default: %(default)s, i.e. 3 poses)")
     parser.add_argument("--jac_fit_order", type=int, choices=(1, 2), default=1,
                        help="Order of the local Jacobian fit: 1 = gradient, 2 = gradient + curvature (needs jac_half_window >= 3) (default: %(default)s)")
+    parser.add_argument("--jac_poly_deg", type=parse_nonnegative_int, default=1,
+                       help="Polynomial degree used to smooth the Jacobian over wavelength (default: %(default)s)")
     parser.add_argument("--calibrate_scale", dest="calibrate_scale", action="store_true",
                        default=True,
                        help="Measure the PSF jitter/deformation on the data and calibrate by simulation the "
@@ -131,6 +150,8 @@ the degeneracy between the astrometric signal and the per-output flat gains.
     wollaston = args.wollaston
     modID = args.modID
     modScale = args.modScale
+    firObX = args.X_FIROBX
+    firObY = args.X_FIROBY
     line_center = args.line_center
     line_width = args.line_width
     PA = args.PA
@@ -152,6 +173,8 @@ the degeneracy between the astrometric signal and the per-output flat gains.
             wave_patterns=wave_patterns,
             modID=modID,
             modScale=modScale,
+            firObX=firObX,
+            firObY=firObY,
             wollaston=wollaston,
             line_center=line_center,
             line_width=line_width,
@@ -160,6 +183,7 @@ the degeneracy between the astrometric signal and the per-output flat gains.
             jacobian_method=args.jacobian_method,
             jac_half_window=args.jac_half_window,
             jac_fit_order=args.jac_fit_order,
+            jac_poly_deg=args.jac_poly_deg,
             save_npz=args.save_npz,
             calibrate_scale=args.calibrate_scale,
         )

@@ -88,12 +88,12 @@ subaru = Observer.at_site("Subaru")
 # Polynomial degrees tested for the continuum under the line
 POLY_DEG_VALUES = (2, 3, 4, 5)
 # Degree used for the reference track (figures with error bars, scatter plot)
-POLY_DEG_REFERENCE = 3
+POLY_DEG_REFERENCE = 4
 
 
 def get_filelist_astrometry(file_patterns, dark_patterns=None, flat_patterns=None,
                             wave_patterns=None, object_name=None, modID=None,
-                            modScale=None, wollaston=None):
+                            modScale=None, wollaston=None, firObX=None, firObY=None):
     """
     Create file list for astrometry analysis with calibration associations.
 
@@ -111,6 +111,10 @@ def get_filelist_astrometry(file_patterns, dark_patterns=None, flat_patterns=Non
         Modulation scale
     wollaston : str, optional
         Wollaston polarizer status
+    firObX : float or list, optional
+        X_FIROBX constraint
+    firObY : float or list, optional
+        X_FIROBY constraint
 
     Returns
     -------
@@ -124,16 +128,17 @@ def get_filelist_astrometry(file_patterns, dark_patterns=None, flat_patterns=Non
 
     fileList = FileList(file_patterns, data_type="OBJECT", first_type='PREPROC',
                         wollaston=wollaston, object_name=object_name,
-                        modID=modID, modScale=modScale)
+                        modID=modID, modScale=modScale,
+                        firObX=firObX, firObY=firObY)
 
     # Constrain the selection to the first data set found
     object_name = fileList.header.get('OBJECT', None)
     wollaston = fileList.header.get('X_FIRWOL', None)
     modID = fileList.header.get('X_FIRMID', None)
-    modScale = fileList.header.get('X_FIRMSC', None)
     fileList = FileList(file_patterns, data_type="OBJECT", first_type='PREPROC',
                         wollaston=wollaston, object_name=object_name,
-                        modID=modID, modScale=modScale)
+                        modID=modID, modScale=modScale,
+                        firObX=firObX, firObY=firObY)
 
     fileList.make_association(dark_patterns=dark_patterns)
     file_flat = fileList.get_flatmap_file(flat_patterns)
@@ -156,7 +161,7 @@ def check_observatory_status():
 
 def load_astrometry_data(file_patterns, object_name=None, dark_patterns=None,
                          flat_patterns=None, wave_patterns=None, modID=None,
-                         modScale=None, wollaston=None):
+                         modScale=None, wollaston=None, firObX=None, firObY=None):
     """Read the preprocessed cubes and return the arrays needed by the fit.
 
     Returns a dict with ``datalist`` (list of DataCube), ``datacube`` and
@@ -178,10 +183,13 @@ def load_astrometry_data(file_patterns, object_name=None, dark_patterns=None,
 
     fileList, flatMap, waveMap, object_name = get_filelist_astrometry(
         file_patterns, dark_patterns, flat_patterns, wave_patterns,
-        object_name, modID, modScale, wollaston)
+        object_name, modID, modScale, wollaston, firObX, firObY)
     datalist: List[DataCube] = fileList.extract_data_from_list(
         flatMap=flatMap, waveMap=waveMap)
 
+
+    # note: here the -1 multiplication is because the dither positions are stored in the FITS headers as movements of the lantern and not of the star
+    # so the star moves in the opposite direction of the lantern, hence the -1 factor
     return dict(
         datalist=datalist,
         object_name=object_name,
@@ -191,7 +199,7 @@ def load_astrometry_data(file_patterns, object_name=None, dark_patterns=None,
         wave=datalist[0].wave,          # all cubes share the wavelength grid
         xmod=np.concatenate([d.xmod for d in datalist]),
         ymod=np.concatenate([d.ymod for d in datalist]),
-        ra_dec=np.concatenate([d.compute_xy_sky() for d in datalist]),
+        ra_dec=np.concatenate([d.compute_xy_sky()*-1 for d in datalist]),
     )
 
 
@@ -225,6 +233,7 @@ def select_good_data(flux, datacube, xmod, ymod, threshold_corr=0.5):
 def analyse_astrometry(datacube, datacube_var, flux, ra_dec, wave, good_pose,
                        line_center, line_width, jacobian_method='local',
                        jac_half_window=1, jac_fit_order=1, n_cubes_average=1,
+                       jac_poly_deg=1,
                        poly_deg_values=POLY_DEG_VALUES, verbose=True):
     """Normalise the data around the line and fit the astrometry.
 
@@ -240,6 +249,7 @@ def analyse_astrometry(datacube, datacube_var, flux, ra_dec, wave, good_pose,
     jacobian_method : 'local' (finite differences on 2*jac_half_window+1
         poses, optionally averaged over n_cubes_average cubes) or 'spatial'
         (gradient of a polynomial model of the flux versus dither position)
+    jac_poly_deg : degree of the wavelength polynomial used to smooth the Jacobian
     poly_deg_values : degrees of the continuum polynomial to try
 
     Returns
@@ -270,6 +280,7 @@ def analyse_astrometry(datacube, datacube_var, flux, ra_dec, wave, good_pose,
         half_window=jac_half_window, fit_order=jac_fit_order,
         poly_deg_values=poly_deg_values, good=good,
         jacobian_method=jacobian_method, n_cubes_average=n_cubes_average,
+        jac_poly_deg=jac_poly_deg,
         verbose=verbose)
 
     result.update(
@@ -277,7 +288,8 @@ def analyse_astrometry(datacube, datacube_var, flux, ra_dec, wave, good_pose,
         mean_flux=mean_flux, spectrum=spectrum,
         flux_scaled=mean_flux[..., work_aera] / np.nanmax(mean_flux[..., work_aera]),
         line_center=line_center, line_width=line_width,
-        jac_half_window=jac_half_window, jac_fit_order=jac_fit_order)
+        jac_half_window=jac_half_window, jac_fit_order=jac_fit_order,
+        jac_poly_deg=jac_poly_deg)
     return result
 
 
@@ -343,6 +355,7 @@ def save_astrometry_results(result, datalist, figures):
     header['Q_ASJMET'] = (result['jacobian_method'], 'Jacobian estimator (local/spatial)')
     header['Q_ASJWIN'] = (2 * result['jac_half_window'] + 1, 'poses per local Jacobian block')
     header['Q_ASJORD'] = (result['jac_fit_order'], 'order of the local Jacobian fit')
+    header['Q_ASJPDEG'] = (result['jac_poly_deg'], 'degree of the Jacobian wavelength smoothing polynomial')
     header['Q_ASNCUB'] = (result['n_cubes_average'], 'cubes averaged for the Jacobian')
     if result.get('kappa'):
         header['Q_ASKAPP'] = (result['kappa'], 'attenuation factor kappa (a_meas = kappa a_true)')
@@ -406,8 +419,10 @@ def print_summary(result):
 def process_astrometric_data(
         file_patterns, object_name=None, dark_patterns=None, flat_patterns=None,
         wave_patterns=None, modID=None, modScale=None, wollaston=None,
+        firObX=None, firObY=None,
         line_center=656.28, line_width=3.0, PA=137.0, Ncube_average=1,
         jacobian_method='local', jac_half_window=1, jac_fit_order=1,
+        jac_poly_deg=1,
         save_npz=None, calibrate_scale=False):
     """
     Measure the wavelength-dependent photocentre shift (spectro-astrometry).
@@ -422,7 +437,7 @@ def process_astrometric_data(
 
     data = load_astrometry_data(file_patterns, object_name, dark_patterns,
                                 flat_patterns, wave_patterns, modID, modScale,
-                                wollaston)
+                                wollaston, firObX, firObY)
     Ncube_average = validate_ncube_average(Ncube_average, data['datacube'].shape[0])
 
     good_pose, figures = select_good_data(data['flux'], data['datacube'],
@@ -432,7 +447,8 @@ def process_astrometric_data(
         data['datacube'], data['datacube_var'], data['flux'], data['ra_dec'],
         data['wave'], good_pose, line_center, line_width,
         jacobian_method=jacobian_method, jac_half_window=jac_half_window,
-        jac_fit_order=jac_fit_order, n_cubes_average=Ncube_average)
+        jac_fit_order=jac_fit_order, jac_poly_deg=jac_poly_deg,
+        n_cubes_average=Ncube_average)
     # ---- step 1 done: a(lambda), PA and statistical errors are final.
     # ---- step 2 (optional): amplitude scale from the PSF variability
     scale.report_jacobian_variability(result)

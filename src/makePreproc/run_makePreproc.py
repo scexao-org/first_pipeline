@@ -17,9 +17,11 @@ import glob
 import matplotlib
 if "VSCODE_PID" in os.environ:
     matplotlib.use('macosx')
+    import matplotlib.pyplot as plt
+    plt.ion()  # Enable interactive mode for VSCode
 else:
     matplotlib.use('Agg')
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -271,12 +273,14 @@ if __name__ == "__main__":
         file_patterns = ["/Users/slacour/DATA/LANTERNE/tmp/firstpl_13:0*.fits"]
         file_patterns = ["/Users/slacour/DATA/FIRST/20260608/firstpl/firstpl_10:10:12.570875507.fits"]
         file_patterns = ["/Users/slacour/DATA/FIRST/20260625/firstpl/firstpl_10:10:12.570875507.fits"]
+        file_patterns = ["/Users/slacour/DATA/LANTERNE/20260828/firstpl/FPLA00001148.fits"]
+
         
         print(f"Development override: pixel_map={pixel_map}, object_name={object_name}, only_with_modulation={only_with_modulation}, overwrite={overwrite}")
         print(f"Development file patterns: {file_patterns}")
 
-    # run_preprocess(file_patterns=file_patterns, pixel_map=pixel_map, object_name=object_name,
-    #                        only_with_modulation=only_with_modulation, overwrite=overwrite)
+    run_preprocess(file_patterns=file_patterns, pixel_map=pixel_map, object_name=object_name,
+                           only_with_modulation=only_with_modulation, overwrite=overwrite)
 
     # Build the centroid shift summary from all preprocessed FITS files in the preproc directory
     raw_dir = os.path.dirname(file_patterns[0])

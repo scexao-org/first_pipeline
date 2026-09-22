@@ -303,7 +303,7 @@ class Preproc:
                 raw_data, pixelMap, collapse_windows=collapse_windows)
 
             # Store raw image for diagnostics (sum over all dimensions except last two)
-            self.raw_image = np.sum(raw_data, axis=tuple(range(len(raw_data.shape)-2)))
+            self.raw_image = np.mean(raw_data, axis=tuple(range(len(raw_data.shape)-2)))
             
             # Add quality metrics to header
             self._add_quality_metrics_to_header()

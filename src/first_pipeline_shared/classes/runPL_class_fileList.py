@@ -183,7 +183,8 @@ class FileList:
     """
     
     def __init__(self, file_patterns, data_type= None, first_type= None, 
-                 wollaston=None, object_name=None, modID=None, modScale=None):
+                 wollaston=None, object_name=None, modID=None, modScale=None,
+                 firObX=None, firObY=None):
         """
         Initialize FileList with constraints.
         
@@ -207,6 +208,10 @@ class FileList:
             Modulator ID constraint
         modScale : str, optional
             Modulator scale constraint
+        firObX : float or list, optional
+            X_FIROBX constraint
+        firObY : float or list, optional
+            X_FIROBY constraint
         """
         self.file_patterns = file_patterns or ['*.fits']
 
@@ -223,6 +228,10 @@ class FileList:
             self.fits_keywords['X_FIRMID'] = [modID] if not isinstance(modID, list) else modID
         if modScale is not None:
             self.fits_keywords['X_FIRMSC'] = [modScale] if not isinstance(modScale, list) else modScale
+        if firObX is not None:
+            self.fits_keywords['X_FIROBX'] = [firObX] if not isinstance(firObX, list) else firObX
+        if firObY is not None:
+            self.fits_keywords['X_FIROBY'] = [firObY] if not isinstance(firObY, list) else firObY
 
         print("----------------")
         # Note : get_filelist will raise FileNotFoundError if no files are found
@@ -235,6 +244,10 @@ class FileList:
             print(f"Selected modID={modID}")
         if modScale is not None:
             print(f"Selected modScale={modScale}")
+        if firObX is not None:
+            print(f"Selected X_FIROBX={firObX}")
+        if firObY is not None:
+            print(f"Selected X_FIROBY={firObY}")
         if object_name is not None: 
             print(f"Selected object name={object_name}")
         print(f"Found {len(filelist)} files matching criteria.")
