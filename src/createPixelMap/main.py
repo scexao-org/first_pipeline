@@ -47,9 +47,9 @@ spectral traces across all fiber channels, enabling proper spectral extraction
 in downstream processing.
 
 Examples:
-    %(prog)s --pixel_min=100 --pixel_max=1600 --pixel_wide=2 --filter_files *.fits
+    %(prog)s --pixel_min=100 --pixel_max=1600 --pixel_wide=2 *.fits
     %(prog)s --pixel_min=50 --pixel_max=1500 data/*.fits
-    %(prog)s --filter_files /data/raw/*.fits
+    %(prog)s /data/raw/*.fits
 
 Pipeline Workflow Integration:
     1. This script processes RAW files to create pixel alignment maps

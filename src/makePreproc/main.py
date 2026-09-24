@@ -50,7 +50,6 @@ diagnostic analysis to ensure reliable data for downstream processing.
 Examples:
     %(prog)s --pixel_map=/path/to/pixel_map.fits /path/to/directory
     %(prog)s --object="HD 164461" /path/to/files*.fits
-    %(prog)s --loop 30 /path/to/directory  # Monitor mode
     %(prog)s /data/raw/*.fits
 
 Pipeline Workflow Integration:
@@ -117,7 +116,7 @@ attention before proceeding with scientific analysis.
     parser.add_argument("--object", 
                        help="Specify the OBJECT name of data to reduced based on the FITS header")
     parser.add_argument("--only_with_modulation", action="store_true",
-                       help="Also preprocess files that do not have a MODULATION extension in the FITS file.")
+                       help="Only preprocess modulated data (modID 2 to 20); by default all files are preprocessed.")
     parser.add_argument("--overwrite", action="store_true",
                        help="Overwrite existing preprocessed files if they exist.")
     parser.add_argument("--keep_window_pixels", action="store_true",

@@ -12,6 +12,7 @@ Created on Wed May 21 22:56:25 2025
 
 import os
 import argparse
+from first_pipeline_shared.libraries.runPL_library_cli import check_file_options
 import getpass
 import matplotlib
 
@@ -40,8 +41,8 @@ SuperK illumination data. Flat field maps correct for pixel-to-pixel sensitivity
 variations and provide gain coefficients for accurate photometric measurements.
 
 Examples:
-    %(prog)s --wollaston IN --dark_files=dark*.fits flat_data/*.fits
-    %(prog)s --dark_files=/path/to/darks/*.fits *.fits
+    %(prog)s --wollaston IN flat_data/*.fits --dark_files dark*.fits
+    %(prog)s --dark_files='/path/to/darks/*.fits' *.fits
     %(prog)s --override-flat-keyword --Nflat_smooth=15 *.fits
 
 Pipeline Workflow Integration:
@@ -89,12 +90,11 @@ Quality assessment plots help identify systematic calibration issues.
     parser.add_argument("--f", help=argparse.SUPPRESS)
 
     # Add positional argument for files
-    parser.add_argument('files', nargs='*', default=['*.fits', './preproc/*.fits'],
+    parser.add_argument('files', nargs='*', default=[],
                        help='FITS files to process (supports wildcards)')
 
     # Add optional arguments
-    parser.add_argument("--dark_files", 
-                       help="Select one or more specific dark files to use")
+    parser.add_argument("--dark_files", nargs='+', help="Select one or more specific dark files to use")
     parser.add_argument("--wollaston", 
                        help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list of files)")
     parser.add_argument("--Nflat_smooth", default=25, type=int,
@@ -104,6 +104,7 @@ Quality assessment plots help identify systematic calibration issues.
     
     # Parse arguments
     args = parser.parse_args()
+    check_file_options(parser, args.files, dark_files=args.dark_files)
     
     # Import core functions
     from .run_createFlatMap import run_createFlatMap

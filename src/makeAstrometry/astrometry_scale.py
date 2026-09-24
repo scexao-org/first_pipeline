@@ -1,3 +1,4 @@
+#%%
 """
 FIRST Pipeline - Spectro-astrometry, step 2: amplitude scale (kappa).
 
@@ -29,6 +30,15 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from makeAstrometry import astrometry_core as core, simulate_lantern as sl
 
+import matplotlib
+if "VSCODE_PID" in os.environ:
+    matplotlib.use('macosx')
+    plt.ion()
+elif os.environ.get('SPYDER_DEBUG_FILE'):
+    print("Running in Spyder")
+else:
+    matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 # ---------------------------------------------------------------------------
 # 1. PSF variability measured on the data
@@ -277,12 +287,26 @@ def calibrate_attenuation(result, line_center, line_width, verbose=True, seeds=(
 if __name__ == "__main__":
     plot = '--plot' in sys.argv
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
-    f = np.load(args[0] if args else 'toto.npz')
-    d, v, rd, wave = f['datacube'], f['datacube_var'], f['ra_dec'][:f['datacube'].shape[0]], f['wave']
+    # f = np.load(args[0] if args else 'toto.npz')
+    f = np.load("/Users/slacour/DATA/LANTERNE/20260828/preproc/Wispt2.npz")
+    d, v, ra_dec, wave = f['datacube'], f['datacube_var'], f['ra_dec'][:f['datacube'].shape[0]], f['wave']
     line_center, line_width = 656.5, 1.8
-    dn, vn, spectrum, good = core.normalize_by_spectrum(d, v)
+    datacube, datacube_var, spectrum, good = core.normalize_by_spectrum(d, v)
     # step 1: astrometry
-    result = core.fit_astrometry(dn, vn, rd, wave, line_center, line_width, poly_deg_values=(3,))
+
+    half_window = 1
+    fit_order = 1
+    poly_deg_values = (2, 3, 4, 5)
+    good = None
+    clip_nsigma = None
+    jac_poly_deg = 0
+    jacobian_method = 'local'
+    model_deg = 6
+    n_cubes_average = 1
+    verbose = True
+
+
+    result = core.fit_astrometry(datacube, datacube_var, ra_dec, wave, line_center, line_width, poly_deg_values=(3,))
     result['spectrum'] = spectrum
     report_jacobian_variability(result)
     # step 2: scale
@@ -300,3 +324,6 @@ if __name__ == "__main__":
             fig, _ = plot_kappa_diagnostics(result)
             fig.savefig('kappa_diagnostics.png', dpi=150)
             print("* saved kappa_diagnostics.png")
+
+# %%
+

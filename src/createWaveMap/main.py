@@ -12,6 +12,7 @@ Created on Wed May 21 22:56:25 2025
 """
 
 import argparse
+from first_pipeline_shared.libraries.runPL_library_cli import check_file_options
 import getpass
 import os
 from .run_createWaveMap import run_createWaveMap
@@ -33,17 +34,17 @@ It detects emission lines, fits polynomial wavelength solutions, and generates
 
 Examples:
     %(prog)s --wollaston IN --flatMap=/path/to/flat.fits *.fits
-    %(prog)s --Nexclude 3 --dark_files=dark*.fits neon_data/*.fits
+    %(prog)s --Nexclude 3 neon_data/*.fits --dark_files dark*.fits
     %(prog)s /data/comparison/*.fits
 
 Pipeline Workflow Integration:
-    1. Requires preprocessed Neon calibration files (X_FIRTYP=PREPROC, DATA-TYP=COMPARAISON)
+    1. Requires preprocessed Neon calibration files (X_FIRTYP=PREPROC, DATA-TYP=COMPARISON)
     2. Uses flat field maps for proper calibration
     3. Output wavelength maps enable spectral analysis in downstream scripts
     4. Essential for accurate wavelength calibration of science observations
 
 Input Files:
-    - Neon calibration spectra: X_FIRTYP=PREPROC and DATA-TYP=COMPARAISON
+    - Neon calibration spectra: X_FIRTYP=PREPROC and DATA-TYP=COMPARISON
     - Corresponding dark frames: X_FIRTYP=PREPROC and DATA-TYP=DARK
     - Flat field maps (optional): for enhanced calibration accuracy
     - Files automatically grouped by Wollaston status (IN/OUT)
@@ -82,12 +83,11 @@ Review diagnostic plots to ensure proper line detection and fitting.
     parser.add_argument("--f", help=argparse.SUPPRESS)
 
     # Add positional argument for files
-    parser.add_argument('files', nargs='*', default=['*.fits'],
+    parser.add_argument('files', nargs='*', default=[],
                        help='FITS files to process (supports wildcards)')
 
     # Add optional arguments
-    parser.add_argument("--dark_files", 
-                       help="Select one or more specific dark(s) files to use")
+    parser.add_argument("--dark_files", nargs='+', help="Select one or more specific dark(s) files to use")
     parser.add_argument("--flatMap", 
                        help="Select a specific flat Map to use")
     parser.add_argument("--wollaston", 
@@ -97,6 +97,7 @@ Review diagnostic plots to ensure proper line detection and fitting.
     
     # Parse the arguments
     args = parser.parse_args()
+    check_file_options(parser, args.files, dark_files=args.dark_files)
     file_patterns = args.files if args.files else ['*.fits','./preproc/*.fits']
 
     # Extract the parsed arguments

@@ -12,6 +12,7 @@ Created on Wed May 21 22:56:25 2025
 """
 
 import argparse
+from first_pipeline_shared.libraries.runPL_library_cli import check_file_options
 import getpass
 import os
 from .run_createCouplingMap import run_createCouplingMap
@@ -84,14 +85,13 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
     parser.add_argument("--f", help=argparse.SUPPRESS)
 
     # Add positional argument for files
-    parser.add_argument('files', nargs='*', default=['*.fits'],
+    parser.add_argument('files', nargs='*', default=[],
                        help='FITS files to process (supports wildcards)')
 
     # Add optional arguments
     parser.add_argument("--object_name", 
                        help="Selection of the data by the Object name (default: first target in the list)")
-    parser.add_argument("--dark_files", 
-                       help="Select one or more specific dark(s) files to use")
+    parser.add_argument("--dark_files", nargs='+', help="Select one or more specific dark(s) files to use")
     parser.add_argument("--flatMap", 
                        help="Select a specific flat Map to use (default: most recent in the flatmaps folder)")
     parser.add_argument("--waveMap", 
@@ -113,6 +113,7 @@ Review PDF diagnostics to ensure proper SVD convergence and coupling patterns.
 
     # Parse the arguments
     args = parser.parse_args()
+    check_file_options(parser, args.files, dark_files=args.dark_files)
     file_patterns = args.files if args.files else ['*.fits','./preproc/*.fits']
 
     # Extract the parsed arguments

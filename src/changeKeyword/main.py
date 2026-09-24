@@ -41,7 +41,7 @@ and processed by subsequent pipeline scripts.
 Examples:
     %(prog)s --DATA-TYP=FLAT --X_FIRTYP=RAW *.fits
     %(prog)s --OBJECT="HD 164461" --X_FIRTYP=PREPROC target_data/*.fits
-    %(prog)s --DATA-TYP=COMPARAISON --X_FIRTYP=RAW neon_calib.fits
+    %(prog)s --DATA-TYP=COMPARISON --X_FIRTYP=RAW neon_calib.fits
     %(prog)s --DATE=DEFAULT --X_FIRTYP=RAW recent_observations/*.fits
     %(prog)s --D_IMRRA="21:15:49.440" --D_IMRDEC="+05:14:52.41" target_data/*.fits
 
@@ -56,7 +56,7 @@ Critical Keywords:
         DARK         - Dark frames for background subtraction  
         OBJECT       - Science target observations
         ACQUISITION  - Target acquisition data
-        COMPARAISON  - Neon calibration spectra for wavelength mapping
+        COMPARISON   - Neon calibration spectra for wavelength mapping
         TEST         - Test/validation data
         
     X_FIRTYP (Processing Stage):
@@ -64,7 +64,7 @@ Critical Keywords:
         PREPROC      - Pre-processed (pixel map applied, cleaned)
         PIXELMAP     - Pixel mapping calibration files
         WAVEMAP      - Wavelength mapping calibration files
-        COULPLINGMAP - Coupling efficiency mapping files
+        COUPLINGMAP  - Coupling efficiency mapping files
 
     X_FIRMID (Modulation ID):
         Identifier for specific modulation pattern used during observation
@@ -101,12 +101,12 @@ logic in downstream pipeline scripts (createPixelMap, preprocess, wavelengthMap,
     # Add optional arguments for header keywords
     parser.add_argument("-c", "--DATA-TYP", 
                        choices=["OBJECT", "TEST", "ACQUISITION", "DARK", "FLAT", "COMPARISON"],
-                       help="Classify data type for pipeline processing: FLAT (SuperK data), DARK (background), OBJECT (science targets), ACQUISITION (target acquisition), COMPARAISON (Neon calibration), TEST (validation)")
+                       help="Classify data type for pipeline processing: FLAT (SuperK data), DARK (background), OBJECT (science targets), ACQUISITION (target acquisition), COMPARISON (Neon calibration), TEST (validation)")
     parser.add_argument("-o", "--OBJECT", 
                        help="Target name for science observations (e.g., 'HD 164461', 'Beta Pic')")
     parser.add_argument("-t", "--X_FIRTYP", 
-                       choices=["RAW", "PREPROC", "COULPLINGMAP", "PIXELMAP", "WAVEMAP"],
-                       help="Processing stage identifier: RAW (unprocessed), PREPROC (preprocessed), PIXELMAP/WAVEMAP/COULPLINGMAP (calibration products)")
+                       choices=["RAW", "PREPROC", "COUPLINGMAP", "PIXELMAP", "WAVEMAP"],
+                       help="Processing stage identifier: RAW (unprocessed), PREPROC (preprocessed), PIXELMAP/WAVEMAP/COUPLINGMAP (calibration products)")
     parser.add_argument("-i", "--X_FIRMID", 
                        help="Modulation ID identifying the specific modulation pattern used during observation")
     parser.add_argument("-r", "--X_FIRTRG", 

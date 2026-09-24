@@ -32,8 +32,9 @@ class DataCube:
         Args:
             preproc (Preproc): Loaded Preproc object for the science/object file,
                 providing data, filename, header and modulation data.
-            dark_preproc (Preproc, optional): Loaded Preproc object for the dark
-                file. If None, default dark values are derived from the header.
+            dark_preproc (Preproc or list[Preproc], optional): Loaded Preproc
+                object, or a list of dark Preproc objects. If None, default dark
+                values are derived from the header.
         """
         self.preproc = preproc
         self.dark_preproc = dark_preproc
@@ -101,8 +102,9 @@ class DataCube:
 
         Args:
             data (numpy.ndarray): Object data already cast to double.
-            dark_preproc (Preproc or None): Loaded dark Preproc object, or None
-                to fall back on default dark values derived from the header.
+            dark_preproc (Preproc or list[Preproc] or None): Loaded dark Preproc
+                object(s), or None to fall back on default dark values derived from
+                the header.
 
         Returns:
             tuple: (data, variance, dark, dark_variance)
@@ -110,7 +112,12 @@ class DataCube:
         header = self.header
 
         if dark_preproc is not None:
-            data_dark = dark_preproc.data
+            if isinstance(dark_preproc, (list, tuple)):
+                data_dark = np.concatenate(
+                    [dark.data for dark in dark_preproc], axis=0
+                )
+            else:
+                data_dark = dark_preproc.data
             if len(data_dark) == 1:
                 data_dark = data_dark[0]
                 data_dark_std = data_dark[0] * 0 + 12

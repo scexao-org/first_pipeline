@@ -134,10 +134,7 @@ def find_closest_in_time_dark(cmap_file, dark_files):
     dark_dates = [(dark, fits.getheader(dark)['DATE']) for dark in dark_files]
     dark_dates.sort(key=lambda x: abs(datetime.strptime(x[1], '%Y-%m-%dT%H:%M:%S') - datetime.strptime(cmap_date, '%Y-%m-%dT%H:%M:%S')))
     
-    try:
-        return dark_dates[0][0]  # Return the closest dark file by date
-    except:
-        return None
+    return [dark for dark, _ in dark_dates]  # Return all dark files sorted by date
 
 def find_closest_dark(cmap_file, dark_files):
     """
@@ -424,11 +421,16 @@ class FileList:
         for association in self.files_with_associated_files:
 
             data_file = association['file']
-            dark_file = association['dark']
+            dark_files = association['dark']
 
             # load the object and dark files as Preproc objects
             preproc = Preproc(data_file)
-            dark_preproc = Preproc(dark_file) if dark_file is not None else None
+            if dark_files is None:
+                dark_preproc = None
+            elif isinstance(dark_files, (list, tuple, np.ndarray)):
+                dark_preproc = [Preproc(dark_file) for dark_file in dark_files]
+            else:
+                dark_preproc = Preproc(dark_files)
 
             # dark subtraction and variance estimation are performed in DataCube
             dataCube = DataCube(preproc, dark_preproc)

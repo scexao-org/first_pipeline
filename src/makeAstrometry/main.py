@@ -11,9 +11,10 @@ Created on Wed May 21 22:56:25 2025
 """
 
 import argparse
-import getpass
-import os
+import sys
+import traceback
 
+from first_pipeline_shared.libraries.runPL_library_cli import check_file_options
 from .run_makeAstrometry import process_astrometric_data, check_observatory_status
 
 
@@ -70,7 +71,8 @@ Examples:
     %(prog)s preproc/*_HD163296_P.fits
     %(prog)s --wollaston IN --object_name HD142527 preproc/*.fits
     %(prog)s --line_center 656.28 --line_width 1.5 preproc/*.fits
-    %(prog)s --wave_files wavemaps/ --dark_files dark*.fits preproc/*.fits
+    %(prog)s preproc/*.fits --wave_files wavemaps/ --dark_files dark*.fits
+    %(prog)s --dark_files 'dark*.fits' preproc/*.fits
 
 Input Files:
     - Preprocessed FITS files: X_FIRTYP=PREPROC (selected as OBJECT data)
@@ -78,6 +80,8 @@ Input Files:
       auto-discovered in sibling ../wavemaps and ../flatmaps folders or set
       explicitly with --wave_files / --flat_files
     - Dark frames for background subtraction (default: the input files)
+    --dark_files, --flat_files and --wave_files accept several files or a
+    quoted wildcard. Unquoted wildcards must come after the input files.
 
 Output Files (written to a sibling ../astrometry folder):
     - ASTROMETRY FITS file (X_FIRTYP=ASTROMETRY) with HDUs:
@@ -92,7 +96,7 @@ the degeneracy between the astrometric signal and the per-output flat gains.
     )
 
     # Add positional argument for files
-    parser.add_argument('files', nargs='*', default=['*.fits'],
+    parser.add_argument('files', nargs='*', default=[],
                        help='FITS files to process (supports wildcards)')
 
     # Add optional arguments (mirror process_astrometric_data parameters)
@@ -100,11 +104,11 @@ the degeneracy between the astrometric signal and the per-output flat gains.
                        help="Selection of the data by the Object name")
     parser.add_argument("--wollaston", 
                        help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list)")
-    parser.add_argument("--dark_files", 
+    parser.add_argument("--dark_files", nargs='+',
                        help="Select one or more specific dark(s) files to use")
-    parser.add_argument("--flat_files",
+    parser.add_argument("--flat_files", nargs='+',
                        help="Force to select which flat map file(s) to use (default: the one in the directory)")
-    parser.add_argument("--wave_files",
+    parser.add_argument("--wave_files", nargs='+',
                        help="Force to select which wavelength map file(s) to use (default: the one in the directory)")
     parser.add_argument("--modID", type=int,
                        help="Modulation pattern ID to select (default: all)")
@@ -142,11 +146,13 @@ the degeneracy between the astrometric signal and the per-output flat gains.
     # Parse command line arguments
     # Development environment defaults are handled autonomously in run_makeAstrometry()
     args = parser.parse_args()
+    check_file_options(parser, args.files, dark_files=args.dark_files,
+                       flat_files=args.flat_files, wave_files=args.wave_files)
     file_patterns = args.files if args.files else ['*.fits']
     object_name = args.object_name
-    dark_patterns = [args.dark_files] if args.dark_files else None
-    flat_patterns = [args.flat_files] if args.flat_files else None
-    wave_patterns = [args.wave_files] if args.wave_files else None
+    dark_patterns = args.dark_files
+    flat_patterns = args.flat_files
+    wave_patterns = args.wave_files
     wollaston = args.wollaston
     modID = args.modID
     modScale = args.modScale
@@ -188,12 +194,12 @@ the degeneracy between the astrometric signal and the per-output flat gains.
             calibrate_scale=args.calibrate_scale,
         )
         
-        print(f"Astrometric analysis completed successfully!")
-            
+        print("Astrometric analysis completed successfully!")
+
     except Exception as e:
-        print(f"Error in astrometric analysis: {e}")
-        import traceback
         traceback.print_exc()
+        print(f"Error in astrometric analysis: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

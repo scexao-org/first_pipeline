@@ -12,6 +12,7 @@ Created on Wed May 21 22:56:25 2025
 """
 
 import argparse
+from first_pipeline_shared.libraries.runPL_library_cli import check_file_options
 import getpass
 import os
 import numpy as np
@@ -99,14 +100,13 @@ Optimize smoothing and modulation parameters for best results with your data.
     parser.add_argument("--f", help=argparse.SUPPRESS)
 
     # Add positional argument for files
-    parser.add_argument('files', nargs='*', default=['*.fits'],
+    parser.add_argument('files', nargs='*', default=[],
                        help='FITS files to process (supports wildcards)')
 
     # Add optional arguments
     parser.add_argument("--object_name", 
                        help="Selection of the data by the Object name (default: first target in the list)")
-    parser.add_argument("--dark_files", 
-                       help="Select one or more specific dark(s) files to use")
+    parser.add_argument("--dark_files", nargs='+', help="Select one or more specific dark(s) files to use")
     parser.add_argument("--coupling_map", 
                        help="Force to select which coupling map file to use (default: the one in the directory)")
     parser.add_argument("--wavelength_smooth", type=int, default=1,
@@ -126,6 +126,7 @@ Optimize smoothing and modulation parameters for best results with your data.
 
     # Parse the arguments
     args = parser.parse_args()
+    check_file_options(parser, args.files, dark_files=args.dark_files)
     file_patterns = args.files if args.files else ['*.fits','./preproc/*.fits']
 
     # Extract the parsed arguments
