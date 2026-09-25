@@ -231,9 +231,8 @@ def select_good_data(flux, datacube, xmod, ymod, threshold_corr=0.5):
 # ---------------------------------------------------------------------------
 
 def analyse_astrometry(datacube, datacube_var, flux, ra_dec, wave, good_pose,
-                       line_center, line_width, jacobian_method='local',
-                       jac_half_window=1, jac_fit_order=1, n_cubes_average=1,
-                       jac_poly_deg=1,
+                       line_center, line_width, jac_half_window=1, jac_fit_order=1, n_cubes_average=1,
+                       jac_poly_deg=1, jac_fit_region='all',
                        poly_deg_values=POLY_DEG_VALUES, verbose=True):
     """Normalise the data around the line and fit the astrometry.
 
@@ -246,21 +245,23 @@ def analyse_astrometry(datacube, datacube_var, flux, ra_dec, wave, good_pose,
     good_pose : (Ncube, Npose) boolean quality mask
     line_center, line_width : nm; the working window is +-1.5 line_width,
         the line (excluded from the continuum fits) is +-line_width/2
-    jacobian_method : 'local' (finite differences on 2*jac_half_window+1
-        poses, optionally averaged over n_cubes_average cubes) or 'spatial'
-        (gradient of a polynomial model of the flux versus dither position)
+    jac_half_window, jac_fit_order : the local Jacobian is fitted by finite
+        differences on 2*jac_half_window+1 poses, optionally averaged over
+        n_cubes_average cubes at the same dither position
     jac_poly_deg : degree of the wavelength polynomial used to smooth the Jacobian
+    jac_fit_region : channels on which that polynomial is fitted: 'all'
+        (whole working window), 'continuum' or 'line'
     poly_deg_values : degrees of the continuum polynomial to try
 
     Returns
     -------
     dict : the output of ``astrometry_core.fit_astrometry`` plus the
-        wavelength bookkeeping (``work_aera``, ``wave_aera``, ``velocity``,
+        wavelength bookkeeping (``work_mask``, ``wave_work``, ``velocity``,
         ``mean_flux``, ``flux_scaled``) and the parameters used.
     """
     # Wavelength window: continuum side windows + line
-    work_aera = np.abs(wave - line_center) < 1.5 * line_width
-    wave_aera = wave[work_aera]
+    work_mask = np.abs(wave - line_center) < 1.5 * line_width
+    wave_work = wave[work_mask]
     velocity = speed_of_light / 1e3 * (wave - line_center) / line_center
 
     # Normalise every output by its own mean spectrum (over cubes and poses):
@@ -269,24 +270,24 @@ def analyse_astrometry(datacube, datacube_var, flux, ra_dec, wave, good_pose,
     # only used for the figures.
     mean_flux = np.nanmean(flux, axis=(0, 1))                  # (Nwave,)
     data_n, var_n, spectrum, good = core.normalize_by_spectrum(
-        datacube[..., work_aera], datacube_var[..., work_aera])
+        datacube[..., work_mask], datacube_var[..., work_mask])
     good &= good_pose[:, :, None, None]
     n_bad = np.sum(~good)
     if n_bad and verbose:
         print(f"* {n_bad} samples ignored (non-finite or flagged by the flux filter)")
 
     result = core.fit_astrometry(
-        data_n, var_n, ra_dec, wave_aera, line_center, line_width,
+        data_n, var_n, ra_dec, wave_work, line_center, line_width,
         half_window=jac_half_window, fit_order=jac_fit_order,
         poly_deg_values=poly_deg_values, good=good,
-        jacobian_method=jacobian_method, n_cubes_average=n_cubes_average,
-        jac_poly_deg=jac_poly_deg,
+        n_cubes_average=n_cubes_average,
+        jac_poly_deg=jac_poly_deg, jac_fit_region=jac_fit_region,
         verbose=verbose)
 
     result.update(
-        work_aera=work_aera, wave_aera=wave_aera, velocity=velocity,
+        work_mask=work_mask, wave_work=wave_work, velocity=velocity,
         mean_flux=mean_flux, spectrum=spectrum,
-        flux_scaled=mean_flux[..., work_aera] / np.nanmax(mean_flux[..., work_aera]),
+        flux_scaled=mean_flux[..., work_mask] / np.nanmax(mean_flux[..., work_mask]),
         line_center=line_center, line_width=line_width,
         jac_half_window=jac_half_window, jac_fit_order=jac_fit_order,
         jac_poly_deg=jac_poly_deg)
@@ -302,36 +303,37 @@ def make_astrometry_figures(result, datalist, object_name, PA):
     poly_deg_values = result['poly_deg_values']
     ref = POLY_DEG_REFERENCE if POLY_DEG_REFERENCE in poly_deg_values else poly_deg_values[0]
     astrometry_xy_list = [result[p]['astrometry_xy'] for p in poly_deg_values]
-    wave_aera, line_aera, fit_aera = result['wave_aera'], result['line_aera'], result['fit_aera']
+    wave_work, line_mask, continuum_mask = result['wave_work'], result['line_mask'], result['continuum_mask']
     lc, lw = result['line_center'], result['line_width']
 
     figures = []
     fig, _ = plot_astrometry_comparison(
-        wave_aera, astrometry_xy_list, poly_deg_values, result['mean_flux'],
-        result['work_aera'], fit_aera, object_name, lc, lw)
+        wave_work, astrometry_xy_list, poly_deg_values, result['mean_flux'],
+        result['work_mask'], continuum_mask, object_name, lc, lw)
     figures.append(fig)
 
     fig, _ = plot_astrometry_with_errors(
-        wave_aera, result[ref]['astrometry_xy'], result[ref]['covariance'],
-        result['flux_scaled'], fit_aera, object_name, lc, lw, ref)
+        wave_work, result[ref]['astrometry_xy'], result[ref]['covariance'],
+        result['flux_scaled'], continuum_mask, object_name, lc, lw, ref)
     figures.append(fig)
 
     fig, _ = plot_separation_pa(
-        wave_aera, astrometry_xy_list, poly_deg_values, result['mean_flux'],
-        result['work_aera'], lc, lw, PA)
+        wave_work, astrometry_xy_list, poly_deg_values, result['mean_flux'],
+        result['work_mask'], lc, lw, PA)
     figures.append(fig)
 
-    flux_line = result['flux_scaled'][line_aera]
+    flux_line = result['flux_scaled'][line_mask]
     mod_ids = sorted({d.modID for d in datalist})
     mod_scales = sorted({d.modScale for d in datalist})
     dates = sorted({str(d.date) for d in datalist})
     subtitle = (f"date={dates}, modID={mod_ids}, modScale={mod_scales}, "
-                f"files={len(datalist)}, Jacobian={result['jacobian_method']} "
-                f"(window {2 * result['jac_half_window'] + 1} poses, "
-                f"{result['n_cubes_average']} cube(s))")
+                f"files={len(datalist)}, Jacobian window "
+                f"{2 * result['jac_half_window'] + 1} poses, "
+                f"{result['n_cubes_average']} cube(s), "
+                f"poly deg {result['jac_poly_deg']} on {result['jac_fit_region']}")
     fig, _ = plot_astrometry_scatter(
-        result[ref]['astrometry_xy'], result[ref]['covariance'], line_aera,
-        result['velocity'][result['work_aera']][line_aera],
+        result[ref]['astrometry_xy'], result[ref]['covariance'], line_mask,
+        result['velocity'][result['work_mask']][line_mask],
         flux_line - flux_line.min(), object_name, lc, lw, ref, PA, subtitle,
         kappa=result.get('kappa'), kappa_err=result.get('kappa_err'))
     figures.append(fig)
@@ -352,10 +354,10 @@ def save_astrometry_results(result, datalist, figures):
     header['Q_ASLINE'] = (result['line_center'], 'line center wavelength (nm)')
     header['Q_ASLWID'] = (result['line_width'], 'line width (nm)')
     header['Q_ASPDEG'] = (str(list(poly_deg_values)), 'polynomial degrees of the continuum fit')
-    header['Q_ASJMET'] = (result['jacobian_method'], 'Jacobian estimator (local/spatial)')
     header['Q_ASJWIN'] = (2 * result['jac_half_window'] + 1, 'poses per local Jacobian block')
     header['Q_ASJORD'] = (result['jac_fit_order'], 'order of the local Jacobian fit')
     header['Q_ASJPDEG'] = (result['jac_poly_deg'], 'degree of the Jacobian wavelength smoothing polynomial')
+    header['Q_ASJREG'] = (result['jac_fit_region'], 'channels of the Jacobian polynomial fit')
     header['Q_ASNCUB'] = (result['n_cubes_average'], 'cubes averaged for the Jacobian')
     if result.get('kappa'):
         header['Q_ASKAPP'] = (result['kappa'], 'attenuation factor kappa (a_meas = kappa a_true)')
@@ -371,12 +373,12 @@ def save_astrometry_results(result, datalist, figures):
     covariance_all = np.stack([result[p]['covariance'] for p in poly_deg_values])
     hdul = fits.HDUList([
         fits.PrimaryHDU(header=header),
-        fits.ImageHDU(data=np.asarray(result['wave_aera'], dtype=float), name='WAVE'),
+        fits.ImageHDU(data=np.asarray(result['wave_work'], dtype=float), name='WAVE'),
         fits.ImageHDU(data=np.asarray(result['flux_scaled'], dtype=float), name='FLUX_SCALED'),
         fits.ImageHDU(data=np.asarray(astrometry_xy_all, dtype=float), name='ASTROMETRY_XY'),
         fits.ImageHDU(data=np.asarray(covariance_all, dtype=float), name='ASTROMETRY_COV'),
         fits.ImageHDU(data=np.asarray(poly_deg_values, dtype=float), name='POLY_DEG'),
-        fits.ImageHDU(data=result['line_aera'].astype(np.uint8), name='LINE_MASK'),
+        fits.ImageHDU(data=result['line_mask'].astype(np.uint8), name='LINE_MASK'),
     ])
     hdul.writeto(output_filename, overwrite=True)
     print(f"Astrometry results saved to {output_filename}")
@@ -392,16 +394,16 @@ def save_astrometry_results(result, datalist, figures):
 
 def print_summary(result):
     """One line per continuum degree: mean shift on the line and noise."""
-    line_aera, fit_aera = result['line_aera'], result['fit_aera']
+    line_mask, continuum_mask = result['line_mask'], result['continuum_mask']
     for poly_deg in result['poly_deg_values']:
         a = result[poly_deg]['astrometry_xy']
         sigma = np.sqrt(np.diagonal(result[poly_deg]['covariance'], axis1=-2, axis2=-1))
-        w = 1.0 / sigma[line_aera] ** 2
-        mean = (a[line_aera] * w).sum(0) / w.sum(0)
+        w = 1.0 / sigma[line_mask] ** 2
+        mean = (a[line_mask] * w).sum(0) / w.sum(0)
         print(f"* poly {poly_deg}: line mean (RA, DEC) = ({mean[0]:+.4f}, {mean[1]:+.4f}) mas, "
               f"PA = {np.degrees(np.arctan2(mean[0], mean[1])):+.0f} deg, "
-              f"sigma/channel on line = {sigma[line_aera].mean():.4f}, "
-              f"continuum rms = {a[fit_aera].std():.4f} mas")
+              f"sigma/channel on line = {sigma[line_mask].mean():.4f}, "
+              f"continuum rms = {a[continuum_mask].std():.4f} mas")
         amplitude = np.hypot(*mean)
         if result.get('kappa'):
             k, dk = result['kappa'], result['kappa_err']
@@ -421,8 +423,8 @@ def process_astrometric_data(
         wave_patterns=None, modID=None, modScale=None, wollaston=None,
         firObX=None, firObY=None,
         line_center=656.28, line_width=3.0, PA=137.0, Ncube_average=1,
-        jacobian_method='local', jac_half_window=1, jac_fit_order=1,
-        jac_poly_deg=1,
+        jac_half_window=1, jac_fit_order=1,
+        jac_poly_deg=1, jac_fit_region='all',
         save_npz=None, calibrate_scale=False):
     """
     Measure the wavelength-dependent photocentre shift (spectro-astrometry).
@@ -446,8 +448,9 @@ def process_astrometric_data(
     result = analyse_astrometry(
         data['datacube'], data['datacube_var'], data['flux'], data['ra_dec'],
         data['wave'], good_pose, line_center, line_width,
-        jacobian_method=jacobian_method, jac_half_window=jac_half_window,
+        jac_half_window=jac_half_window,
         jac_fit_order=jac_fit_order, jac_poly_deg=jac_poly_deg,
+        jac_fit_region=jac_fit_region,
         n_cubes_average=Ncube_average)
     # ---- step 1 done: a(lambda), PA and statistical errors are final.
     # ---- step 2 (optional): amplitude scale from the PSF variability
@@ -457,7 +460,7 @@ def process_astrometric_data(
     print_summary(result)
 
     if save_npz:
-        work = result['work_aera']
+        work = result['work_mask']
         np.savez(save_npz, datacube=data['datacube'][..., work],
                  datacube_var=data['datacube_var'][..., work],
                  ra_dec=data['ra_dec'], wave=data['wave'][work])

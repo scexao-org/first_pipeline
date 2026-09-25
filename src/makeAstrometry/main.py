@@ -126,15 +126,16 @@ the degeneracy between the astrometric signal and the per-output flat gains.
                        help="Reference position angle in degrees drawn on the scatter plot (for plotting only, does not affect the results; default: %(default)s)")
     parser.add_argument("--Ncube_average", type=parse_positive_odd_int, default=3,
                        help="Number of nearest cubes to average for the Jacobian; must be a positive odd integer (default: %(default)s)")
-    parser.add_argument("--jacobian_method", choices=("local", "spatial"), default="local",
-                       help="Jacobian estimator: 'local' finite differences on neighbouring poses, "
-                            "or 'spatial' gradient of a polynomial model of the flux versus dither position (default: %(default)s)")
     parser.add_argument("--jac_half_window", type=int, default=1,
                        help="Half window of the local Jacobian: 2*h+1 poses per block (default: %(default)s, i.e. 3 poses)")
     parser.add_argument("--jac_fit_order", type=int, choices=(1, 2), default=1,
                        help="Order of the local Jacobian fit: 1 = gradient, 2 = gradient + curvature (needs jac_half_window >= 3) (default: %(default)s)")
     parser.add_argument("--jac_poly_deg", type=parse_nonnegative_int, default=1,
                        help="Polynomial degree used to smooth the Jacobian over wavelength (default: %(default)s)")
+    parser.add_argument("--jac_fit_region", choices=("all", "continuum", "line"), default="all",
+                       help="Wavelength channels on which the Jacobian polynomial (degree jac_poly_deg) is fitted: "
+                            "the whole working window, the continuum only (window minus the line) or the line only "
+                            "(default: %(default)s)")
     parser.add_argument("--calibrate_scale", dest="calibrate_scale", action="store_true",
                        default=True,
                        help="Measure the PSF jitter/deformation on the data and calibrate by simulation the "
@@ -186,10 +187,10 @@ the degeneracy between the astrometric signal and the per-output flat gains.
             line_width=line_width,
             PA=PA,
             Ncube_average=Ncube_average,
-            jacobian_method=args.jacobian_method,
             jac_half_window=args.jac_half_window,
             jac_fit_order=args.jac_fit_order,
             jac_poly_deg=args.jac_poly_deg,
+            jac_fit_region=args.jac_fit_region,
             save_npz=args.save_npz,
             calibrate_scale=args.calibrate_scale,
         )

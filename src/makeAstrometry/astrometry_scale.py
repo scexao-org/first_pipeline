@@ -44,7 +44,7 @@ import matplotlib.pyplot as plt
 # 1. PSF variability measured on the data
 # ---------------------------------------------------------------------------
 
-def estimate_jacobian_variability(J_sm, C_J_sm, fit_aera, x, jac_poly_deg=1,
+def estimate_jacobian_variability(J_sm, C_J_sm, continuum_mask, jacobian_mask, x, jac_poly_deg=1,
                                   lag=3, good_block=None):
     """Excess block-to-block variance of the smoothed Jacobian (per cube,
     output and RA/DEC component) beyond photon noise.
@@ -58,15 +58,17 @@ def estimate_jacobian_variability(J_sm, C_J_sm, fit_aera, x, jac_poly_deg=1,
     block), and attenuates the fitted astrometry unless it is added to the
     Jacobian covariance given to the EIV solver.
 
+    ``J_sm`` is the Jacobian smoothed by a polynomial of degree
+    ``jac_poly_deg`` fitted on ``jacobian_mask``; it is averaged here over
+    ``continuum_mask``.
+
     Returns sigma_var^2 with shape (Ncube, Noutput, 2).
     """
-    V_cont = np.vander(x[fit_aera], jac_poly_deg + 1)
-    V_work = np.vander(x, jac_poly_deg + 1)
-    S = V_work @ np.linalg.pinv(V_cont)                      # (Nwave, Ncont)
-    r = S[fit_aera].mean(axis=0)                             # continuum-mean of the fit
-    Jc = J_sm[..., fit_aera, :].mean(axis=-2)                # (Ncube, Nblock, Nout, 2)
+    S = core.smoothing_matrix(x, jacobian_mask, jac_poly_deg)  # (Nwave, Nfit)
+    r = S[continuum_mask].mean(axis=0)                       # continuum-mean of the fit
+    Jc = J_sm[..., continuum_mask, :].mean(axis=-2)                # (Ncube, Nblock, Nout, 2)
     var_ph = np.einsum('c,...cii->...i', r ** 2,
-                       C_J_sm[..., fit_aera, :, :])          # (Ncube, Nblock, Nout, 2)
+                       C_J_sm[..., jacobian_mask, :, :])          # (Ncube, Nblock, Nout, 2)
     ok = np.ones(J_sm.shape[:2], dtype=bool) if good_block is None else good_block
     pair = (ok[:, lag:] & ok[:, :-lag])[..., None, None]
     dJ2 = np.where(pair, (Jc[:, lag:] - Jc[:, :-lag]) ** 2, np.nan)
@@ -75,7 +77,7 @@ def estimate_jacobian_variability(J_sm, C_J_sm, fit_aera, x, jac_poly_deg=1,
     return np.maximum(np.nan_to_num(excess), 0.0)
 
 
-def estimate_psf_variability(data_n, var_n, ra_dec, fit_aera, good=None, deg=6,
+def estimate_psf_variability(data_n, var_n, ra_dec, continuum_mask, good=None, deg=6,
                              scale=30.0):
     """Measure the pose-to-pose PSF variability that corrupts the local
     Jacobian: pointing jitter and flux deformation.
@@ -97,8 +99,8 @@ def estimate_psf_variability(data_n, var_n, ra_dec, fit_aera, good=None, deg=6,
         per-pose, per-output relative residuals ``relative_residual``.
     """
     Ncube, Npose = ra_dec.shape[:2]
-    Dc = data_n[..., fit_aera].mean(-1)                       # (Ncube, Npose, Nout)
-    Vc = var_n[..., fit_aera].mean(-1) / fit_aera.sum()
+    Dc = data_n[..., continuum_mask].mean(-1)                       # (Ncube, Npose, Nout)
+    Vc = var_n[..., continuum_mask].mean(-1) / continuum_mask.sum()
     ok = np.ones(Dc.shape[:2], bool) if good is None else good.all(axis=(-1, -2))
     powers = [(i, j) for i in range(deg + 1) for j in range(deg + 1 - i)]
     jitter, deform, explained, shifts, residuals = [], [], [], [], []
@@ -133,14 +135,13 @@ def estimate_psf_variability(data_n, var_n, ra_dec, fit_aera, good=None, deg=6,
 def report_jacobian_variability(result, verbose=True):
     """Fraction of <J^2> that is pose-to-pose variability rather than photon
     noise (diagnostic, local Jacobian only).  Stored as ``result['variability_fraction']``."""
-    if result['jacobian_method'] != 'local':
-        return None
-    x = result['wave'] - float(np.mean(result['wave'][result['line_aera']])) \
+    x = result['wave'] - float(np.mean(result['wave'][result['line_mask']])) \
         if 'line_center' not in result else result['wave'] - result['line_center']
     sigma_var2 = estimate_jacobian_variability(
-        result['jacobian'], result['jacobian_covariance'], result['fit_aera'], x,
+        result['jacobian'], result['jacobian_covariance'], result['continuum_mask'],
+        result['jacobian_mask'], x,
         result['jac_poly_deg'], lag=3, good_block=result['good_window'].all(axis=-1))
-    J2 = np.mean(result['jacobian'][..., result['fit_aera'], :] ** 2, axis=(0, 1, 3))
+    J2 = np.mean(result['jacobian'][..., result['continuum_mask'], :] ** 2, axis=(0, 1, 3))
     fraction = float(np.mean(sigma_var2.mean(0) / J2))
     result['variability_fraction'] = fraction
     if verbose:
@@ -258,7 +259,7 @@ def calibrate_attenuation(result, line_center, line_width, verbose=True, seeds=(
     draws them without any extra simulation."""
     jitter, deformation, detail = estimate_psf_variability(
         result['data_normalized'], result['var_normalized'], result['ra_dec'],
-        result['fit_aera'], result['good'])
+        result['continuum_mask'], result['good'])
     if verbose:
         print(f"* PSF variability measured on the data: pointing jitter {jitter:.2f} mas rms, "
               f"flux deformation {deformation:.0%} rms per output and pose")
@@ -267,7 +268,7 @@ def calibrate_attenuation(result, line_center, line_width, verbose=True, seeds=(
     outer = np.abs(result['wave'] - line_center) > 1.1 * line_width
     profile = spec_tot / spec_tot[outer].mean()
     fit_kwargs = dict(half_window=result['half_window'], fit_order=result['fit_order'],
-                      jacobian_method=result['jacobian_method'], model_deg=result['model_deg'],
+                      jac_poly_deg=result['jac_poly_deg'], jac_fit_region=result['jac_fit_region'],
                       n_cubes_average=result['n_cubes_average'],
                       poly_deg_values=(result['poly_deg_values'][0],))
     kappa, err_seed, err_model, table = calibrate_kappa(
@@ -300,8 +301,6 @@ if __name__ == "__main__":
     good = None
     clip_nsigma = None
     jac_poly_deg = 0
-    jacobian_method = 'local'
-    model_deg = 6
     n_cubes_average = 1
     verbose = True
 

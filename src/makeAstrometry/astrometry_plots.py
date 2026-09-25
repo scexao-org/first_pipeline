@@ -53,22 +53,22 @@ def plot_correlation_lag_histogram(data_corr_lag, good_data_flux,
     return fig, ax
 
 
-def plot_astrometry_comparison(wave_aera, astrometry_xy_list, poly_deg_values,
-                               mean_flux, work_aera, fit_aera, object_name,
+def plot_astrometry_comparison(wave_work, astrometry_xy_list, poly_deg_values,
+                               mean_flux, work_mask, continuum_mask, object_name,
                                line_center, line_width):
     fig, axes = plt.subplots(3, 1, figsize=(10, 12),
                              num="astromet_comparison_poly", clear=True,
                              sharex=True)
     axes[1].sharey(axes[0])
     for poly_deg, astrometry_xy in zip(poly_deg_values, astrometry_xy_list):
-        axes[0].plot(wave_aera, astrometry_xy[:, 0], alpha=0.8, label=f"{poly_deg}")
-        axes[1].plot(wave_aera, astrometry_xy[:, 1], alpha=0.8, label=f"{poly_deg}")
-    cont_order = np.argsort(wave_aera[fit_aera])
-    continuum_flux = np.interp(wave_aera, wave_aera[fit_aera][cont_order],
-                               mean_flux[work_aera][fit_aera][cont_order])
-    axes[2].fill_between(wave_aera, mean_flux[work_aera], continuum_flux,
+        axes[0].plot(wave_work, astrometry_xy[:, 0], alpha=0.8, label=f"{poly_deg}")
+        axes[1].plot(wave_work, astrometry_xy[:, 1], alpha=0.8, label=f"{poly_deg}")
+    cont_order = np.argsort(wave_work[continuum_mask])
+    continuum_flux = np.interp(wave_work, wave_work[continuum_mask][cont_order],
+                               mean_flux[work_mask][continuum_mask][cont_order])
+    axes[2].fill_between(wave_work, mean_flux[work_mask], continuum_flux,
                          color='r', alpha=0.3)
-    axes[2].plot(wave_aera, mean_flux[work_aera].T, 'r', alpha=0.5)
+    axes[2].plot(wave_work, mean_flux[work_mask].T, 'r', alpha=0.5)
     for ax in axes:
         ax.axvspan(line_center - line_width/2, line_center + line_width/2,
                    color='gray', alpha=0.2)
@@ -84,17 +84,17 @@ def plot_astrometry_comparison(wave_aera, astrometry_xy_list, poly_deg_values,
     return fig, axes
 
 
-def plot_separation_pa(wave_aera, astrometry_xy_list, poly_deg_values,
-                       mean_flux, work_aera, line_center, line_width, PA):
+def plot_separation_pa(wave_work, astrometry_xy_list, poly_deg_values,
+                       mean_flux, work_mask, line_center, line_width, PA):
     fig, axes = plt.subplots(3, 1, figsize=(10, 12),
                              num="astromet_comparison_poly_sepPA", clear=True,
                              sharex=True)
     for poly_deg, astrometry_xy in zip(poly_deg_values, astrometry_xy_list):
         separation = np.hypot(astrometry_xy[:, 0], astrometry_xy[:, 1])
         PA_deg = np.degrees(np.arctan2(astrometry_xy[:, 0], astrometry_xy[:, 1]))
-        axes[0].plot(wave_aera, separation, alpha=0.8, label=f"{poly_deg}")
-        axes[1].plot(wave_aera, PA_deg, alpha=0.8, label=f"{poly_deg}")
-    axes[2].plot(wave_aera, mean_flux[work_aera].T, 'r', alpha=0.5)
+        axes[0].plot(wave_work, separation, alpha=0.8, label=f"{poly_deg}")
+        axes[1].plot(wave_work, PA_deg, alpha=0.8, label=f"{poly_deg}")
+    axes[2].plot(wave_work, mean_flux[work_mask].T, 'r', alpha=0.5)
     for ax in axes:
         ax.axvspan(line_center - line_width/2, line_center + line_width/2,
                    color='gray', alpha=0.2)
@@ -109,7 +109,7 @@ def plot_separation_pa(wave_aera, astrometry_xy_list, poly_deg_values,
     return fig, axes
 
 
-def plot_astrometry_scatter(astrometry_xy, covariance, line_aera, velocity_line,
+def plot_astrometry_scatter(astrometry_xy, covariance, line_mask, velocity_line,
                             flux_scaled_filtered, object_name, line_center,
                             line_width, poly_deg, PA, subtitle="", kappa=None,
                             kappa_err=None):
@@ -121,15 +121,15 @@ def plot_astrometry_scatter(astrometry_xy, covariance, line_aera, velocity_line,
     and isotropic, so the track, the PA and the ellipses keep their shape and
     only the scale changes; ``kappa_err`` is quoted as a scale uncertainty."""
     fig, ax = plt.subplots(1, 1, figsize=(8, 6), num="astrometry_scatter", clear=True)
-    on = astrometry_xy[line_aera]
+    on = astrometry_xy[line_mask]
     scatter = ax.scatter(on[:, 0], on[:, 1], c=velocity_line,
                          s=flux_scaled_filtered * 1000 + 10, cmap='RdBu_r',
                          alpha=0.6, zorder=3)
     ax.plot(on[:, 0], on[:, 1], 'k-', alpha=0.3, linewidth=1)
-    for point, point_covariance in zip(on, covariance[line_aera]):
+    for point, point_covariance in zip(on, covariance[line_mask]):
         ax.add_patch(_covariance_ellipse(point, point_covariance, edgecolor='black',
                                          facecolor='none', linewidth=0.6, alpha=0.45))
-    ax.plot(astrometry_xy[~line_aera, 0], astrometry_xy[~line_aera, 1], '.',
+    ax.plot(astrometry_xy[~line_mask, 0], astrometry_xy[~line_mask, 1], '.',
             color='gray', ms=4, label="continuum channels")
     ax.set_xlabel("RA measured (mas)" if kappa else "RA (mas)")
     ax.set_ylabel("DEC measured (mas)" if kappa else "DEC (mas)")
@@ -148,7 +148,7 @@ def plot_astrometry_scatter(astrometry_xy, covariance, line_aera, velocity_line,
         err = f" $\\pm$ {kappa_err:.3f} ({100 * kappa_err / kappa:.0f}% scale error)" \
             if kappa_err is not None else ""
         ax.plot([], [], ' ', label=f"$\\kappa$ = {kappa:.3f}{err}")
-        w = 1 / np.diagonal(covariance[line_aera], axis1=-2, axis2=-1)
+        w = 1 / np.diagonal(covariance[line_mask], axis1=-2, axis2=-1)
         mean = (on * w).sum(0) / w.sum(0)                  # weighted, as in print_summary
         ax.plot([], [], ' ', label=f"line mean: {np.hypot(*mean):.3f} mas measured, "
                                     f"{np.hypot(*mean) / kappa:.2f} mas corrected")
@@ -164,8 +164,8 @@ def plot_astrometry_scatter(astrometry_xy, covariance, line_aera, velocity_line,
     return fig, ax
 
 
-def plot_astrometry_with_errors(wave_aera, astrometry_xy, covariance,
-                                flux_scaled, fit_aera, object_name,
+def plot_astrometry_with_errors(wave_work, astrometry_xy, covariance,
+                                flux_scaled, continuum_mask, object_name,
                                 line_center, line_width, poly_deg):
     """RA and DEC versus wavelength with error bars, and the line profile.
 
@@ -173,16 +173,16 @@ def plot_astrometry_with_errors(wave_aera, astrometry_xy, covariance,
     signal must be zero) have a reduced chi2 of one.
     """
     sigma = np.sqrt(np.diagonal(covariance, axis1=-2, axis2=-1))
-    scale = np.sqrt(np.mean((astrometry_xy[fit_aera] / sigma[fit_aera]) ** 2))
+    scale = np.sqrt(np.mean((astrometry_xy[continuum_mask] / sigma[continuum_mask]) ** 2))
     sigma = sigma * max(scale, 1.0)
     fig, axes = plt.subplots(3, 1, figsize=(10, 12), num="astrometry_errors",
                              clear=True, sharex=True)
     for k, label in enumerate(("RA", "DEC")):
-        axes[k].errorbar(wave_aera, astrometry_xy[:, k], sigma[:, k], fmt='o-',
+        axes[k].errorbar(wave_work, astrometry_xy[:, k], sigma[:, k], fmt='o-',
                          ms=3, capsize=2, color='C0', alpha=0.8)
         axes[k].axhline(0, color='k', linewidth=0.8)
         axes[k].set_ylabel(f"{label} astrometric signal (mas)")
-    axes[2].plot(wave_aera, flux_scaled.T, 'r', alpha=0.5)
+    axes[2].plot(wave_work, flux_scaled.T, 'r', alpha=0.5)
     axes[2].set_ylabel("Flux (scaled)")
     axes[2].set_xlabel("Wavelength")
     _shade_line(axes, line_center, line_width)
