@@ -45,7 +45,7 @@ import matplotlib.pyplot as plt
 # ---------------------------------------------------------------------------
 
 def estimate_jacobian_variability(J_sm, C_J_sm, continuum_mask, jacobian_mask, x, jac_poly_deg=1,
-                                  lag=3, good_block=None):
+                                  lag=3, good_block=None, jacobian_weights=None):
     """Excess block-to-block variance of the smoothed Jacobian (per cube,
     output and RA/DEC component) beyond photon noise.
 
@@ -60,15 +60,18 @@ def estimate_jacobian_variability(J_sm, C_J_sm, continuum_mask, jacobian_mask, x
 
     ``J_sm`` is the Jacobian smoothed by a polynomial of degree
     ``jac_poly_deg`` fitted on ``jacobian_mask``; it is averaged here over
-    ``continuum_mask``.
+    ``continuum_mask``.  ``jacobian_weights`` (Noutput, Nwave): the per-output
+    weights of that fit, if any.
 
     Returns sigma_var^2 with shape (Ncube, Noutput, 2).
     """
-    S = core.smoothing_matrix(x, jacobian_mask, jac_poly_deg)  # (Nwave, Nfit)
-    r = S[continuum_mask].mean(axis=0)                       # continuum-mean of the fit
-    Jc = J_sm[..., continuum_mask, :].mean(axis=-2)                # (Ncube, Nblock, Nout, 2)
-    var_ph = np.einsum('c,...cii->...i', r ** 2,
-                       C_J_sm[..., jacobian_mask, :, :])          # (Ncube, Nblock, Nout, 2)
+    S = core.smoothing_matrix(x, jacobian_mask, jac_poly_deg,
+                              jacobian_weights)              # ([Nout,] Nwave, Nfit)
+    S = np.broadcast_to(S, (J_sm.shape[2],) + S.shape[-2:])  # (Nout, Nwave, Nfit)
+    r = S[:, continuum_mask].mean(axis=1)                    # (Nout, Nfit) continuum-mean of the fit
+    Jc = J_sm[..., continuum_mask, :].mean(axis=-2)          # (Ncube, Nblock, Nout, 2)
+    var_ph = np.einsum('oc,...ocii->...oi', r ** 2,
+                       C_J_sm[..., jacobian_mask, :, :])     # (Ncube, Nblock, Nout, 2)
     ok = np.ones(J_sm.shape[:2], dtype=bool) if good_block is None else good_block
     pair = (ok[:, lag:] & ok[:, :-lag])[..., None, None]
     dJ2 = np.where(pair, (Jc[:, lag:] - Jc[:, :-lag]) ** 2, np.nan)
@@ -140,7 +143,8 @@ def report_jacobian_variability(result, verbose=True):
     sigma_var2 = estimate_jacobian_variability(
         result['jacobian'], result['jacobian_covariance'], result['continuum_mask'],
         result['jacobian_mask'], x,
-        result['jac_poly_deg'], lag=3, good_block=result['good_window'].all(axis=-1))
+        result['jac_poly_deg'], lag=3, good_block=result['good_window'].all(axis=-1),
+        jacobian_weights=result.get('jacobian_weights'))
     J2 = np.mean(result['jacobian'][..., result['continuum_mask'], :] ** 2, axis=(0, 1, 3))
     fraction = float(np.mean(sigma_var2.mean(0) / J2))
     result['variability_fraction'] = fraction
@@ -175,9 +179,9 @@ def simulate_recovery(ra_dec, wave, line_center, line_width, profile, jitter,
     cube, var, _, _ = sl.simulate(ra_dec, wave, line_center, line_width, a_true,
                                   jitter=jitter, deform=deformation, seed=seed,
                                   profile=profile)
-    dn, vn, _, _ = core.normalize_by_spectrum(cube, var)
+    dn, vn, spectrum, _ = core.normalize_by_spectrum(cube, var)
     r = core.fit_astrometry(dn, vn, ra_dec, wave, line_center, line_width,
-                            verbose=False, **fit_kwargs)
+                            spectrum=spectrum, verbose=False, **fit_kwargs)
     pd = fit_kwargs['poly_deg_values'][0]
     a = r[pd]['astrometry_xy']
     w = 1 / np.diagonal(r[pd]['covariance'], axis1=-2, axis2=-1)
@@ -269,6 +273,7 @@ def calibrate_attenuation(result, line_center, line_width, verbose=True, seeds=(
     profile = spec_tot / spec_tot[outer].mean()
     fit_kwargs = dict(half_window=result['half_window'], fit_order=result['fit_order'],
                       jac_poly_deg=result['jac_poly_deg'], jac_fit_region=result['jac_fit_region'],
+                      jac_weight=result['jac_weight'], gain_model=result['gain_model'],
                       n_cubes_average=result['n_cubes_average'],
                       poly_deg_values=(result['poly_deg_values'][0],))
     kappa, err_seed, err_model, table = calibrate_kappa(

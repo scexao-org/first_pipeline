@@ -232,7 +232,8 @@ def select_good_data(flux, datacube, xmod, ymod, threshold_corr=0.5):
 
 def analyse_astrometry(datacube, datacube_var, flux, ra_dec, wave, good_pose,
                        line_center, line_width, jac_half_window=1, jac_fit_order=1, n_cubes_average=1,
-                       jac_poly_deg=1, jac_fit_region='all',
+                       jac_poly_deg=1, jac_fit_region='all', jac_weight='none',
+                       gain_model='data',
                        poly_deg_values=POLY_DEG_VALUES, verbose=True):
     """Normalise the data around the line and fit the astrometry.
 
@@ -251,6 +252,10 @@ def analyse_astrometry(datacube, datacube_var, flux, ra_dec, wave, good_pose,
     jac_poly_deg : degree of the wavelength polynomial used to smooth the Jacobian
     jac_fit_region : channels on which that polynomial is fitted: 'all'
         (whole working window), 'continuum' or 'line'
+    jac_weight : 'none' or 'spectrum' (weight that fit by the spectrum of
+        each output, i.e. inverse variance in the photon-noise regime)
+    gain_model : 'data' (gain * data = continuum + J.a) or 'continuum'
+        (data = gain * continuum + J.a)
     poly_deg_values : degrees of the continuum polynomial to try
 
     Returns
@@ -282,6 +287,7 @@ def analyse_astrometry(datacube, datacube_var, flux, ra_dec, wave, good_pose,
         poly_deg_values=poly_deg_values, good=good,
         n_cubes_average=n_cubes_average,
         jac_poly_deg=jac_poly_deg, jac_fit_region=jac_fit_region,
+        jac_weight=jac_weight, spectrum=spectrum, gain_model=gain_model,
         verbose=verbose)
 
     result.update(
@@ -327,10 +333,12 @@ def make_astrometry_figures(result, datalist, object_name, PA):
     mod_scales = sorted({d.modScale for d in datalist})
     dates = sorted({str(d.date) for d in datalist})
     subtitle = (f"date={dates}, modID={mod_ids}, modScale={mod_scales}, "
-                f"files={len(datalist)}, Jacobian window "
-                f"{2 * result['jac_half_window'] + 1} poses, "
+                f"files={len(datalist)}\n Jacobian window "
+                f"{2 * result['jac_half_window'] + 1} poses,"
                 f"{result['n_cubes_average']} cube(s), "
-                f"poly deg {result['jac_poly_deg']} on {result['jac_fit_region']}")
+                f"poly deg {result['jac_poly_deg']} on {result['jac_fit_region']}"
+                f"{', spectrum-weighted' if result['jac_weight'] == 'spectrum' else ''}, "
+                f"gain on {result['gain_model']}")
     fig, _ = plot_astrometry_scatter(
         result[ref]['astrometry_xy'], result[ref]['covariance'], line_mask,
         result['velocity'][result['work_mask']][line_mask],
@@ -356,15 +364,17 @@ def save_astrometry_results(result, datalist, figures):
     header['Q_ASPDEG'] = (str(list(poly_deg_values)), 'polynomial degrees of the continuum fit')
     header['Q_ASJWIN'] = (2 * result['jac_half_window'] + 1, 'poses per local Jacobian block')
     header['Q_ASJORD'] = (result['jac_fit_order'], 'order of the local Jacobian fit')
-    header['Q_ASJPDEG'] = (result['jac_poly_deg'], 'degree of the Jacobian wavelength smoothing polynomial')
+    header['Q_ASJPDG'] = (result['jac_poly_deg'], 'degree of the Jacobian wavelength polynomial')
     header['Q_ASJREG'] = (result['jac_fit_region'], 'channels of the Jacobian polynomial fit')
+    header['Q_ASJWGT'] = (result['jac_weight'], 'weights of the Jacobian polynomial fit')
+    header['Q_ASGAIN'] = (result['gain_model'], 'gain on data or on continuum')
     header['Q_ASNCUB'] = (result['n_cubes_average'], 'cubes averaged for the Jacobian')
     if result.get('kappa'):
-        header['Q_ASKAPP'] = (result['kappa'], 'attenuation factor kappa (a_meas = kappa a_true)')
+        header['Q_ASKAPP'] = (result['kappa'], 'attenuation kappa (a_meas = kappa a_true)')
         header['Q_ASKERR'] = (result['kappa_err'], 'uncertainty on kappa')
         header['Q_ASJITT'] = (result['jitter'], 'measured pointing jitter (mas rms)')
         header['Q_ASDEFO'] = (result['deformation'], 'measured PSF flux deformation (rms fraction)')
-    header['Q_ASNAME'] = (runlib_io.create_basename(header), 'name of the astrometry file')
+    header['Q_ASNAME'] = (runlib_io.create_basename(header), 'astrometry file name')
 
     output_dir = os.path.join(datalist[-1].dirname, "../astrometry")
     os.makedirs(output_dir, exist_ok=True)
@@ -424,8 +434,8 @@ def process_astrometric_data(
         firObX=None, firObY=None,
         line_center=656.28, line_width=3.0, PA=137.0, Ncube_average=1,
         jac_half_window=1, jac_fit_order=1,
-        jac_poly_deg=1, jac_fit_region='all',
-        save_npz=None, calibrate_scale=False):
+        jac_poly_deg=1, jac_fit_region='all', jac_weight='none',
+        gain_model='data', save_npz=None, calibrate_scale=False):
     """
     Measure the wavelength-dependent photocentre shift (spectro-astrometry).
 
@@ -450,8 +460,8 @@ def process_astrometric_data(
         data['wave'], good_pose, line_center, line_width,
         jac_half_window=jac_half_window,
         jac_fit_order=jac_fit_order, jac_poly_deg=jac_poly_deg,
-        jac_fit_region=jac_fit_region,
-        n_cubes_average=Ncube_average)
+        jac_fit_region=jac_fit_region, jac_weight=jac_weight,
+        gain_model=gain_model, n_cubes_average=Ncube_average)
     # ---- step 1 done: a(lambda), PA and statistical errors are final.
     # ---- step 2 (optional): amplitude scale from the PSF variability
     scale.report_jacobian_variability(result)

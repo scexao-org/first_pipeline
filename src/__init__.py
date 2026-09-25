@@ -12,7 +12,7 @@ try:
     from .first_pipeline_shared import __version__, __author__, __email__, __description__
 except ImportError:
     # Fallback version info
-    __version__ = "1.1.0"
+    __version__ = "2.0.0"
     __author__ = "sylacour"
     __email__ = "sylvestre.lacour@observatoiredeparis.psl.eu"
     __description__ = "FIRST Pipeline for Visible Photonic Lantern data reduction at SUBARU/SCEXAO"

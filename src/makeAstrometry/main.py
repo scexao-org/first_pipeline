@@ -124,7 +124,7 @@ the degeneracy between the astrometric signal and the per-output flat gains.
                        help="Width of the spectral line in nm (default: %(default)s)")
     parser.add_argument("--PA", type=float, default=-45.0,
                        help="Reference position angle in degrees drawn on the scatter plot (for plotting only, does not affect the results; default: %(default)s)")
-    parser.add_argument("--Ncube_average", type=parse_positive_odd_int, default=3,
+    parser.add_argument("--Ncube_average", type=parse_positive_odd_int, default=1,
                        help="Number of nearest cubes to average for the Jacobian; must be a positive odd integer (default: %(default)s)")
     parser.add_argument("--jac_half_window", type=int, default=1,
                        help="Half window of the local Jacobian: 2*h+1 poses per block (default: %(default)s, i.e. 3 poses)")
@@ -136,6 +136,13 @@ the degeneracy between the astrometric signal and the per-output flat gains.
                        help="Wavelength channels on which the Jacobian polynomial (degree jac_poly_deg) is fitted: "
                             "the whole working window, the continuum only (window minus the line) or the line only "
                             "(default: %(default)s)")
+    parser.add_argument("--jac_weight", choices=("none", "spectrum"), default="spectrum",
+                       help="Weights of the Jacobian polynomial fit over wavelength: 'spectrum' weights each "
+                            "output by its spectrum (inverse variance in the photon-noise regime) (default: %(default)s)")
+    parser.add_argument("--gain_model", choices=("data", "continuum"), default="continuum",
+                       help="Where the per-output, per-wavelength gain is applied in the astrometry fit: "
+                            "'data' (gain * data = continuum + J.a) or 'continuum' "
+                            "(data = gain * smoothed continuum + J.a) (default: %(default)s)")
     parser.add_argument("--calibrate_scale", dest="calibrate_scale", action="store_true",
                        default=True,
                        help="Measure the PSF jitter/deformation on the data and calibrate by simulation the "
@@ -191,6 +198,8 @@ the degeneracy between the astrometric signal and the per-output flat gains.
             jac_fit_order=args.jac_fit_order,
             jac_poly_deg=args.jac_poly_deg,
             jac_fit_region=args.jac_fit_region,
+            jac_weight=args.jac_weight,
+            gain_model=args.gain_model,
             save_npz=args.save_npz,
             calibrate_scale=args.calibrate_scale,
         )

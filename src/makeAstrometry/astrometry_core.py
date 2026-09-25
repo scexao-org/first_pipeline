@@ -81,20 +81,53 @@ def jacobian_fit_mask(line_mask, region='all'):
     raise ValueError(f"jac_fit_region must be one of {JAC_FIT_REGIONS}, got {region!r}")
 
 
-def smoothing_matrix(x, fit_mask, poly_deg):
+JAC_WEIGHTS = ('none', 'spectrum')
+
+
+def jacobian_fit_weights(spectrum, jac_weight='none'):
+    """Per-(output, wavelength) weights of the wavelength polynomial fit of
+    the Jacobian, or None for an unweighted fit.
+
+    The data are divided by the spectrum S of each output
+    (``normalize_by_spectrum``), so in the photon-noise regime the variance
+    of the normalised data, hence of the Jacobian, scales as S/S^2 = 1/S:
+    weighting by the spectrum is inverse-variance weighting.
+
+    spectrum : (Noutput, Nwave) mean spectrum of each output on the working
+        window, as returned by ``normalize_by_spectrum``.
+    """
+    if jac_weight == 'none':
+        return None
+    if jac_weight != 'spectrum':
+        raise ValueError(f"jac_weight must be one of {JAC_WEIGHTS}, got {jac_weight!r}")
+    if spectrum is None:
+        raise ValueError("jac_weight='spectrum' needs the spectrum returned by normalize_by_spectrum")
+    w = np.asarray(spectrum, float)
+    w = np.where(np.isfinite(w) & (w > 0), w, 0.0)
+    return w / np.maximum(w.max(axis=-1, keepdims=True), 1e-300)
+
+
+def smoothing_matrix(x, fit_mask, poly_deg, weights=None):
     """Linear operator of a polynomial fit of degree ``poly_deg`` on the
     channels ``fit_mask`` of ``x``, evaluated on every channel.
 
-    Returns S (Nwave, Nfit) such that ``smoothed = S @ y[fit_mask]``.
+    Without ``weights`` returns S (Nwave, Nfit) such that
+    ``smoothed = S @ y[fit_mask]``.  With ``weights`` (..., Nwave) (weighted
+    least squares, e.g. one row per output) returns S (..., Nwave, Nfit).
     """
     fit_mask = np.asarray(fit_mask, bool)
     if fit_mask.sum() < poly_deg + 1:
         raise ValueError(f"{fit_mask.sum()} channels in the fit mask for a polynomial "
                          f"of degree {poly_deg}: widen the region or lower the degree")
-    return np.vander(x, poly_deg + 1) @ np.linalg.pinv(np.vander(x[fit_mask], poly_deg + 1))
+    V_work = np.vander(x, poly_deg + 1)
+    V_fit = np.vander(x[fit_mask], poly_deg + 1)
+    if weights is None:
+        return V_work @ np.linalg.pinv(V_fit)
+    sw = np.sqrt(np.asarray(weights, float)[..., fit_mask])      # (..., Nfit)
+    return V_work @ np.linalg.pinv(sw[..., :, None] * V_fit) * sw[..., None, :]
 
 
-def compute_smoothed_line(data_b, wave_work, fit_mask, poly_deg):
+def compute_smoothed_line(data_b, wave_work, fit_mask, poly_deg, weights=None):
     """Low-order polynomial fit along wavelength, evaluated on the whole window.
 
     The polynomial is fitted on the channels ``fit_mask`` of the working
@@ -103,11 +136,21 @@ def compute_smoothed_line(data_b, wave_work, fit_mask, poly_deg):
     every channel of ``wave_work``.  The wavelength axis may be last (data
     blocks) or penultimate (Jacobian blocks with a trailing RA/DEC axis).
     Inputs are already restricted to the working window along wavelength.
+
+    ``weights`` (Noutput, Nwave), optional: per-output weights of a weighted
+    least-squares fit (see ``jacobian_fit_weights``); the output axis must
+    come just before the wavelength axis.
     """
     Nwork = wave_work.size
     wavelength_axis = -1 if data_b.shape[-1] == Nwork else -2
     if data_b.shape[wavelength_axis] != Nwork:
         raise ValueError("data_b has no axis matching the wavelength grid")
+
+    if weights is not None:
+        S = smoothing_matrix(wave_work, fit_mask, poly_deg, weights)  # (Nout, Nwork, Nfit)
+        if wavelength_axis == -1:
+            return np.einsum('owc,...oc->...ow', S, data_b[..., fit_mask], optimize=True)
+        return np.einsum('owc,...ock->...owk', S, data_b[..., fit_mask, :], optimize=True)
 
     data_by_wavelength = np.moveaxis(data_b, wavelength_axis, -1)
     y_fit = data_by_wavelength[..., fit_mask]
@@ -121,25 +164,31 @@ def compute_smoothed_line(data_b, wave_work, fit_mask, poly_deg):
     return np.moveaxis(data_smoothed, -1, wavelength_axis)
 
 
-def compute_smoothed_jacobian_uncertainty(C_J, wave_work, fit_mask, poly_deg):
+def compute_smoothed_jacobian_uncertainty(C_J, wave_work, fit_mask, poly_deg,
+                                          weights=None):
     """Propagate per-wavelength Jacobian covariance through the polynomial
-    fit on the channels ``fit_mask`` (see ``compute_smoothed_line``).
+    fit on the channels ``fit_mask`` (see ``compute_smoothed_line``, same
+    optional per-output ``weights``).
 
-    ``C_J`` contains the two-by-two RA/DEC covariance at each wavelength;
-    inter-wavelength noise correlations are assumed negligible.
+    ``C_J`` (..., Noutput, Nwave, 2, 2) contains the RA/DEC covariance at each
+    wavelength; inter-wavelength noise correlations are assumed negligible.
     """
-    S = smoothing_matrix(wave_work, fit_mask, poly_deg)
-    return np.einsum('wc,...cij->...wij', S ** 2,
-                     C_J[..., fit_mask, :, :], optimize=True)
+    S = smoothing_matrix(wave_work, fit_mask, poly_deg, weights)
+    C_fit = C_J[..., fit_mask, :, :]
+    if weights is None:
+        return np.einsum('wc,...cij->...wij', S ** 2, C_fit, optimize=True)
+    return np.einsum('owc,...ocij->...owij', S ** 2, C_fit, optimize=True)
 
 
 def compute_smoothed_cross_covariances(cov_data_J, wave_work, continuum_mask,
-                                       jacobian_mask, poly_deg_sm, poly_deg_J):
+                                       jacobian_mask, poly_deg_sm, poly_deg_J,
+                                       jacobian_weights=None):
     """Return ``Cov(data, Jm)`` and ``Cov(sm, Jm)`` after the polynomial fits.
 
     ``sm`` is the continuum of the data (fit on ``continuum_mask``, degree
-    ``poly_deg_sm``) and ``Jm`` the smoothed Jacobian (fit on
-    ``jacobian_mask``, degree ``poly_deg_J``).  ``cov_data_J`` is the
+    ``poly_deg_sm``, unweighted) and ``Jm`` the smoothed Jacobian (fit on
+    ``jacobian_mask``, degree ``poly_deg_J``, optional per-output
+    ``jacobian_weights``).  ``cov_data_J`` (..., Noutput, Nwave, 2) is the
     per-wavelength covariance between the raw data and the raw Jacobian;
     only the channels used by both fits contribute to ``Cov(sm, Jm)``.
     """
@@ -148,17 +197,21 @@ def compute_smoothed_cross_covariances(cov_data_J, wave_work, continuum_mask,
     Nwork = wave_work.size
     S_sm = np.zeros((Nwork, Nwork))
     S_sm[:, continuum_mask] = smoothing_matrix(wave_work, continuum_mask, poly_deg_sm)
-    S_J = np.zeros((Nwork, Nwork))
-    S_J[:, jacobian_mask] = smoothing_matrix(wave_work, jacobian_mask, poly_deg_J)
+    S_J_fit = smoothing_matrix(wave_work, jacobian_mask, poly_deg_J, jacobian_weights)
+    S_J = np.zeros(S_J_fit.shape[:-1] + (Nwork,))                   # ([Nout,] Nwork, Nwork)
+    S_J[..., jacobian_mask] = S_J_fit
 
     cov_data_Jm = np.zeros_like(cov_data_J)
     jac_positions = np.flatnonzero(jacobian_mask)
-    cov_data_Jm[..., jac_positions, :] = (
-        cov_data_J[..., jac_positions, :]
-        * S_J[jac_positions, jac_positions, None])
+    diag_J = S_J[..., jac_positions, jac_positions]                 # ([Nout,] Nfit)
+    cov_data_Jm[..., jac_positions, :] = cov_data_J[..., jac_positions, :] * diag_J[..., None]
     shared = continuum_mask & jacobian_mask
-    cov_sm_Jm = np.einsum('wc,wc,...ci->...wi', S_sm[:, shared], S_J[:, shared],
-                          cov_data_J[..., shared, :], optimize=True)
+    if jacobian_weights is None:
+        cov_sm_Jm = np.einsum('wc,wc,...ci->...wi', S_sm[:, shared], S_J[:, shared],
+                              cov_data_J[..., shared, :], optimize=True)
+    else:
+        cov_sm_Jm = np.einsum('wc,owc,...oci->...owi', S_sm[:, shared], S_J[..., shared],
+                              cov_data_J[..., shared, :], optimize=True)
     return cov_data_Jm, cov_sm_Jm
 
 
@@ -297,13 +350,94 @@ def estimate_local_jacobian(datacube_n, datacube_var_n, ra_dec, half_window=1,
     return jacobian, jacobian_covariance, data_jacobian_covariance, condition
 
 
-def solve_eiv_J_weighted(J, data, sm, C_J, cov_Jsm, var_data, mask=None,
-                         clip_nsigma=None, n_iter=3, verbose=False):
-    """Weighted least-squares version of ``solve_eiv_J``.
+GAIN_MODELS = ('data', 'continuum')
 
-    Every (block, output, wavelength) residual ``J.a + sm - g.data`` is
-    weighted by ``1/var_data`` (all terms scaled by sqrt(w), covariances by w,
-    then ``solve_eiv_J`` is called with unit variance).  ``mask`` is an
+
+def compute_smoothed_data_covariances(var_data, wave_work, continuum_mask, poly_deg):
+    """Photon covariances of the continuum ``sm`` (polynomial of degree
+    ``poly_deg`` fitted on ``continuum_mask``, see ``compute_smoothed_line``)
+    with itself and with the data at the same wavelength.
+
+    var_data : (..., Nwave) variance of the data, uncorrelated in wavelength.
+    Returns ``Var(sm)`` and ``Cov(sm, data)``, both (..., Nwave).
+    """
+    continuum_mask = np.asarray(continuum_mask, bool)
+    S = smoothing_matrix(wave_work, continuum_mask, poly_deg)        # (Nwork, Ncont)
+    v_cont = var_data[..., continuum_mask]
+    var_sm = np.einsum('wc,...c->...w', S ** 2, v_cont, optimize=True)
+    cov_sm_data = np.zeros_like(var_data)
+    cont_positions = np.flatnonzero(continuum_mask)
+    cov_sm_data[..., cont_positions] = v_cont * S[cont_positions, np.arange(cont_positions.size)]
+    return var_sm, cov_sm_data
+
+
+def solve_eiv_continuum_gain(J, data, sm, C_J, cov_Jsm, cov_Jdata, var_sm,
+                             cov_sm_data, var_data):
+    """Astrometry fit with the gain on the smoothed continuum:
+
+        data = g(o, w) * sm + J . a(w)
+
+    solved per wavelength over all (block, output) pairs, with the gain
+    ``g`` of every output eliminated analytically (Schur complement).  The
+    regressors ``sm`` and ``J`` are noisy; their photon covariances are
+    subtracted from the normal equations (errors in variables, corrected
+    moments, no projector approximation):
+
+        N_ss = sum(sm^2) - sum Var(sm)          N_sJ = sum(sm J) - sum Cov(sm, J)
+        N_JJ = sum(J J^T) - sum C_J             r_s = sum(sm data) - sum Cov(sm, data)
+        r_J  = sum(J data) - sum Cov(J, data)
+
+    All inputs are already weighted (see ``solve_eiv_J_weighted``).
+    Shapes: J (Nb, No, Nw, 2); data, sm, var_* , cov_sm_data (Nb, No, Nw);
+    C_J (Nb, No, Nw, 2, 2); cov_Jsm, cov_Jdata (Nb, No, Nw, 2).
+    Returns the same tuple as ``solve_eiv_J``: astrometry (Nw, 2), gain
+    (No, Nw), corrected normal matrix (Nw, 2, 2), attenuation (Nw, 2) and the
+    covariance (Nw, 2, 2) of the astrometry.
+    """
+    N_ss = np.sum(sm ** 2 - var_sm, axis=0)                                  # (No, Nw)
+    N_sJ = np.sum(sm[..., None] * J - cov_Jsm, axis=0)                      # (No, Nw, 2)
+    r_s = np.sum(sm * data - cov_sm_data, axis=0)                           # (No, Nw)
+    N_JJ_raw = np.einsum('bowi,bowj->wij', J, J, optimize=True)
+    N_JJ = N_JJ_raw - C_J.sum(axis=(0, 1))
+    r_J = np.einsum('bowi,bow->wi', J, data, optimize=True) - cov_Jdata.sum(axis=(0, 1))
+
+    schur = np.einsum('owi,owj->wij', N_sJ / N_ss[..., None], N_sJ, optimize=True)
+    M_corrected = N_JJ - schur
+    rhs = r_J - np.einsum('owi,ow->wi', N_sJ, r_s / N_ss, optimize=True)
+    astrometry_shift = np.linalg.solve(M_corrected, rhs[..., None])[..., 0]
+    gain = (r_s - np.einsum('owi,wi->ow', N_sJ, astrometry_shift, optimize=True)) / N_ss
+
+    # uncorrected normal matrix: attenuation diagnostic as in solve_eiv_J
+    S2_raw = np.sum(sm ** 2, axis=0)
+    sJ_raw = np.sum(sm[..., None] * J, axis=0)
+    M_raw = N_JJ_raw - np.einsum('owi,owj->wij', sJ_raw / S2_raw[..., None], sJ_raw, optimize=True)
+    attenuation = np.linalg.eigvals(np.linalg.solve(M_raw, M_raw - M_corrected)).real
+
+    # covariance: residual noise e = d(data) - g d(sm) (Jacobian noise times
+    # a is second order), on the regressor J projected off sm
+    var_e = var_data - 2 * gain[None] * cov_sm_data + gain[None] ** 2 * var_sm
+    J_proj = J - sm[..., None] * (N_sJ / N_ss[..., None])[None]
+    rhs_covariance = np.einsum('bowi,bow,bowj->wij', J_proj, var_e, J_proj, optimize=True)
+    M_inverse = np.linalg.inv(M_corrected)
+    astrometry_covariance = np.einsum('wij,wjk,wlk->wil', M_inverse, rhs_covariance,
+                                      M_inverse, optimize=True)
+    return astrometry_shift, gain, M_corrected, attenuation, astrometry_covariance
+
+
+def solve_eiv_J_weighted(J, data, sm, C_J, cov_Jsm, var_data, mask=None,
+                         clip_nsigma=None, n_iter=3, verbose=False,
+                         gain_model='data', cov_Jdata=None, var_sm=None,
+                         cov_sm_data=None):
+    """Weighted least-squares astrometry fit.
+
+    ``gain_model`` selects where the per-(output, wavelength) gain g sits:
+    'data'      g * data = sm + J.a  (``solve_eiv_J``, gain on the data)
+    'continuum' data = g * sm + J.a  (``solve_eiv_continuum_gain``, gain on
+                the smoothed continuum; needs ``cov_Jdata``, ``var_sm`` and
+                ``cov_sm_data``).
+    Every (block, output, wavelength) residual is weighted by ``1/var_data``
+    (all terms scaled by sqrt(w), covariances by w, then the solver is called
+    with unit variance).  ``mask`` is an
     optional boolean (Nblocks, Noutput) array of pairs to keep.  With
     ``clip_nsigma`` set, pairs with outlying mean chi2 are dropped iteratively.
     """
@@ -312,13 +446,24 @@ def solve_eiv_J_weighted(J, data, sm, C_J, cov_Jsm, var_data, mask=None,
     for it in range(n_iter if clip_nsigma else 1):
         ww = w * keep[..., None]
         s = np.sqrt(ww)
-        out = solve_eiv_J(J * s[..., None], data * s, sm * s,
-                          C_J * ww[..., None, None], cov_Jsm * ww[..., None],
-                          var_data=np.ones_like(var_data))
+        if gain_model == 'data':
+            out = solve_eiv_J(J * s[..., None], data * s, sm * s,
+                              C_J * ww[..., None, None], cov_Jsm * ww[..., None],
+                              var_data=np.ones_like(var_data))
+        elif gain_model == 'continuum':
+            out = solve_eiv_continuum_gain(
+                J * s[..., None], data * s, sm * s, C_J * ww[..., None, None],
+                cov_Jsm * ww[..., None], cov_Jdata * ww[..., None], var_sm * ww,
+                cov_sm_data * ww, var_data * ww)
+        else:
+            raise ValueError(f"gain_model must be one of {GAIN_MODELS}, got {gain_model!r}")
         if not clip_nsigma:
             break
         a, g = out[0], out[1]
-        resid = np.einsum('bowi,wi->bow', J, a, optimize=True) + sm - g[None] * data
+        if gain_model == 'data':
+            resid = np.einsum('bowi,wi->bow', J, a, optimize=True) + sm - g[None] * data
+        else:
+            resid = data - g[None] * sm - np.einsum('bowi,wi->bow', J, a, optimize=True)
         chi2 = np.mean(resid ** 2 * w, axis=-1)
         chi2_ref = np.median(chi2[keep])
         chi2_mad = 1.4826 * np.median(np.abs(chi2[keep] - chi2_ref))
@@ -395,6 +540,7 @@ def fit_astrometry(datacube, datacube_var, ra_dec, wave, line_center,
                       poly_deg_values=(2, 3, 4, 5), good=None,
                       clip_nsigma=None, jac_poly_deg=1,
                       n_cubes_average=1, jac_fit_region='all',
+                      jac_weight='none', spectrum=None, gain_model='data',
                       verbose=True):
     """Full reduction on a data set already restricted to the working window.
 
@@ -405,6 +551,14 @@ def fit_astrometry(datacube, datacube_var, ra_dec, wave, line_center,
     jac_fit_region : channels on which the wavelength polynomial (degree
         ``jac_poly_deg``) of the Jacobian is fitted: 'all' (whole working
         window), 'continuum' (window minus the line) or 'line'.
+    jac_weight : 'none' or 'spectrum': weight the wavelength polynomial fit
+        of the Jacobian by the spectrum of each output (inverse variance in
+        the photon-noise regime, see ``jacobian_fit_weights``).
+    spectrum : (Noutput, Nwave) spectrum returned by ``normalize_by_spectrum``
+        (needed for jac_weight='spectrum').
+    gain_model : 'data' (g * data = continuum + J.a) or 'continuum'
+        (data = g * continuum + J.a): where the per-(output, wavelength)
+        gain is applied, see ``solve_eiv_J_weighted``.
     n_cubes_average : odd number of neighbouring cubes over which the local
         Jacobian is averaged at fixed dither position (1: none).
     The Jacobian covariance given to the EIV solver is photon-only (see the
@@ -420,6 +574,7 @@ def fit_astrometry(datacube, datacube_var, ra_dec, wave, line_center,
     line_mask = np.abs(x) < line_width / 2
     continuum_mask = ~line_mask
     jacobian_mask = jacobian_fit_mask(line_mask, jac_fit_region)
+    jacobian_weights = jacobian_fit_weights(spectrum, jac_weight)
     if good is None:   # default: drop non-finite samples and the huge-variance placeholders
         good = np.isfinite(datacube) & np.isfinite(datacube_var) & (datacube_var < 1e10)
     h = half_window
@@ -427,8 +582,9 @@ def fit_astrometry(datacube, datacube_var, ra_dec, wave, line_center,
 
     J, C_J, cov_dJ, cond = estimate_local_jacobian(
         datacube, datacube_var, ra_dec, half_window=h, fit_order=fit_order)
-    J_sm = compute_smoothed_line(J, x, jacobian_mask, jac_poly_deg)
-    C_J_sm = compute_smoothed_jacobian_uncertainty(C_J, x, jacobian_mask, jac_poly_deg)
+    J_sm = compute_smoothed_line(J, x, jacobian_mask, jac_poly_deg, jacobian_weights)
+    C_J_sm = compute_smoothed_jacobian_uncertainty(C_J, x, jacobian_mask, jac_poly_deg,
+                                                   jacobian_weights)
     if n_cubes_average > 1:
         J_sm, C_J_sm = average_jacobian_over_cubes(
             J_sm, C_J_sm, n_cubes_average, valid=good_window_early(good, h, J.shape[:3]))
@@ -457,6 +613,8 @@ def fit_astrometry(datacube, datacube_var, ra_dec, wave, line_center,
 
     result = dict(wave=wave, line_mask=line_mask, continuum_mask=continuum_mask,
                   jacobian_mask=jacobian_mask, jac_fit_region=jac_fit_region,
+                  jacobian_weights=jacobian_weights, jac_weight=jac_weight,
+                  gain_model=gain_model,
                   jacobian=J_sm, jacobian_raw=J, n_blocks=len(data_b),
                   jacobian_covariance=C_J_sm, good_window=good_window,
                   data_normalized=datacube, var_normalized=datacube_var, good=good,
@@ -467,11 +625,17 @@ def fit_astrometry(datacube, datacube_var, ra_dec, wave, line_center,
                   poly_deg_values=tuple(poly_deg_values))
     for poly_deg in poly_deg_values:
         sm_b = compute_smoothed_line(data_b, x, continuum_mask, poly_deg)
-        _, cov_sm_Jm = compute_smoothed_cross_covariances(
-            cov_dJ_b, x, continuum_mask, jacobian_mask, poly_deg, jac_poly_deg)
+        cov_data_Jm, cov_sm_Jm = compute_smoothed_cross_covariances(
+            cov_dJ_b, x, continuum_mask, jacobian_mask, poly_deg, jac_poly_deg,
+            jacobian_weights)
+        extra = {}
+        if gain_model == 'continuum':
+            var_sm, cov_sm_data = compute_smoothed_data_covariances(
+                var_b, x, continuum_mask, poly_deg)
+            extra = dict(cov_Jdata=cov_data_Jm, var_sm=var_sm, cov_sm_data=cov_sm_data)
         a, g, M, att, cov_a, keep = solve_eiv_J_weighted(
             J_b, data_b, sm_b, C_b, cov_sm_Jm, var_b, mask=mask,
-            clip_nsigma=clip_nsigma, verbose=verbose)
+            clip_nsigma=clip_nsigma, verbose=verbose, gain_model=gain_model, **extra)
         result[poly_deg] = dict(astrometry_xy=a, covariance=cov_a, flat=g,
                                 attenuation=att, kept=keep)
         if verbose:
