@@ -118,10 +118,11 @@ class FlatMap:
         hdu = [fits.ImageHDU(data=self.flat, name='FLAT')]
 
         if header is not None:
-            # Add date and time to the header if not present
-            if 'DATE-PRO' not in header:
-                current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-                header['DATE-PRO'] = current_time
+            # Processing date of THIS product (always reset: the input header may carry
+            # the DATE-PRO of the preprocessed file, and the most recent product is
+            # selected downstream by DATE-PRO)
+            current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+            header['DATE-PRO'] = current_time
                 
             hdu_primary.header.extend(header, strip=True)
 
@@ -131,6 +132,8 @@ class FlatMap:
 
         # Write to a FITS file
         print(f"Saving flat field map to {output_filename}")
+        from first_pipeline_shared.version import add_version_keywords
+        add_version_keywords(hdul[0].header)   # Q_PIPVER / Q_PIPGIT
         hdul.writeto(output_filename, overwrite=True)
 
         self.filename = output_filename

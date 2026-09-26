@@ -119,7 +119,8 @@ the degeneracy between the astrometric signal and the per-output flat gains.
     parser.add_argument("--X_FIROBY", type=float,
                        help="Object Y offset (X_FIROBY keyword) to select (default: any)")
     parser.add_argument("--line_center", type=float, default=656.28,
-                       help="Central wavelength of the spectral line in nm (default: %(default)s)")
+                       help="REST wavelength of the spectral line in nm, in the same air/vacuum convention as the "
+                            "wavelength map; also the centre of the working window (default: %(default)s, H-alpha in air)")
     parser.add_argument("--line_width", type=float, default=2.0,
                        help="Width of the spectral line in nm (default: %(default)s)")
     parser.add_argument("--PA", type=float, default=-45.0,
@@ -149,6 +150,12 @@ the degeneracy between the astrometric signal and the per-output flat gains.
                             "attenuation factor kappa of the fitted amplitude (default: on, adds a few seconds)")
     parser.add_argument("--no_calibrate_scale", dest="calibrate_scale", action="store_false",
                        help="Skip the kappa calibration (step 2)")
+    parser.add_argument("--vsys", default=None,
+                       help="Systemic (barycentric) velocity of the star in km/s, or 'simbad' to fetch it from "
+                            "SIMBAD (by OBJECT name, then by coordinates; cached in ~/.first_pipeline/). The "
+                            "wavelength axis is then put in the rest frame of the star (default: barycentric frame)")
+    parser.add_argument("--no_barycentric", dest="barycentric", action="store_false", default=True,
+                       help="Do not apply the barycentric correction: velocities stay in the observatory frame")
     parser.add_argument("--save_npz",
                        help="Save the working arrays (datacube, variance, dither, wavelength) to this .npz file for offline tests")
     # Parse command line arguments
@@ -202,6 +209,8 @@ the degeneracy between the astrometric signal and the per-output flat gains.
             gain_model=args.gain_model,
             save_npz=args.save_npz,
             calibrate_scale=args.calibrate_scale,
+            barycentric=args.barycentric,
+            vsys=args.vsys,
         )
         
         print("Astrometric analysis completed successfully!")

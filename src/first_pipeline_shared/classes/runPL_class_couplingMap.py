@@ -197,10 +197,11 @@ class CouplingMap:
 
         if header is not None:
             new_header = header.copy()
-            # Add date and time to the header if not present
-            if 'DATE-PRO' not in new_header:
-                current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-                new_header['DATE-PRO'] = current_time
+            # Processing date of THIS product (always reset: the input header may carry
+            # the DATE-PRO of the preprocessed file, and the most recent product is
+            # selected downstream by DATE-PRO)
+            current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+            new_header['DATE-PRO'] = current_time
             
             if 'X_FIRTYP' not in new_header:
                 new_header['X_FIRTYP'] = 'COUPLINGMAP'
@@ -220,6 +221,8 @@ class CouplingMap:
 
         # Write to a FITS file
         print(f"Saving coupling map to {output_filename}")
+        from first_pipeline_shared.version import add_version_keywords
+        add_version_keywords(hdul[0].header)   # Q_PIPVER / Q_PIPGIT
         hdul.writeto(output_filename, overwrite=True)
 
         self.basename = os.path.basename(output_filename)

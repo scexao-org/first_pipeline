@@ -14,7 +14,8 @@ class WaveMap:
         wave (numpy.ndarray): Wavelength data array
         index (numpy.ndarray): Index data array for interpolation
         weights (numpy.ndarray): Weights data array for interpolation
-        wave_label (str): Label for wavelength units
+        wave_label (str): Label for wavelength units (states air or vacuum)
+        medium (str): 'air' (standard air) or 'vacuum' 
         is_loaded (bool): Whether the wavelength map data has been loaded
     """
     def __init__(self, filename=None):
@@ -25,11 +26,28 @@ class WaveMap:
         self.wave = None
         self.index = None
         self.weights = None
-        self.wave_label = "Wavelength (nm)"
+        self.medium = 'air'
+        self.npixel = None          # number of raw pixels the map applies to
+        self.interpolation = None   # 'linear' or 'lanczos3'
+        self.wave_label = self._make_label(self.medium)
         self.is_loaded = False
         
         if filename is not None:
             self.load(filename)
+
+    # FITS spectral-axis codes: AWAV = wavelength in air, WAVE = in vacuum
+    _MEDIUM_TO_CODE = {'air': 'AWAV', 'vacuum': 'WAVE'}
+    _CODE_TO_MEDIUM = {'AWAV': 'air', 'WAVE': 'vacuum'}
+
+    @staticmethod
+    def _make_label(medium):
+        return f"Wavelength in {medium} (nm)"
+
+    def _set_medium(self, medium):
+        if medium not in self._MEDIUM_TO_CODE:
+            raise ValueError(f"medium must be 'air' or 'vacuum', got {medium!r}")
+        self.medium = medium
+        self.wave_label = self._make_label(medium)
 
     def load(self, filename):
         """
@@ -61,13 +79,25 @@ class WaveMap:
             self.wave = hdul['WAVELENGTH'].data
             self.index = hdul['INDEX'].data
             self.weights = hdul['WEIGHT'].data
+            # Air/vacuum flag: read from the WAVELENGTH extension first, so it
+            # also works when the map is embedded in a coupling map file.
+            # Maps made before this keyword existed used the standard-air
+            # Neon catalogue, hence the 'AWAV' default.
+            code = hdul['WAVELENGTH'].header.get('Q_WMSYS',
+                                                  hdul[0].header.get('Q_WMSYS', 'AWAV'))
+            self._set_medium(self._CODE_TO_MEDIUM.get(code, 'air'))
+            ext_header = hdul['WAVELENGTH'].header
+            self.npixel = ext_header.get('Q_WMNPIX', None)
+            self.interpolation = ext_header.get('Q_WMINTP',
+                                                'linear' if self.index.shape[0] == 2 else None)
             
         if self.wave is None or self.wave.size == 0:
             raise ValueError("Wavelength map data is empty or invalid")
         
         self.is_loaded = True
 
-    def create_from_data(self, wave, index, weights, filename=None):
+    def create_from_data(self, wave, index, weights, filename=None, medium='air',
+                         npixel=None, interpolation=None):
         """
         Create a wavelength map from data arrays.
         Args:
@@ -75,7 +105,13 @@ class WaveMap:
             index (numpy.ndarray): The index data array.
             weights (numpy.ndarray): The weights data array.
             filename (str, optional): Optional filename to associate with this wavelength map.
+            medium (str, optional): 'air' (default, standard air) or 'vacuum'.
+            npixel (int, optional): number of raw pixels along the spectrum.
+            interpolation (str, optional): kernel used for index/weights.
         """
+        self._set_medium(medium)
+        self.npixel = npixel
+        self.interpolation = interpolation
         self.wave = wave
         self.index = index
         self.weights = weights
@@ -130,24 +166,29 @@ class WaveMap:
         hdu_primary = fits.PrimaryHDU()
 
         # Create HDUs for the wavelength map data
-        hdu = [fits.ImageHDU(data=self.wave, name='WAVELENGTH')]
+        hdu = [self._wavelength_hdu()]
         hdu += [fits.ImageHDU(data=self.index, name='INDEX')]
         hdu += [fits.ImageHDU(data=self.weights, name='WEIGHT')]
 
         if header is not None:
-            # Add date and time to the header if not present
-            if 'DATE-PRO' not in header:
-                current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-                header['DATE-PRO'] = current_time
+            # Processing date of THIS product (always reset: the input header may carry
+            # the DATE-PRO of the preprocessed file, and the most recent product is
+            # selected downstream by DATE-PRO)
+            current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+            header['DATE-PRO'] = current_time
 
             hdu_primary.header.extend(header, strip=True)
 
         hdu_primary.header['X_FIRTYP'] = 'WAVEMAP'
+        hdu_primary.header['Q_WMSYS'] = (self._MEDIUM_TO_CODE[self.medium],
+                                         'AWAV = standard air, WAVE = vacuum')
         # Combine all HDUs into an HDUList
         hdul = fits.HDUList([hdu_primary, *hdu])
 
         # Write to a FITS file
         print(f"Saving wavelength map to {output_filename}")
+        from first_pipeline_shared.version import add_version_keywords
+        add_version_keywords(hdul[0].header)   # Q_PIPVER / Q_PIPGIT
         hdul.writeto(output_filename, overwrite=True)
 
         self.basename = os.path.basename(output_filename)
@@ -156,50 +197,68 @@ class WaveMap:
 
     def interpolate_data(self, dataCube):
         """
-        Apply the wavelength index to interpolate the data cube.
+        Resample data onto the common wavelength grid of the map.
+
+        Each output o is interpolated with the precomputed pixel indices and
+        weights, arrays of shape (Ntap, Noutput, Nwave) (Ntap = 2 for linear,
+        6 for Lanczos-3 interpolation):
+        new[k] = sum_j w[j,o,k] * data[index[j,o,k]].
+        The variance is propagated as sum_j w[j,o,k]**2 * var[index[j,o,k]]
+        (raw pixels assumed independent; note that the interpolation itself
+        correlates adjacent output channels, which is not tracked).
+        Pixels entering with a zero weight are ignored, so a NaN pixel only
+        affects the channels that actually use it.
+
         Args:
-                dataCube (DataCube): The data cube to apply the wavelength map to.
+            dataCube (DataCube or numpy.ndarray): data with the wavelength
+                (pixel) axis last and the output axis just before it, i.e.
+                shape (..., Noutput, Npixel).
+                - DataCube: its data and variance are resampled in place and
+                  its wave, Nwave and wave_label attributes are updated.
+                  Nothing is returned.
+                - numpy.ndarray: a new resampled array of shape
+                  (..., Noutput, Nwave) is returned; the input is unchanged.
         """
         self._check_loaded()
 
-        if not isinstance(dataCube, DataCube):
-            is_dataCube = False
-        else:
-            is_dataCube = True
+        is_dataCube = isinstance(dataCube, DataCube)
+        data = dataCube.data if is_dataCube else np.asarray(dataCube)
+        variance = dataCube.variance if is_dataCube else None
 
-        if is_dataCube:
-            data = dataCube.data
-            variance = dataCube.variance
-        else:
-            data = dataCube
-            variance = np.zeros_like(data)  # Create a dummy variance array if not provided
+        if data.ndim < 2:
+            raise ValueError(f"Data must have at least 2 dimensions (..., Noutput, Npixel), got shape {data.shape}")
+        Noutput, Npixel = data.shape[-2:]
+        if self.npixel is not None:
+            if Npixel != self.npixel:
+                raise ValueError(f"Wavelength map size mismatch: expected {self.npixel} pixels, got {Npixel}")
+        elif self.index.max() != Npixel - 1:   # older maps without Q_WMNPIX
+            raise ValueError(f"Wavelength map size mismatch: expected {self.index.max() + 1} pixels, got {Npixel}")
+        if self.index.shape[1] != Noutput:
+            raise ValueError(f"Wavelength map has {self.index.shape[1]} outputs, data has {Noutput}")
 
-        # Handle 3D data by adding a first dimension if needed
-        if len(data.shape) == 3:
-            data = data[np.newaxis, :, :, :]
-            variance = variance[np.newaxis, :, :, :]
-        
-        Ncube, Nmod, Noutput, Nwave = data.shape
-        if self.index.max() != Nwave-1:
-            raise ValueError(f"Wavelength map size mismatch: expected {self.index.max() + 1}, got {Nwave}")
+        def resample(array, power):
+            out = np.zeros(array.shape[:-2] + (Noutput, self.Nwave),
+                           dtype=np.result_type(array.dtype, self.weights.dtype))
+            for o in range(Noutput):
+                for j in range(self.index.shape[0]):
+                    w = self.weights[j, o, :]
+                    used = w != 0
+                    contribution = array[..., o, self.index[j, o, :]] * w**power
+                    # zero-weight pixels must not propagate NaNs
+                    out[..., o, :] += np.where(used, contribution, 0.0)
+            return out
 
-        Nwave_new = self.Nwave
-        new_data = np.zeros((Ncube, Nmod, Noutput, Nwave_new)) 
-        new_variance = np.zeros((Ncube, Nmod, Noutput, Nwave_new)) 
+        new_data = resample(data, 1)
 
-        for o in range(Noutput):
-            new_data[:,:,o,:] = (data[:,:,o,self.index[:,o]] * self.weights[:,o]).sum(axis=2)
-            new_variance[:,:,o,:] = (variance[:,:,o,self.index[:,o]] * self.weights[:,o]).sum(axis=2)
+        if not is_dataCube:
+            return new_data
 
+        dataCube.data = new_data
+        if variance is not None:
+            dataCube.variance = resample(variance, 2)
         dataCube.wave_label = self.wave_label
         dataCube.Nwave = self.Nwave
         dataCube.wave = self.wave
-
-        if is_dataCube:
-            dataCube.data = new_data
-            dataCube.variance = new_variance
-        else:
-            return new_data
         
     def return_hdu_list(self):
         """
@@ -214,11 +273,23 @@ class WaveMap:
         if self.wave is None or self.index is None or self.weights is None:
             raise ValueError("No wavelength map data available")
         self._check_loaded()
-        hdu = [fits.ImageHDU(data=self.wave, name='WAVELENGTH')]
+        hdu = [self._wavelength_hdu()]
         hdu += [fits.ImageHDU(data=self.index, name='INDEX')]
         hdu += [fits.ImageHDU(data=self.weights, name='WEIGHT')]
         return hdu
     
+    def _wavelength_hdu(self):
+        """WAVELENGTH extension, tagged with its unit and medium."""
+        hdu = fits.ImageHDU(data=self.wave, name='WAVELENGTH')
+        hdu.header['BUNIT'] = ('nm', 'wavelength unit')
+        if self.npixel is not None:
+            hdu.header['Q_WMNPIX'] = (int(self.npixel), 'number of raw pixels along the spectrum')
+        if self.interpolation is not None:
+            hdu.header['Q_WMINTP'] = (self.interpolation, 'interpolation kernel of INDEX/WEIGHT')
+        hdu.header['Q_WMSYS'] = (self._MEDIUM_TO_CODE[self.medium],
+                                 'AWAV = standard air, WAVE = vacuum')
+        return hdu
+
     def return_header(self):
         """
         Return the header of the FITS file.

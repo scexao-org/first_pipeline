@@ -11,11 +11,16 @@ import sys
 src_path = os.path.join(os.path.dirname(__file__), 'src')
 sys.path.insert(0, src_path)
 
+# Version: read (not imported) from the single source of truth, so that
+# setup.py works even before the dependencies are installed
+import re
+with open(os.path.join(src_path, 'first_pipeline_shared', 'version.py')) as f:
+    __version__ = re.search(r'^__version__ = "([^"]+)"', f.read(), re.M).group(1)
+
 try:
-    from first_pipeline_shared import __version__, __author__, __email__, __description__
+    from first_pipeline_shared import __author__, __email__, __description__
 except ImportError:
-    # Fallback version info if import fails
-    __version__ = "1.2.1"
+    # Fallback package info if import fails
     __author__ = "sylacour"
     __email__ = "sylvestre.lacour@observatoiredeparis.psl.eu"
     __description__ = "FIRST Pipeline for Visible Photonic Lantern data reduction at SUBARU/SCEXAO"

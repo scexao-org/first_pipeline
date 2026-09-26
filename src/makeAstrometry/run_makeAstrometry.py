@@ -73,6 +73,7 @@ from first_pipeline_shared.classes.runPL_class_dataCube import DataCube
 from first_pipeline_shared.libraries import runPL_library_io as runlib_io
 from first_pipeline_shared.libraries import runPL_library_plots as runlib_plots
 from first_pipeline_shared.libraries import runPL_library_linalg as runlib_linalg
+from first_pipeline_shared.libraries import runPL_library_rv as runlib_rv
 
 from makeAstrometry import astrometry_core as core
 from makeAstrometry import astrometry_scale as scale
@@ -200,6 +201,7 @@ def load_astrometry_data(file_patterns, object_name=None, dark_patterns=None,
         xmod=np.concatenate([d.xmod for d in datalist]),
         ymod=np.concatenate([d.ymod for d in datalist]),
         ra_dec=np.concatenate([d.compute_xy_sky()*-1 for d in datalist]),
+        berv=[d.get_barycentric_correction() for d in datalist],   # km/s per file
     )
 
 
@@ -234,7 +236,8 @@ def analyse_astrometry(datacube, datacube_var, flux, ra_dec, wave, good_pose,
                        line_center, line_width, jac_half_window=1, jac_fit_order=1, n_cubes_average=1,
                        jac_poly_deg=1, jac_fit_region='all', jac_weight='none',
                        gain_model='data',
-                       poly_deg_values=POLY_DEG_VALUES, verbose=True):
+                       poly_deg_values=POLY_DEG_VALUES, verbose=True,
+                       berv=0.0, vsys=0.0, velocity_frame='topocentric'):
     """Normalise the data around the line and fit the astrometry.
 
     Parameters
@@ -257,6 +260,15 @@ def analyse_astrometry(datacube, datacube_var, flux, ra_dec, wave, good_pose,
     gain_model : 'data' (gain * data = continuum + J.a) or 'continuum'
         (data = gain * continuum + J.a)
     poly_deg_values : degrees of the continuum polynomial to try
+    berv : barycentric correction (km/s) of the observatory motion
+    vsys : systemic velocity of the star (km/s, barycentric)
+        The observed (topocentric) wavelength axis is transformed into the
+        chosen frame before anything else:
+            wave -> wave * (1 + berv/c) / (1 + vsys/c)
+        so that the window, the line mask, the output WAVE and the velocity
+        are all in that frame (berv = vsys = 0 leaves it topocentric).
+    velocity_frame : label of that frame ('topocentric', 'barycentric' or
+        'stellar'), stored in the result
 
     Returns
     -------
@@ -264,10 +276,19 @@ def analyse_astrometry(datacube, datacube_var, flux, ra_dec, wave, good_pose,
         wavelength bookkeeping (``work_mask``, ``wave_work``, ``velocity``,
         ``mean_flux``, ``flux_scaled``) and the parameters used.
     """
+    # Move the wavelength axis to the requested frame (Doppler, first order
+    # in v/c for each step, exact enough: second-order terms ~ v^2/c ~ 1 m/s)
+    c_kms = speed_of_light / 1e3
+    wave_observed = np.asarray(wave, dtype=float)
+    wave = wave_observed * (1 + berv / c_kms) / (1 + vsys / c_kms)
+
     # Wavelength window: continuum side windows + line
     work_mask = np.abs(wave - line_center) < 1.5 * line_width
     wave_work = wave[work_mask]
-    velocity = speed_of_light / 1e3 * (wave - line_center) / line_center
+    # Velocity axis. line_center is the REST wavelength of the line (same
+    # air/vacuum convention as the wavelength map), wave is already in the
+    # requested frame.
+    velocity = c_kms * (wave - line_center) / line_center
 
     # Normalise every output by its own mean spectrum (over cubes and poses):
     # the Jacobian at a given wavelength scales with the flux at that
@@ -295,6 +316,8 @@ def analyse_astrometry(datacube, datacube_var, flux, ra_dec, wave, good_pose,
         mean_flux=mean_flux, spectrum=spectrum,
         flux_scaled=mean_flux[..., work_mask] / np.nanmax(mean_flux[..., work_mask]),
         line_center=line_center, line_width=line_width,
+        berv=berv, vsys=vsys, velocity_frame=velocity_frame,
+        wave_full=wave, wave_observed_full=wave_observed,
         jac_half_window=jac_half_window, jac_fit_order=jac_fit_order,
         jac_poly_deg=jac_poly_deg)
     return result
@@ -343,7 +366,8 @@ def make_astrometry_figures(result, datalist, object_name, PA):
         result[ref]['astrometry_xy'], result[ref]['covariance'], line_mask,
         result['velocity'][result['work_mask']][line_mask],
         flux_line - flux_line.min(), object_name, lc, lw, ref, PA, subtitle,
-        kappa=result.get('kappa'), kappa_err=result.get('kappa_err'))
+        kappa=result.get('kappa'), kappa_err=result.get('kappa_err'),
+        velocity_label=f"Velocity, {result.get('velocity_frame', 'topocentric')} frame (km/s)")
     figures.append(fig)
     # amplitude attenuation kappa (only when step 2 ran with calibrate_scale=True)
     if 'kappa_table' in result:
@@ -369,6 +393,22 @@ def save_astrometry_results(result, datalist, figures):
     header['Q_ASJWGT'] = (result['jac_weight'], 'weights of the Jacobian polynomial fit')
     header['Q_ASGAIN'] = (result['gain_model'], 'gain on data or on continuum')
     header['Q_ASNCUB'] = (result['n_cubes_average'], 'cubes averaged for the Jacobian')
+    header['Q_ASVFRM'] = (result.get('velocity_frame', 'topocentric'), 'frame of WAVE and VELOCITY (topo/bary/stellar)')
+    header['Q_ASBERV'] = (result.get('berv', 0.0), '[km/s] barycentric correction applied to WAVE')
+    if result.get('berv_spread') is not None:
+        header['Q_ASBVSP'] = (result['berv_spread'], '[km/s] max-min BERV over the input files')
+    header['Q_ASVSYS'] = (result.get('vsys', 0.0), '[km/s] systemic velocity removed from WAVE')
+    info = result.get('vsys_info') or {}
+    if info:
+        header['Q_ASVSRC'] = (str(info.get('source', 'user')), 'origin of Q_ASVSYS')
+        if info.get('err') is not None:
+            header['Q_ASVSER'] = (info['err'], '[km/s] error on Q_ASVSYS')
+        if info.get('qual'):
+            header['Q_ASVSQL'] = (str(info['qual']), 'SIMBAD RV quality (A best - E worst)')
+        if info.get('bibcode'):
+            header['Q_ASVSBB'] = (str(info['bibcode']), 'reference of Q_ASVSYS')
+        if info.get('main_id'):
+            header['Q_ASVSID'] = (str(info['main_id']), 'SIMBAD identifier used for Q_ASVSYS')
     if result.get('kappa'):
         header['Q_ASKAPP'] = (result['kappa'], 'attenuation kappa (a_meas = kappa a_true)')
         header['Q_ASKERR'] = (result['kappa_err'], 'uncertainty on kappa')
@@ -384,12 +424,15 @@ def save_astrometry_results(result, datalist, figures):
     hdul = fits.HDUList([
         fits.PrimaryHDU(header=header),
         fits.ImageHDU(data=np.asarray(result['wave_work'], dtype=float), name='WAVE'),
+        fits.ImageHDU(data=np.asarray(result['velocity'][result['work_mask']], dtype=float), name='VELOCITY'),
         fits.ImageHDU(data=np.asarray(result['flux_scaled'], dtype=float), name='FLUX_SCALED'),
         fits.ImageHDU(data=np.asarray(astrometry_xy_all, dtype=float), name='ASTROMETRY_XY'),
         fits.ImageHDU(data=np.asarray(covariance_all, dtype=float), name='ASTROMETRY_COV'),
         fits.ImageHDU(data=np.asarray(poly_deg_values, dtype=float), name='POLY_DEG'),
         fits.ImageHDU(data=result['line_mask'].astype(np.uint8), name='LINE_MASK'),
     ])
+    from first_pipeline_shared.version import add_version_keywords
+    add_version_keywords(hdul[0].header)   # Q_PIPVER / Q_PIPGIT
     hdul.writeto(output_filename, overwrite=True)
     print(f"Astrometry results saved to {output_filename}")
 
@@ -435,7 +478,8 @@ def process_astrometric_data(
         line_center=656.28, line_width=3.0, PA=137.0, Ncube_average=1,
         jac_half_window=1, jac_fit_order=1,
         jac_poly_deg=1, jac_fit_region='all', jac_weight='none',
-        gain_model='data', save_npz=None, calibrate_scale=False):
+        gain_model='data', save_npz=None, calibrate_scale=False,
+        barycentric=True, vsys=None):
     """
     Measure the wavelength-dependent photocentre shift (spectro-astrometry).
 
@@ -444,6 +488,15 @@ def process_astrometric_data(
     that many neighbouring cubes at the same dither position.  ``save_npz``
     optionally saves the normalised working arrays for offline tests with
     ``astrometry_core`` (``datacube``, ``datacube_var``, ``ra_dec``, ``wave``).
+
+    Frame: ``line_center`` is the rest wavelength. With ``barycentric=True``
+    (default) the wavelength axis is moved to the barycentric frame using the
+    observatory-motion correction (computed per file, then averaged); with
+    ``vsys`` (km/s, barycentric) it is further moved to the rest frame of the
+    star. ``vsys='simbad'`` fetches it from SIMBAD (by OBJECT name, then by
+    header coordinates; cached locally in ~/.first_pipeline/vsys_cache.json). The window, line mask, saved WAVE and velocity all use that frame.
+    The data are not resampled: only the wavelength labels change, which is
+    exact as long as all files share the same correction (one night).
     """
     Ncube_average = validate_ncube_average(Ncube_average)
 
@@ -455,13 +508,20 @@ def process_astrometric_data(
     good_pose, figures = select_good_data(data['flux'], data['datacube'],
                                           data['xmod'], data['ymod'])
 
+    vsys, vsys_info = resolve_vsys(vsys, data)
+    berv, berv_spread, velocity_frame = velocity_frame_from_berv(
+        data['berv'], barycentric, vsys)
+
     result = analyse_astrometry(
         data['datacube'], data['datacube_var'], data['flux'], data['ra_dec'],
         data['wave'], good_pose, line_center, line_width,
         jac_half_window=jac_half_window,
         jac_fit_order=jac_fit_order, jac_poly_deg=jac_poly_deg,
         jac_fit_region=jac_fit_region, jac_weight=jac_weight,
-        gain_model=gain_model, n_cubes_average=Ncube_average)
+        gain_model=gain_model, n_cubes_average=Ncube_average,
+        berv=berv, vsys=vsys or 0.0, velocity_frame=velocity_frame)
+    result['berv_spread'] = berv_spread
+    result['vsys_info'] = vsys_info
     # ---- step 1 done: a(lambda), PA and statistical errors are final.
     # ---- step 2 (optional): amplitude scale from the PSF variability
     scale.report_jacobian_variability(result)
@@ -473,13 +533,81 @@ def process_astrometric_data(
         work = result['work_mask']
         np.savez(save_npz, datacube=data['datacube'][..., work],
                  datacube_var=data['datacube_var'][..., work],
-                 ra_dec=data['ra_dec'], wave=data['wave'][work])
+                 ra_dec=data['ra_dec'], wave=result['wave_full'][work],
+                 wave_observed=result['wave_observed_full'][work],
+                 velocity_frame=result['velocity_frame'])
         print(f"Working arrays saved to {save_npz}")
 
     figures += make_astrometry_figures(result, data['datalist'],
                                        data['object_name'], PA)
     save_astrometry_results(result, data['datalist'], figures)
     return result
+
+
+def resolve_vsys(vsys, data):
+    """
+    Turn the ``vsys`` argument into (value in km/s or None, info dict).
+
+    ``vsys`` may be None (no systemic velocity), a number (km/s, barycentric)
+    or the string 'simbad' (query SIMBAD with the OBJECT name and, if that
+    name is unknown, the header coordinates).
+    """
+    if vsys is None:
+        return None, {}
+    if isinstance(vsys, str) and vsys.strip().lower() == 'simbad':
+        d0 = data['datalist'][0]
+        ra, dec = (d0.target_ra, d0.target_dec) if d0.has_target_coords else (None, None)
+        try:
+            info = runlib_rv.query_systemic_velocity(object_name=data['object_name'] or d0.object_name,
+                                                     ra=ra, dec=dec)
+        except (LookupError, RuntimeError) as e:
+            import warnings
+            warnings.warn(f"No systemic velocity from SIMBAD ({e}). Continuing WITHOUT vsys: the "
+                          f"wavelengths stay in the barycentric frame. Give --vsys <km/s> explicitly "
+                          f"to use the stellar rest frame.", UserWarning)
+            print("!" * 72 + f"\n!!! vsys NOT applied: {e}\n" + "!" * 72)
+            return None, {'source': 'SIMBAD: none found'}
+        err = f" +- {info['err']:.2f}" if info.get('err') is not None else ""
+        print(f"* Systemic velocity from {info['source']} ({info.get('main_id')}): "
+              f"{info['vsys']:+.2f}{err} km/s, quality {info.get('qual')}, ref {info.get('bibcode')}")
+        if info.get('qual') in ('D', 'E'):
+            import warnings
+            warnings.warn(f"SIMBAD radial velocity of {info.get('main_id')} has poor quality "
+                          f"({info.get('qual')}): consider giving --vsys explicitly.", UserWarning)
+        return info['vsys'], info
+    return float(vsys), {'source': 'user'}
+
+
+def velocity_frame_from_berv(berv_list, barycentric=True, vsys=None,
+                             max_spread_kms=1.0):
+    """
+    Choose the barycentric correction and the velocity frame.
+
+    Returns (berv, berv_spread, frame): the mean correction over the files
+    (km/s, 0 if not applied), its max-min spread (None if not computed) and
+    'topocentric', 'barycentric' or 'stellar'.
+    """
+    import warnings
+    if not barycentric:
+        if vsys:
+            raise ValueError("vsys is a barycentric systemic velocity: it needs barycentric=True")
+        print("* Velocity axis: topocentric (no barycentric correction)")
+        return 0.0, None, 'topocentric'
+    if any(b is None for b in berv_list):
+        raise ValueError("Barycentric correction impossible: D_IMRRA/D_IMRDEC missing in some "
+                         "headers. Use --no_barycentric to keep topocentric velocities.")
+    berv_list = np.asarray(berv_list, dtype=float)
+    berv, spread = float(berv_list.mean()), float(np.ptp(berv_list))
+    print(f"* Barycentric correction: {berv:+.3f} km/s (spread over {len(berv_list)} files: {spread:.3f} km/s)")
+    if spread > max_spread_kms:
+        warnings.warn(f"The barycentric correction varies by {spread:.2f} km/s between the input files "
+                      f"(different nights?). The data are stacked in the observatory frame, so the line "
+                      f"is smeared by that amount: reduce each night separately.",
+                      UserWarning, stacklevel=2)
+    if vsys is not None:
+        print(f"* Systemic velocity subtracted: {vsys:+.3f} km/s -> velocities in the stellar frame")
+        return berv, spread, 'stellar'
+    return berv, spread, 'barycentric'
 
 
 def validate_ncube_average(n_cubes, n_available=None):

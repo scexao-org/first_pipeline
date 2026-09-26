@@ -25,7 +25,7 @@ def _configure_optional_iers_suppression():
 _configure_optional_iers_suppression()
 
 # Version information
-__version__ = "1.1.0"
+from .version import __version__, get_version_string, add_version_keywords  # single source of truth
 __author__ = "sylacour"
 __email__ = "sylvestre.lacour@observatoiredeparis.psl.eu"
 __description__ = "FIRST Pipeline for Visible Photonic Lantern data reduction at SUBARU/SCEXAO"

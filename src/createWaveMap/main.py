@@ -15,7 +15,7 @@ import argparse
 from first_pipeline_shared.libraries.runPL_library_cli import check_file_options
 import getpass
 import os
-from .run_createWaveMap import run_createWaveMap
+from .run_createWaveMap import run_createWaveMap, find_wollaston_modes
 
 
 def main():
@@ -91,9 +91,18 @@ Review diagnostic plots to ensure proper line detection and fitting.
     parser.add_argument("--flatMap", 
                        help="Select a specific flat Map to use")
     parser.add_argument("--wollaston", 
-                       help="Wollaston status. Use IN for internal or OUT for no wollaston (default: first in the list of files)")
+                       help="Wollaston status: IN or OUT. Default: one wavelength map is made for EACH mode present among the Neon files")
     parser.add_argument('--Nexclude', type=int, default=4,
                        help="Number of wavelength peak to exclude from the fit (default: 4)")
+    parser.add_argument('--vacuum', action='store_true',
+                       help="Produce the wavelength scale in vacuum instead of standard air (default: air, "
+                            "the usual optical convention; H-alpha = 656.28 nm in air, 656.46 nm in vacuum)")
+    parser.add_argument('--interpolation', choices=['lanczos3', 'linear'], default='lanczos3',
+                       help="Resampling kernel onto the common wavelength grid (default: lanczos3, which "
+                            "preserves the line profile; linear broadens it differently for each output)")
+    parser.add_argument('--fiberOffsets',
+                       help="Reference wavelength map (FITS) from which to take fixed per-fiber x offsets "
+                            "(V-groove misalignment). Default: fit them on the Neon data")
     
     # Parse the arguments
     args = parser.parse_args()
@@ -109,16 +118,40 @@ Review diagnostic plots to ensure proper line detection and fitting.
     # Note: Development environment detection and default paths
     # are handled autonomously in run_createWaveMap()
 
-    # Process wavelength map data
-    waveMap, datalist, residual_rms_nm = run_createWaveMap(
-        file_patterns=file_patterns,
-        dark_patterns=dark_patterns,
-        flat_patterns=flat_patterns,
-        wollaston=wollaston,
-        Nexclude=Nexclude
-    )
+    # One wavelength map per Wollaston mode (IN and OUT have different numbers of outputs)
+    if wollaston is not None:
+        modes = [wollaston]
+    elif args.fiberOffsets:
+        # fixed fibre offsets only make sense for the mode of the reference map
+        from astropy.io import fits
+        modes = [fits.getheader(args.fiberOffsets).get('X_FIRWOL')]
+        print(f"Wollaston mode taken from the --fiberOffsets reference map: {modes[0]}")
+    else:
+        modes = find_wollaston_modes(file_patterns)
+        if len(modes) > 1:
+            print(f"Neon files found for Wollaston modes {modes}: one wavelength map per mode.")
 
-    print(f"Wavelength map created successfully: {waveMap.filename}")
+    for mode in modes:
+        print("\n" + "#" * 72 + f"\n# Wollaston {mode}\n" + "#" * 72)
+        waveMap, datalist, residual_rms_nm = run_createWaveMap(
+            file_patterns=file_patterns,
+            dark_patterns=dark_patterns,
+            flat_patterns=flat_patterns,
+            wollaston=mode,
+            Nexclude=Nexclude,
+            fiber_offsets_file=args.fiberOffsets,
+            vacuum=args.vacuum,
+            interpolation=args.interpolation
+        )
+        del datalist
+        import matplotlib.pyplot as plt
+        plt.close('all')   # otherwise the next mode's PDF also contains these figures
+        report_result(waveMap, residual_rms_nm, mode)
+
+
+def report_result(waveMap, residual_rms_nm, mode):
+    """Print the outcome of one wavelength map."""
+    print(f"Wavelength map (Wollaston {mode}) created successfully: {waveMap.filename}")
     print(f"Wavelength solution residuals (RMS): {residual_rms_nm:.4f} nm")
     if residual_rms_nm > 0.1:
         print("\n" + "!" * 72)

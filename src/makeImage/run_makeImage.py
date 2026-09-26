@@ -444,6 +444,8 @@ def save_reconstructed_image(image_data, header, output_dir,
     # Create and save FITS file
     hdul = fits.HDUList(list_of_hdus)
     output_filename = os.path.join(output_dir, runlib_io.create_basename(header))
+    from first_pipeline_shared.version import add_version_keywords
+    add_version_keywords(hdul[0].header)   # Q_PIPVER / Q_PIPGIT
     hdul.writeto(output_filename, overwrite=True)
     
     return output_filename

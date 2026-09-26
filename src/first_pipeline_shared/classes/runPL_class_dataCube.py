@@ -1,4 +1,5 @@
 import os
+import warnings
 import numpy as np
 from astroplan import Observer
 from astropy.time import Time, TimeDelta
@@ -62,8 +63,17 @@ class DataCube:
 
         self.x_object = header.get('X_FIROBX', 0.0)
         self.y_object = header.get('X_FIROBY', 0.0)
+        # Target coordinates: needed for the parallactic angle and for the
+        # barycentric velocity correction. The hard-coded fallback is only a
+        # placeholder, so warn loudly when it is used on science frames.
+        self.has_target_coords = ('D_IMRRA' in header) and ('D_IMRDEC' in header)
         self.target_ra = header.get('D_IMRRA', '21:15:49.440')
         self.target_dec = header.get('D_IMRDEC', '+05:14:52.41')
+        if not self.has_target_coords and header.get('DATA-TYP', 'OBJECT') == 'OBJECT':
+            warnings.warn(f"{self.basename}: D_IMRRA/D_IMRDEC missing from the header; using placeholder "
+                          f"coordinates ({self.target_ra}, {self.target_dec}). Parallactic angle and "
+                          f"barycentric correction will be WRONG for this file.", UserWarning, stacklevel=2)
+        self._berv = None
         self.pupil_PA = header.get('D_IMRPAD', -233.206)
         self.date = header.get('DATE-OBS', '2025-07-14')
         self.ut_str = header.get('UT-STR', "11:52:44.20")
@@ -250,6 +260,35 @@ class DataCube:
 
         return
     
+    def get_barycentric_correction(self, kind='barycentric'):
+        """
+        Radial-velocity correction for the motion of the observatory (km/s).
+
+        Computed with astropy at mid-exposure for the target coordinates
+        (D_IMRRA / D_IMRDEC) and the location of Subaru. It is ADDED to an
+        observed (topocentric) velocity to get the velocity in the barycentric
+        (or heliocentric) frame: v_bary = v_obs + correction. The two frames
+        differ by ~0.01 km/s.
+
+        Args:
+            kind (str): 'barycentric' (default) or 'heliocentric'.
+
+        Returns:
+            float or None: correction in km/s, or None when the header has no
+            target coordinates.
+        """
+        if not self.has_target_coords:
+            return None
+        if kind == 'barycentric' and self._berv is not None:
+            return self._berv
+        target = SkyCoord(self.target_ra, self.target_dec, unit=('hourangle', 'deg'))
+        mid_time = self.time_start + (self.time_end - self.time_start) / 2
+        correction = target.radial_velocity_correction(
+            kind=kind, obstime=mid_time, location=subaru.location).to(u.km / u.s).value
+        if kind == 'barycentric':
+            self._berv = float(correction)
+        return float(correction)
+
     def get_parallactic_angle(self):
         """
         Calculate the parallactic angle using the Subaru observer from astroplan.

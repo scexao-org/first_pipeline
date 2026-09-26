@@ -1,4 +1,5 @@
 import os
+import warnings
 import numpy as np
 from astropy.io import fits
 from glob import glob
@@ -39,6 +40,27 @@ def clean_filelist(fits_keywords, filelist):
     filelist_cleaned = np.array(filelist_cleaned)
     return np.sort(filelist_cleaned)
 
+def read_header_if_complete(file):
+    """
+    Return the primary header of a FITS file, or None if the file is
+    truncated (e.g. an interrupted copy) or unreadable.
+    """
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            with fits.open(file) as hdul:
+                len(hdul)                      # read every HDU header
+                header = hdul[0].header.copy()
+    except Exception as e:
+        print(f"WARNING!!! Skipping unreadable file {file}: {e}")
+        return None
+    if any('truncated' in str(w.message) for w in caught):
+        print(f"WARNING!!! Skipping truncated file {file} "
+              f"({os.path.getsize(file)} bytes, shorter than its header declares)")
+        return None
+    return header
+
+
 def get_filelist(file_patterns, fits_keywords, name_search=None):
     """
     Find files based on the given parameters.
@@ -77,9 +99,14 @@ def get_filelist(file_patterns, fits_keywords, name_search=None):
     # Filter out non-fits files
     filelist = [file for file in filelist if file.endswith('.fits')]
 
-    # Exclude preprocessed files whose metrology frame-shift detection failed.
-    filelist = [file for file in filelist
-                if fits.getheader(file).get('X_FIRGSH') != 'ERROR']
+    # Exclude truncated/unreadable files, and preprocessed files whose
+    # metrology frame-shift detection failed.
+    good_files = []
+    for file in filelist:
+        header = read_header_if_complete(file)
+        if header is not None and header.get('X_FIRGSH') != 'ERROR':
+            good_files.append(file)
+    filelist = good_files
     
     if len(filelist) == 0:
         raise FileNotFoundError("No fits files found "+str_search+" with the specified patterns")
@@ -138,7 +165,15 @@ def find_closest_in_time_dark(cmap_file, dark_files):
 
 def find_closest_dark(cmap_file, dark_files):
     """
-    Finds the closest dark file to a given coupling map file, prioritizing files in the same directory.
+    Find the dark file(s) to subtract from a given file.
+
+    Returns a list of dark files, sorted by time distance:
+    - all darks with the same gain and exposure time (same directory first,
+      then any directory): they are averaged together by DataCube;
+    - otherwise (no dark with the same exposure time) ONLY the closest dark in
+      time with the same gain, or with any gain as a last resort. Averaging
+      darks of different exposure times would mix different dark levels.
+    Use `dark_matches(file, darks)` to know whether the exposure time matches.
     """
 
     gain = fits.getheader(cmap_file)['GAIN']
@@ -167,10 +202,19 @@ def find_closest_dark(cmap_file, dark_files):
     same_gain_darks = [dark for dark in dark_files if fits.getheader(dark)['GAIN'] == gain]
 
     if same_gain_darks:
-        return find_closest_in_time_dark(cmap_file, same_gain_darks)
+        return find_closest_in_time_dark(cmap_file, same_gain_darks)[:1]
 
     # Last resort: closest by time from all dark files
-    return find_closest_in_time_dark(cmap_file, dark_files)
+    return find_closest_in_time_dark(cmap_file, dark_files)[:1]
+
+
+def dark_matches(file, dark_files):
+    """True if the (first) dark has the same GAIN and EXPTIME as `file`."""
+    if not dark_files:
+        return False
+    dark = dark_files[0] if isinstance(dark_files, (list, tuple)) else dark_files
+    h, hd = fits.getheader(file), fits.getheader(dark)
+    return h.get('GAIN') == hd.get('GAIN') and h.get('EXPTIME') == hd.get('EXPTIME')
 
 
 
@@ -376,11 +420,25 @@ class FileList:
         files_with_pixelmap = sum(1 for assoc in self.files_with_associated_files if assoc['pixelMap'] is not None)
         files_with_both = sum(1 for assoc in self.files_with_associated_files if assoc['dark'] is not None and assoc['pixelMap'] is not None)
 
-        print(f"   ")
+        print("\n" + "="*60)
+        print("DARK STATISTIC:")
+        print("="*60)
         print(f"File Association Statistics:")
         print(f"Total files: {total_files}")
         if dark_patterns is not None:
             print(f"Files with dark: {files_with_dark} ({files_with_dark/total_files*100:.1f}%)")
+            mismatched = [assoc for assoc in self.files_with_associated_files
+                          if assoc['dark'] is not None and not dark_matches(assoc['file'], assoc['dark'])]
+            if mismatched:
+                print("!" * 60)
+                print(f"WARNING: {len(mismatched)} file(s) have NO dark with the same GAIN and EXPTIME;")
+                print("the closest dark in time is used instead:")
+                for assoc in mismatched:
+                    dark = assoc['dark'][0] if isinstance(assoc['dark'], (list, tuple)) else assoc['dark']
+                    h, hd = fits.getheader(assoc['file']), fits.getheader(dark)
+                    print(f"  {os.path.basename(assoc['file'])}: EXPTIME={h.get('EXPTIME'):.3f} GAIN={h.get('GAIN')}"
+                          f"  <- dark {os.path.basename(dark)}: EXPTIME={hd.get('EXPTIME'):.3f} GAIN={hd.get('GAIN')}")
+                print("!" * 60)
             if files_with_dark != total_files:
                 print("!" * 60)
                 print("WARNING: NOT ALL FILES HAVE AN ASSOCIATED DARK FILE!")
@@ -390,7 +448,7 @@ class FileList:
             print(f"Files with pixelMap: {files_with_pixelmap} ({files_with_pixelmap/total_files*100:.1f}%)")
         if dark_patterns is not None and pixelMap is not None:
             print(f"Files with both dark and pixelMap: {files_with_both} ({files_with_both/total_files*100:.1f}%)")
-        print(f"   ")
+        print("="*60)
 
         return self.files_with_associated_files
 

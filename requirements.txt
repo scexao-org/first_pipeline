@@ -6,6 +6,7 @@ matplotlib
 # Astronomy libraries
 astropy
 astroplan
+astroquery   # SIMBAD systemic velocity (makeAstrometry --vsys simbad)
 
 # Utility libraries
 tqdm

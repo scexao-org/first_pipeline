@@ -112,7 +112,7 @@ def plot_separation_pa(wave_work, astrometry_xy_list, poly_deg_values,
 def plot_astrometry_scatter(astrometry_xy, covariance, line_mask, velocity_line,
                             flux_scaled_filtered, object_name, line_center,
                             line_width, poly_deg, PA, subtitle="", kappa=None,
-                            kappa_err=None):
+                            kappa_err=None, velocity_label="Velocity (km/s)"):
     """RA/DEC track over the line, coloured by velocity, with 1-sigma
     covariance ellipses; the continuum channels are shown in grey.
 
@@ -152,7 +152,7 @@ def plot_astrometry_scatter(astrometry_xy, covariance, line_mask, velocity_line,
         mean = (on * w).sum(0) / w.sum(0)                  # weighted, as in print_summary
         ax.plot([], [], ' ', label=f"line mean: {np.hypot(*mean):.3f} mas measured, "
                                     f"{np.hypot(*mean) / kappa:.2f} mas corrected")
-    fig.colorbar(scatter, ax=ax, label="Velocity (km/s)", pad=0.12 if kappa else 0.05)
+    fig.colorbar(scatter, ax=ax, label=velocity_label, pad=0.12 if kappa else 0.05)
     ax.grid(True, alpha=0.3)
     y = np.linspace(-lim, lim, 100)
     ax.plot(np.tan(np.radians(PA)) * y, y, 'k--', label=f"PA={PA:.2f}\u00b0")

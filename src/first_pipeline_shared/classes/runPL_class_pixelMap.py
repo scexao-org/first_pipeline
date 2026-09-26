@@ -160,10 +160,11 @@ class PixelMap:
         # Add required keywords
         save_header['X_FIRTYP'] = 'PIXELMAP'
             
-        # Add date and time to the header if not present
-        if 'DATE-PRO' not in save_header:
-            current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-            save_header['DATE-PRO'] = current_time
+        # Processing date of THIS product (always reset: the input header may carry
+        # the DATE-PRO of the preprocessed file, and the most recent product is
+        # selected downstream by DATE-PRO)
+        current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        save_header['DATE-PRO'] = current_time
             
         if 'DATE' not in save_header:
             save_header['DATE'] = save_header.get('DATE-PRO', datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
@@ -190,6 +191,8 @@ class PixelMap:
         
         # Write to a FITS file
         print(f"Saving pixel map to {output_filename}")
+        from first_pipeline_shared.version import add_version_keywords
+        add_version_keywords(hdul[0].header)   # Q_PIPVER / Q_PIPGIT
         hdul.writeto(output_filename, overwrite=True)
         hdul.close()
 

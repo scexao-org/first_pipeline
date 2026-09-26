@@ -561,6 +561,8 @@ class Preproc:
         
         # Write to file
         print(f"Saving preprocessed data to {self.filename}")
+        from first_pipeline_shared.version import add_version_keywords
+        add_version_keywords(hdul[0].header)   # Q_PIPVER / Q_PIPGIT
         hdul.writeto(self.filename, overwrite=True, output_verify='fix', checksum=True)
 
     def return_hdu_list(self):
